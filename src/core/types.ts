@@ -26,8 +26,12 @@ export interface PlanOptions {
   deployed?: number[];
   /** Keyword whose starting-gift pool is used. 'auto' picks the deck's dominant keyword. */
   startKeyword: Keyword | 'auto';
-  /** How many extra gifts the starlight-funded 기프트 관측 may grant. */
-  giftObservationMax: number;
+  /**
+   * Gifts the user pinned for the starlight-funded 기프트 관측 (at most `rules.giftObservation.max`).
+   * The planner fills the remaining slots itself: first to rescue gifts the route cannot reach,
+   * then to free a forced pack so the route has more room.
+   */
+  observedGifts: number[];
   /** Assume every forced pack needs an observation on a pack never visited before (×1.5 cost). */
   assumeUnvisitedPacks: boolean;
   /** Floors the user pins to a pack by hand. */
@@ -82,7 +86,7 @@ export interface ConditionReport {
 // Requirements
 // ---------------------------------------------------------------------------
 
-export type RequirementRoute = 'route' | 'startGift' | 'observation' | 'generalDrop' | 'fusion';
+export type RequirementRoute = 'route' | 'startGift' | 'observation' | 'generalDrop' | 'fusion' | 'unresolved';
 
 export interface Requirement {
   giftId: number;
@@ -140,6 +144,8 @@ export type UnresolvedReason =
   | 'fusion-ingredient-unresolved'
   | 'not-obtainable'
   | 'hard-only'
+  /** Only a random hidden-battle reward; no route can guarantee it. */
+  | 'chance-only'
   | 'observation-budget';
 
 export interface Unresolved {
@@ -157,7 +163,9 @@ export type WarningCode =
   | 'fusion-slots'
   | 'search-capped'
   | 'identity-keywords-unknown'
-  | 'gift-observation-unverified';
+  | 'gift-observation-unverified'
+  /** Pinned observations that were dropped: unknown, not observable, or over the limit. */
+  | 'observation-trimmed';
 
 export interface PlanWarning {
   code: WarningCode;
@@ -165,13 +173,21 @@ export interface PlanWarning {
   giftIds?: number[];
 }
 
+export interface ObservedGift {
+  giftId: number;
+  /** True when the user asked for it; false when the planner recommends it. */
+  pinned: boolean;
+  /** The pack the route no longer has to visit because of this observation, if that is why. */
+  freedPack: number | null;
+}
+
 export interface RoutePlan {
   start: {
     keyword: Keyword | null;
     /** The one gift taken from the starting keyword pool. */
     startGift: number | null;
-    /** Gifts taken through the starlight-funded 기프트 관측. */
-    observed: number[];
+    /** Gifts taken through the starlight-funded 기프트 관측, pinned ones first. */
+    observed: ObservedGift[];
     starlight: number;
     /** The cost table behind `starlight` is unverified for this season. */
     starlightVerified: boolean;

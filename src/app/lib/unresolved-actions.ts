@@ -3,15 +3,18 @@
  * the smallest option change that could help, so the button says "5층까지" rather than jumping to
  * 평행중첩 (and forcing Hard) when the pack only needed floor 4.
  */
-import type { Gift, ThemePack } from '../../core/schema.ts';
+import type { Gift, Rules, ThemePack } from '../../core/schema.ts';
 import type { PlanOptions, Unresolved } from '../../core/types.ts';
+import { observable } from '../../core/index.ts';
 
-export type ActionKind = 'switchHard' | 'extendFloors' | 'observeMore';
+export type ActionKind = 'switchHard' | 'extendFloors' | 'observeGift' | 'releaseObservations';
 
 export interface UnresolvedAction {
   kind: ActionKind;
   /** The floor a floor extension targets; only for `extendFloors`. */
   floor?: number;
+  /** The gift an observation action pins; only for `observeGift`. */
+  giftId?: number;
   patch: Partial<PlanOptions>;
 }
 
@@ -38,6 +41,7 @@ export function actionsFor(
   gift: Gift | undefined,
   packById: Map<number, ThemePack>,
   options: PlanOptions,
+  rules: Rules,
 ): UnresolvedAction[] {
   const out: UnresolvedAction[] = [];
   const extendTo = (floor: number): void => {
@@ -54,8 +58,19 @@ export function actionsFor(
     else if (options.lastFloor < 15) extendTo(options.lastFloor + 1);
   }
   if (entry.reason === 'pack-conflict' && options.lastFloor < 15) extendTo(options.lastFloor + 1);
-  if ((entry.reason === 'no-pack-in-range' || entry.reason === 'pack-conflict') && options.giftObservationMax < 3) {
-    out.push({ kind: 'observeMore', patch: { giftObservationMax: options.giftObservationMax + 1 } });
+  // The planner already spends free observation slots on rescues, so this mostly matters when
+  // every slot is pinned by the user: offer to pin this gift instead, or to let the planner choose.
+  if (
+    (entry.reason === 'no-pack-in-range' || entry.reason === 'pack-conflict') &&
+    gift &&
+    observable(gift, rules) &&
+    !options.observedGifts.includes(gift.id)
+  ) {
+    if (options.observedGifts.length < rules.giftObservation.max) {
+      out.push({ kind: 'observeGift', giftId: gift.id, patch: { observedGifts: [...options.observedGifts, gift.id] } });
+    } else if (options.observedGifts.length > 0) {
+      out.push({ kind: 'releaseObservations', patch: { observedGifts: [] } });
+    }
   }
   return out;
 }

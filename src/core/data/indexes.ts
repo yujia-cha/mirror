@@ -38,6 +38,11 @@ export function buildIndexes(data: GameData): GameIndexes {
     }
   }
   for (const list of packsByGift.values()) list.sort((a, b) => a - b);
+  // A 클리어 보상 gift is not in any pool; its one source is the EXTREME pack whose boss drops it.
+  for (const gift of data.gifts) {
+    const packId = gift.acquisition.clearRewardOf;
+    if (packId !== null && packById.get(packId)?.selectable) packsByGift.set(gift.id, [packId]);
+  }
 
   /**
    * Gifts not worth routing for.

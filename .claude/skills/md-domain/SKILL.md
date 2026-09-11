@@ -52,6 +52,10 @@ Everything here was read out of the game's own static data; `docs/research/mecha
 - **테마팩 한정(packLimited)**: 특정 팩의 `specificEgoGiftPool`에 있음(171종). 그 팩에 들어가야 얻는다. 복각 팩은 원본 팩의 전용 기프트를 공유한다.
 - **조합 전용(fusionOnly)**: 팩 풀에 없고 상점/휴식의 「E.G.O 기프트 합성」으로만 얻는다(59종).
 - **시작(startOnly)**: `startEgoGiftPools`의 키워드별 3종.
+- **클리어 보상(clearReward)**: EXTREME 팩(1511~1520)의 보스 스테이지 `rewardList`가 주는 기프트 10종(9250~9255, 9827~9830). `acquisition.clearRewardOf`가 팩 id. 그 팩을 11~15층에 넣으면 확정.
+- **히든 전투(hiddenBattle)**: 11~15층에서 층당 10%로 나오는 히든 전투의 보상 4종(9256~9259). 팩과 무관하고 확정 불가 → 플래너는 `chance-only` 미해결.
+- **이벤트(event)**: 선택지·저주 해제 등 10종. 위 셋을 합치면 드롭풀의 `globalExcludeEgoGifts` 24종.
+- **관측 가능(observable)**: 「E.G.O 기프트 관측」이 제시할 수 있는 312종(`mirror-dungeon-egogift-observation-data`). 조합 결과물·클리어 보상·일부 테마팩 한정(9283 등)은 관측할 수 없다. 비용 70/160/270, 최대 3개.
 - **Hard 전용**: `nonAcquireableInEasyIds` 53종. 대부분 조합 결과물.
 
 ## 조합

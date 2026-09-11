@@ -10,9 +10,9 @@
 | 항목 | 결정 |
 |---|---|
 | 방향 | 1단계 스케치 A(정제된 stone)를 채택하되 **색은 회색 계열만** 쓴다. amber 포함 유채색 강조 없음 |
-| 구분 수단 | 획득 신뢰도·상태는 색이 아니라 **채움 · 선 종류 · 명도 · 아이콘 · 굵기**로 구분 |
+| 구분 수단 | 획득 신뢰도·상태는 색이 아니라 **채움 · 선 종류 · 명도 · 아이콘 · 굵기**로 구분. 유일한 예외는 조건 판정 — 기프트 아이콘 테두리 **초록(충족)/빨강(미충족)/점선(판정 불가)**(M9) |
 | 화면 구조 | 3패널 동시 표시를 버리고 **단계형**: 1 덱 → 2 기프트 → 3 루트. 데스크톱도 한 번에 한 단계 |
-| 이미지 | 인격·기프트 이미지 없음(재배포 회피). 이름·등급·키워드 칩으로 식별 |
+| 이미지 | 저장소에 이미지 없음(재배포 회피). 기프트 아이콘·팩 이미지는 **플레이스홀더 자리**를 두고, `VITE_ASSET_BASE`가 있을 때만 외부 이미지를 불러온다(M9). 인격 초상은 자리 없음 |
 | 문구 | 설명 문장 최소화. 본문 13px, 보조 11px. 긴 설명은 툴팁·보조문구 |
 | 참고 | 루트 시간표의 「고정 블록 vs 유동 구간」 표현만 캘린더 UI를 참고 |
 
@@ -52,14 +52,17 @@
 - 옵션 바(카드 1줄): **층 밴드 선택기** · **Hard 단방향 스위치** · 관측 최대(세그먼트 0~3) · 시작 키워드 칩 · 「옵션 초기화」.
   - 층 밴드 선택기: 1~15 셀 스트립. 1~5 / 6~10(surface-2) / 11~15(빗금 = 관측 불가) 밴드 배경, 위에 밴드 라벨. 선택 범위는 ink 채움.
   - Hard 스위치: 전환 전 「→ Hard로 전환」 secondary 버튼. 전환 후 ink 채움 「lock Hard · 되돌릴 수 없음」, **되돌림 버튼 없음**(옵션 초기화로만). 6층 이상 선택 시 자동으로 잠금 상태가 되고 info 배너 1줄.
-- 요약: `필요 팩 2 · 별빛 20 · 확보 4/5`(mono 22px) + 근사 결과 배지(해당 시) + 「텍스트 복사」.
+- 요약: `필요 팩 2 · 확보 4/5`(mono 22px) + 근사 결과 배지(해당 시) + 「텍스트 복사」. 별빛 수치는 어디에도 표시하지 않는다(인게임에서 보인다).
+- **대안 루트 탭**(M9): 본 계획에 팩 충돌이 있으면 요약 아래에 `role=tablist` — 「전부 · 4/5」 + 「{아이콘} {기프트} 제외 · 4/4」…(최대 4). 탭을 고르면 시간표·조건·미해결·복사가 그 계획을 쓴다. 변형 탭에는 「이 기프트 빼고 확정」 ghost 버튼.
+- **관측**(M9): 「관측 최대」 옵션 없음. 2단계 트레이 칩의 눈 토글로 지정(≤3, 관측 불가 기프트는 비활성 + 사유 툴팁). 시간표 시작 칸에 관측 기프트 타일(아이콘 32 + 이름 + 「지정」/「추천」 태그, 툴팁에 「{팩} 안 가도 됨」). 추천 타일을 누르면 지정으로.
 - **시간표**(데스크톱): 열 = 시작 + 계획 범위 안의 층(균등) + 범위 밖 층 전부를 합친 **44px 열 하나**(「범위 밖」, 헤더 `6~`), 행 = 팩 레인 + 합성 레인. 15층 계획이면 범위 밖 열이 없다.
-  - **고정 블록**: ink 채움. `팩명 · eye 별빛 / 고정 / check 픽업`.
+  - **고정 블록**: ink 채움. 헤더 = 팩 이미지 28 + 팩명(2줄 클램프), 둘째 줄 「고정」, 셋째 줄 픽업 타일(아이콘 44 + 이름 2줄, 판정 테두리). 전용 픽업만 그린다 — 범용은 어느 팩에서나 나오므로 표시하지 않는다.
   - **유동 구간 블록**: 점선 테두리, 가능한 층 전체에 걸침. 추천 층 구간은 surface-2 배경 + 굵은 밑줄. `4~5층 중 한 층 · 추천 4`.
+  - 블록은 내용에 맞춰 자란다(`overflow-hidden`·`truncate` 없음). **호버/포커스한 블록의 층은 2.2fr로 넓어진다**(`grid-template-columns` 전환 160ms, reduced-motion이면 즉시). 모바일 행은 `minmax(58px, auto)`.
   - 연속된 자유 층(어떤 창에도 안 걸치는)은 셀 하나로 합쳐 「자유 · 6~10층」. 시작 열엔 시작 기프트 작은 블록, 없으면 시작 키워드. 합성 레인은 점선 회색 블록(`shop 합성 → 진혼`). 모바일도 자유 층 묶음은 40px 행 하나.
-  - 범례 한 줄.
+  - 범례는 「이 층 고정」「이 중 한 층 (진한 칸 = 추천)」 **두 항목만**. 합성 레인 없음.
 - 시간표(모바일 400px): 행 = 층, 열 = 레인 2개. 유동 구간은 세로로 걸치고 추천 층은 좌측 굵은 선. 가로 스크롤 없음.
-- 아래 카드: 조합(순서대로, 재료·가능 층) · 범용 드랍(점선 카드, 「확정 아님」 고정 문구) · 조건 판정(check / x / 판정 불가는 물음표 + `7/5`, 문장은 줄바꿈) · **미해결**(fg 1.5px 테두리 + alert 아이콘, 항목마다 이유 칩 + 사유 1줄; 여러 항목이 같은 조치를 원하면 카드 헤더에 버튼 한 개, 항목 고유 조치만 행에). 모바일은 미해결을 요약 바로 아래에 둔다.
+- 아래 카드: 조건 판정(기프트 아이콘 44 타일 + 이름 + `7/5`; 판정은 테두리 색, 문장은 툴팁·sr-only) · 참고(루트에 영향 주는 경고만; 조건 미충족·범용·합성 칸 경고는 표시하지 않음) · **미해결**(행마다 아이콘 32; 팩 충돌 행에는 「대안 루트 보기」). 조합 카드·범용 드랍 카드는 없다 — 조합법은 인게임에서 보이고 범용은 어느 팩이든 상관없다.(fg 1.5px 테두리 + alert 아이콘, 항목마다 이유 칩 + 사유 1줄; 여러 항목이 같은 조치를 원하면 카드 헤더에 버튼 한 개, 항목 고유 조치만 행에). 모바일은 미해결을 요약 바로 아래에 둔다.
 
 ### 상태
 
@@ -100,6 +103,7 @@
   --color-line: #e3e0dc;       --color-line-strong: #c4beb7;
   --color-fg: #1c1917;         --color-fg-2: #57534e;       --color-fg-3: #6f6963;
   --color-ink: #292524;        --color-ink-fg: #ffffff;     /* 확정 배지 · primary 버튼 · 고정 블록 */
+  --color-ok: #2f8f5b;         --color-bad: #c9403a;        /* M9: 판정 테두리에만 쓰는 유채색 2개 */
 
   --font-sans: 'Pretendard', 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
@@ -116,6 +120,7 @@
   --color-line: #332f2b;       --color-line-strong: #544e48;
   --color-fg: #ece8e3;         --color-fg-2: #b8b1a9;       --color-fg-3: #948d85;
   --color-ink: #e7e2dc;        --color-ink-fg: #1c1917;
+  --color-ok: #4cc38a;         --color-bad: #f0665e;
   --shadow-card: none;         --shadow-pop: 0 8px 24px rgb(0 0 0 / .5);
 }
 ```
@@ -137,10 +142,13 @@
 | `Checkbox` | on · off · disabled | 출격 토글, 기프트 선택 |
 | `Stepper` | desktop pill · mobile bottom bar · done/current/todo/disabled | `tabDeck` `tabGifts` `tabRoute` |
 | `SummaryStrip` | 칩 나열 | |
-| `Segmented` | 관측 최대 0~3 | `optionObservation` |
+| `GiftIcon` | 20 · 32 · 44 · 이름 표시 · 판정 테두리 met/unmet/unknown | M9. 플레이스홀더 + `VITE_ASSET_BASE` 이미지. `condMet` `condUnmet` `giftUnjudgeable` |
+| `PackImage` | 28 · 40 | M9. 시간표 블록 헤더 |
+| `ObservedTile` | 지정 · 추천 · 클릭 가능 | M9. `routeObservedPinned` `routeObservedRecommended` `routeObservedFrees` |
+| `VariantTabs` | 전부 · 제외 탭 · 확정 버튼 | M9. `routeVariants` `routeVariantWithout` `routeVariantConfirm` |
 | `HardSwitch` | before(버튼) · locked(잠금) | 새 키 `optionHardSwitch` / `optionHardLocked` |
 | `FloorBandPicker` | 1~15, 밴드 3개, 선택 범위 | `optionFloors` |
-| `Timetable` | desktop(열=층) · mobile(행=층) · 블록 fixed/window/fuse/start · 자유 · 범위 밖 · 범례 | 새 키 `routeFixedFloor`, `routeWindow`, `routeRecommended`, `routeOutOfRange`, `routeFree` |
+| `Timetable` | desktop(열=층, 호버 확장) · mobile(행=층) · 블록 fixed/window · 시작 칸(시작 기프트·관측) · 자유 · 범위 밖 · 범례 2개 | 새 키 `routeFixedFloor`, `routeWindow`, `routeRecommended`, `routeOutOfRange`, `routeFree` |
 | `Card` | 기본 · dashed(범용 드랍) · strong(미해결·에러) | |
 | `Notice` | info · warning(근사 결과) | `routeWarnings`의 `search-capped`는 배너로 분리 |
 | `UnresolvedCard` | 이유 칩 6종 + 조치 버튼 | `UnresolvedReason` 라벨 키 신설 |
@@ -188,7 +196,6 @@
 | `routeFree` | 자유 | Free |
 | `routeOutOfRange` | 범위 밖 | Out of range |
 | `routeFreeRange` | 자유 · {from}~{to}층 | Free · {from}–{to} |
-| `routeFuseAt` | {floor}층 이후 상점·휴식 | Shop or rest from floor {floor} |
 | `unresolvedNoPack` | 층 범위 밖 | No pack in range |
 | `unresolvedConflict` | 팩 충돌 | Pack conflict |
 | `unresolvedHardOnly` | Hard 전용 | Hard only |
@@ -218,3 +225,18 @@
 - 모바일 보드 8장 모두 400px 뷰포트에서 요소 최대 우측 좌표 ≤ 400(가로 스크롤 0). 데스크톱 12장 1440px 클리핑 없음.
 - 텍스트 대비 라이트/다크 모두 4.5:1 이상(위 토큰 표).
 - 캔버스 각 보드는 PNG/PDF로 내보낼 수 있다.
+
+## M9 추가 규칙 (아이콘 · 관측 · 대안 루트)
+
+| 곳 | 기프트 아이콘 | 팩 이미지 |
+|---|---|---|
+| 시간표 블록 픽업 타일 | 44 + 이름 2줄 | 블록 헤더 28 |
+| 시간표 시작 칸(시작 기프트·관측) | 32 + 이름 | — |
+| 조건 판정 카드 | 44 + 이름 + `have/need` | — |
+| 미해결 카드 행 | 32 | — |
+| 대안 루트 탭 | 20 | — |
+| 2단계 기프트 행 / 서브행 / 트레이 칩 | 32 / 20 / 20 | — |
+
+- 아이콘 플레이스홀더: `bg-surface-3` 정사각, lucide `Gem` 40%, 우하단 `T{n}`(32 이상). 이미지는 `{VITE_ASSET_BASE}/gifts/{icon}.png`, 실패 시 플레이스홀더로 복귀. 팩은 `packs/{sprite}.png`.
+- 판정 테두리: 충족 `border-2 border-ok`, 미충족 `border-2 border-bad`, 판정 불가 `border-2 border-dashed border-line-strong`, 조건 없음 `border border-line`. 접근성 이름은 「충족 · {이름}」 꼴.
+- 문구 키(M9 추가): `acqClear` 클리어 보상 · `acqChance` 확률 보상 · `unresolvedChance` · `actionObserveGift` · `actionReleaseObservations` · `routeObservedPinned/Recommended/Frees/Rescue/Toggle` · `routeVariants` · `routeVariantAll/Without/Confirm/See` · `giftsObserve` · `giftsObserveHint` · `giftsObserveNotAllowed` · `giftsObserveFull`. 삭제: `optionObservation`, `routeStarlight`, `routeUnverified`, `routeFuse*`, `routeFusions`, `routeFusion*`, `routeGeneral*`, `legendSure/Maybe/Eye/Hatch`, `acqMaybeLong`, `actionObserveMore`, `routeObservationImpossible`.

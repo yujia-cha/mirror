@@ -9,6 +9,7 @@ import type {
   FloorPlan,
   FusionStep,
   GameIndexes,
+  ObservedGift,
   PlanInput,
   PlanOptions,
   PlanWarning,
@@ -18,24 +19,26 @@ import type {
 } from './types.ts';
 import { analyseDeck, evaluateConditions } from './deck.ts';
 import { expandRequirements, scarcity } from './requirements.ts';
-import { assignPacks, modeForFloor, observationCost } from './search.ts';
-import { chooseStart } from './starting.ts';
+import { assignPacks, modeForFloor, observationCost, type SearchResult } from './search.ts';
+import { chooseStart, observable } from './starting.ts';
 
+export { planAlternatives } from './alternatives.ts';
+export type { RouteVariant, AlternativeOptions } from './alternatives.ts';
 export { buildIndexes } from './data/indexes.ts';
 export { analyseDeck, dominantKeyword, evaluateConditions } from './deck.ts';
 export { expandRequirements, scarcity } from './requirements.ts';
 export { assignPacks, modeForFloor, observationCost } from './search.ts';
-export { chooseStart } from './starting.ts';
+export { chooseStart, observable } from './starting.ts';
 export * from './types.ts';
 export * from './schema.ts';
 
-/** Default options: one Normal clear of floors 1-5 with three observed gifts. */
+/** Default options: one Normal clear of floors 1-5; observations are left to the planner. */
 export function defaultOptions(): PlanOptions {
   return {
     lastFloor: 5,
     hardFromFloor: null,
     startKeyword: 'auto',
-    giftObservationMax: 3,
+    observedGifts: [],
     assumeUnvisitedPacks: false,
     pinnedPacks: {},
     bannedPacks: [],
@@ -49,10 +52,29 @@ export function defaultOptions(): PlanOptions {
 function normaliseOptions(
   options: PlanOptions,
   data: GameData,
+  indexes: GameIndexes,
   deck: number[],
 ): { options: PlanOptions; warnings: PlanWarning[] } {
   const warnings: PlanWarning[] = [];
   let next = { ...options };
+
+  // Pinned observations: known, observable, unique, and within the slot limit.
+  const observedGifts = [...new Set(next.observedGifts ?? [])].filter((id) => {
+    const gift = indexes.giftById.get(id);
+    return gift !== undefined && observable(gift, data.rules);
+  });
+  const kept = observedGifts.slice(0, data.rules.giftObservation.max);
+  if (kept.length !== (next.observedGifts ?? []).length) {
+    warnings.push({
+      code: 'observation-trimmed',
+      giftIds: (next.observedGifts ?? []).filter((id) => !kept.includes(id)),
+      detail: {
+        ko: `관측으로 지정한 기프트 중 관측할 수 없거나 한도(${data.rules.giftObservation.max}개)를 넘는 것은 제외했습니다.`,
+        en: `Some pinned observations were dropped: not observable, or over the ${data.rules.giftObservation.max}-slot limit.`,
+      },
+    });
+  }
+  next = { ...next, observedGifts: kept };
 
   const maxFloor = Math.max(...data.rules.floors.normal, ...data.rules.floors.parallel, ...data.rules.floors.extreme);
   const lastFloor = Math.min(maxFloor, Math.max(1, Math.round(next.lastFloor)));
@@ -143,7 +165,7 @@ function floorsFor(options: PlanOptions, data: GameData): number[] {
 
 export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes): RoutePlan {
   const startedAt = Date.now();
-  const { options, warnings } = normaliseOptions(input.options, data, input.deck);
+  const { options, warnings } = normaliseOptions(input.options, data, indexes, input.deck);
   const floors = floorsFor(options, data);
 
   const stats = analyseDeck(input.deck, indexes, data.rules.deployment, options.deployed);
@@ -160,13 +182,29 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
     const gift = indexes.giftById.get(requirement.giftId);
     if (!gift) continue;
     if (!gift.obtainable) {
-      requirement.via = 'generalDrop';
+      requirement.via = 'unresolved';
       unresolved.push({
         giftId: requirement.giftId,
         reason: 'not-obtainable',
         detail: {
           ko: '이번 시즌에 획득할 수 없는 기프트입니다.',
           en: 'Not obtainable in the current season.',
+        },
+      });
+      continue;
+    }
+    if (gift.acquisition.kind === 'hiddenBattle') {
+      // A random extra battle on EXTREME floors drops it; no pack choice makes that certain.
+      const hidden = data.rules.hiddenBattle;
+      const floorsText = hidden && hidden.floors.length > 0 ? `${hidden.floors[0]}~${hidden.floors[hidden.floors.length - 1]}` : '11~15';
+      const pct = hidden?.probabilityPerFloor !== null && hidden?.probabilityPerFloor !== undefined ? Math.round(hidden.probabilityPerFloor * 100) : null;
+      requirement.via = 'unresolved';
+      unresolved.push({
+        giftId: requirement.giftId,
+        reason: 'chance-only',
+        detail: {
+          ko: `${floorsText}층 히든 전투 보상${pct !== null ? `(층당 ${pct}%)` : ''}으로만 나오는 기프트입니다. 루트로 확정할 수 없습니다.`,
+          en: `Only a random hidden-battle reward on floors ${floorsText.replace('~', '-')}${pct !== null ? ` (${pct}% per floor)` : ''}; no route can guarantee it.`,
         },
       });
       continue;
@@ -184,8 +222,6 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
     data.rules,
     stats,
     options.startKeyword,
-    // Observation is decided after the search (step 5); it is a fallback, not a default spend.
-    0,
   );
   for (const requirement of requirements) {
     if (requirement.giftId === start.startGift) requirement.via = 'startGift';
@@ -204,11 +240,11 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
           en: 'Obtainable on Hard difficulty only. Switch the plan to Hard.',
         },
       });
-      requirement.via = 'generalDrop';
+      requirement.via = 'unresolved';
     }
   }
 
-  // ---- 5. Assign packs to floors, then spend observation on what is left ---
+  // ---- 5. Observation and the pack search --------------------------------
   const runSearch = () =>
     assignPacks({
       requirements: requirements.filter((r) => r.via === 'route'),
@@ -218,41 +254,87 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
       indexes,
     });
 
-  let search = runSearch();
-
   /**
-   * Starlight observation is expensive, so it is used only for gifts the route could not reach —
-   * typically two pack-exclusives that compete for the same floor. Non-fusion gifts only, and
-   * hardest-first so the budget goes where routing cannot help.
+   * 기프트 관측 hands over up to `max` gifts at run start. Slots go, in order: to the gifts the user
+   * pinned; to gifts the route cannot reach (directly, or by observing whatever occupies the floor
+   * they need); and finally to gifts whose pack the route would otherwise be forced to visit, so
+   * the run keeps more floors free. The search runs at most twice.
    */
-  const observed: number[] = [];
-  if (search.unresolvedGiftIds.length > 0 && options.giftObservationMax > 0) {
-    const budget = Math.min(options.giftObservationMax, data.rules.giftObservation.max);
-    const eligible = search.unresolvedGiftIds
-      .filter((giftId) => {
-        const gift = indexes.giftById.get(giftId);
-        if (!gift) return false;
-        if (!data.rules.giftObservation.fusionResultsAllowed && gift.acquisition.kind === 'fusionOnly')
-          return false;
-        return true;
-      })
-      .sort((a, b) => scarcity(a, indexes) - scarcity(b, indexes) || a - b)
-      .slice(0, budget);
-
-    if (eligible.length > 0) {
-      for (const giftId of eligible) {
-        for (const requirement of requirements) {
-          if (requirement.giftId === giftId) requirement.via = 'observation';
-        }
-        observed.push(giftId);
-      }
-      search = runSearch();
+  const budget = data.rules.giftObservation.max;
+  const observed: ObservedGift[] = [];
+  const observe = (giftId: number, pinned: boolean, freedPack: number | null): void => {
+    for (const requirement of requirements) {
+      if (requirement.giftId === giftId && requirement.via === 'route') requirement.via = 'observation';
     }
+    observed.push({ giftId, pinned, freedPack });
+  };
+  const canObserve = (giftId: number): boolean => {
+    const gift = indexes.giftById.get(giftId);
+    return gift !== undefined && observable(gift, data.rules) && !observed.some((o) => o.giftId === giftId);
+  };
+  const routeRequirement = (giftId: number): boolean =>
+    requirements.some((r) => r.giftId === giftId && r.via === 'route');
+
+  // a) pinned by the user
+  for (const giftId of options.observedGifts) {
+    if (observed.length >= budget) break;
+    if (routeRequirement(giftId) && canObserve(giftId)) observe(giftId, true, null);
   }
 
-  start.observed = observed.sort((a, b) => a - b);
-  start.starlight =
-    observed.length === 0 ? 0 : (data.rules.giftObservation.costTable[observed.length - 1] ?? 0);
+  let search = runSearch();
+
+  // b) rescue: what the search had to leave out
+  if (search.unresolvedGiftIds.length > 0 && observed.length < budget) {
+    const missed = [...search.unresolvedGiftIds].sort((a, b) => scarcity(a, indexes) - scarcity(b, indexes) || a - b);
+    let changed = false;
+    for (const giftId of missed) {
+      if (observed.length >= budget) break;
+      if (canObserve(giftId)) {
+        observe(giftId, false, null);
+        changed = true;
+        continue;
+      }
+      // Not observable itself: observe the sole occupant of a floor its pack could use instead.
+      const swap = soleOccupantToFree(giftId, search, requirements, floors, options, indexes, canObserve);
+      if (swap) {
+        observe(swap.giftId, false, swap.packId);
+        changed = true;
+      }
+    }
+    if (changed) search = runSearch();
+  }
+
+  // c) flexibility: free a forced pack whose only job is one observable gift
+  while (observed.length < budget) {
+    const forced = [...search.assignment.entries()]
+      .filter(([floor]) => options.pinnedPacks[floor] === undefined)
+      .map(([floor, packId]) => {
+        const pickups = requirements.filter((r) => r.via === 'route' && search.supplier.get(r.giftId) === floor);
+        return { floor, packId, pickups };
+      })
+      .filter(({ pickups }) => pickups.length === 1 && canObserve(pickups[0]!.giftId))
+      .map((entry) => {
+        const window = windowFor(entry.packId, entry.floor, modeForFloor(entry.floor, options), floors, options, search.assignment, indexes);
+        return { ...entry, width: window.to - window.from, giftId: entry.pickups[0]!.giftId };
+      })
+      .sort(
+        (a, b) =>
+          a.width - b.width ||
+          scarcity(a.giftId, indexes) - scarcity(b.giftId, indexes) ||
+          b.floor - a.floor ||
+          a.giftId - b.giftId,
+      );
+    const pick = forced[0];
+    if (!pick) break;
+    observe(pick.giftId, false, pick.packId);
+    // Dropping a floor's only requirement lowers the optimum by exactly one pack, so the edited
+    // assignment stays optimal without another search.
+    search.assignment.delete(pick.floor);
+    search.supplier.delete(pick.giftId);
+  }
+
+  const startObserved = [...observed].sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.giftId - b.giftId);
+  const startStarlight = observed.length === 0 ? 0 : (data.rules.giftObservation.costTable[observed.length - 1] ?? 0);
 
   for (const giftId of search.unresolvedGiftIds) {
     const gift = indexes.giftById.get(giftId);
@@ -288,7 +370,11 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
     const list = pickupsByFloor.get(floor) ?? [];
     list.push({
       giftId: requirement.giftId,
-      kind: pack?.exclusiveGifts.includes(requirement.giftId) ? 'exclusive' : 'pool',
+      kind:
+        pack?.exclusiveGifts.includes(requirement.giftId) ||
+        indexes.giftById.get(requirement.giftId)?.acquisition.clearRewardOf === packId
+          ? 'exclusive'
+          : 'pool',
       neededFor: requirement.neededFor,
     });
     pickupsByFloor.set(floor, list);
@@ -449,7 +535,7 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
     });
   }
 
-  if (start.observed.length > 0 && !data.rules.giftObservation.verified) {
+  if (startObserved.length > 0 && !data.rules.giftObservation.verified) {
     warnings.push({
       code: 'gift-observation-unverified',
       detail: {
@@ -490,14 +576,14 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
   const unresolvedIds = new Set(unresolved.map((u) => u.giftId));
   const coveredWanted = input.wanted.filter((w) => !unresolvedIds.has(w.giftId)).length;
 
-  const starlight = start.starlight + floorPlans.reduce((sum, plan) => sum + plan.observation.starlight, 0);
+  const starlight = startStarlight + floorPlans.reduce((sum, plan) => sum + plan.observation.starlight, 0);
 
   return {
     start: {
       keyword: start.keyword,
       startGift: start.startGift,
-      observed: start.observed,
-      starlight: start.starlight,
+      observed: startObserved,
+      starlight: startStarlight,
       starlightVerified: data.rules.giftObservation.verified,
     },
     floors: floorPlans,
@@ -516,6 +602,39 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
       elapsedMs: Date.now() - startedAt,
     },
   };
+}
+
+/**
+ * For a gift the search left out and that cannot itself be observed: find a floor its pack could
+ * take whose current pack exists only to supply one observable gift. Observing that gift frees the
+ * floor. Lowest floor first, then lowest gift id, for determinism.
+ */
+function soleOccupantToFree(
+  giftId: number,
+  search: SearchResult,
+  requirements: Requirement[],
+  floors: number[],
+  options: PlanOptions,
+  indexes: GameIndexes,
+  canObserve: (giftId: number) => boolean,
+): { giftId: number; packId: number } | null {
+  const banned = new Set(options.bannedPacks);
+  const packs = (indexes.packsByGift.get(giftId) ?? []).filter((id) => !banned.has(id));
+  const usable = floors.filter((floor) => {
+    if (options.pinnedPacks[floor] !== undefined) return false;
+    const offered = indexes.packsByFloor[modeForFloor(floor, options)].get(floor) ?? [];
+    return packs.some((id) => offered.includes(id));
+  });
+  for (const floor of usable.sort((a, b) => a - b)) {
+    const packId = search.assignment.get(floor);
+    if (packId === undefined) continue;
+    const pickups = requirements
+      .filter((r) => r.via === 'route' && search.supplier.get(r.giftId) === floor)
+      .map((r) => r.giftId)
+      .sort((a, b) => a - b);
+    if (pickups.length === 1 && canObserve(pickups[0]!)) return { giftId: pickups[0]!, packId };
+  }
+  return null;
 }
 
 function dedupeUnresolved(entries: Unresolved[]): Unresolved[] {
@@ -538,6 +657,7 @@ export function requirementSummary(requirements: Requirement[]): Record<Requirem
     observation: [],
     generalDrop: [],
     fusion: [],
+    unresolved: [],
   };
   for (const requirement of requirements) out[requirement.via].push(requirement.giftId);
   for (const key of Object.keys(out) as Requirement['via'][]) out[key].sort((a, b) => a - b);

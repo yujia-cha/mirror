@@ -3,22 +3,28 @@ import type { RoutePlan } from '../../core/types.ts';
 import { pick, t, type Lang } from '../i18n.ts';
 import { MODE_LABEL } from './labels.ts';
 
-/** A Discord-friendly plain-text rendering of the plan. Ids are localized by the callbacks. */
+/**
+ * A Discord-friendly plain-text rendering of the plan. Ids are localized by the callbacks. Only
+ * what the route decides is written: packs per floor and their guaranteed pickups, the start,
+ * observations and what stays unresolved. Recipes and general drops are left to the game.
+ */
 export function planToText(
   plan: RoutePlan,
   giftName: (id: number) => string,
   packName: (id: number) => string,
   keywordLabel: (id: Keyword) => string,
   lang: Lang,
+  dropped: number[] = [],
 ): string {
   const lines: string[] = [];
+  if (dropped.length > 0) lines.push(t('routeVariantWithout', lang, { name: dropped.map(giftName).join(', ') }));
   lines.push(`${t('routeStart', lang)}: ${plan.start.keyword ? keywordLabel(plan.start.keyword) : '—'}`);
   if (plan.start.startGift) lines.push(`  ${t('routeStartGift', lang)}: ${giftName(plan.start.startGift)}`);
   if (plan.start.observed.length > 0) {
-    lines.push(
-      `  ${t('routeObserved', lang)}: ${plan.start.observed.map(giftName).join(', ')} ` +
-        `(${t('routeStarlight', lang)} ${plan.start.starlight})`,
+    const observed = plan.start.observed.map(
+      (o) => `${giftName(o.giftId)} (${o.pinned ? t('routeObservedPinned', lang) : t('routeObservedRecommended', lang)})`,
     );
+    lines.push(`  ${t('routeObserved', lang)}: ${observed.join(', ')}`);
   }
   lines.push('');
   for (const floor of plan.floors) {
@@ -27,32 +33,11 @@ export function planToText(
       floor.window && floor.window.from !== floor.window.to
         ? ` [${t('routeWindowShort', lang, { from: floor.window.from, to: floor.window.to })}]`
         : '';
-    const obs = floor.observation.needed
-      ? floor.observation.possible
-        ? ` [${t('legendEye', lang)} +${floor.observation.starlight}]`
-        : ` [${t('routeObservationImpossible', lang)}]`
-      : '';
-    lines.push(`${floor.floor}F (${t(MODE_LABEL[floor.mode], lang)}) ${pack}${window}${obs}`);
-    for (const pickup of floor.pickups) {
+    lines.push(`${floor.floor}F (${t(MODE_LABEL[floor.mode], lang)}) ${pack}${window}`);
+    for (const pickup of floor.pickups.filter((p) => p.kind === 'exclusive')) {
       const why = pickup.neededFor ? ` -> ${giftName(pickup.neededFor)}` : '';
-      const sure = pickup.kind === 'exclusive' ? t('acqSure', lang) : t('acqMaybe', lang);
-      lines.push(`  - ${giftName(pickup.giftId)} [${sure}]${why}`);
+      lines.push(`  - ${giftName(pickup.giftId)}${why}`);
     }
-  }
-  if (plan.fusions.length > 0) {
-    lines.push('');
-    lines.push(t('routeFusions', lang));
-    for (const fusion of plan.fusions) {
-      lines.push(
-        `  ${giftName(fusion.result)} <- ${fusion.ingredients.map(giftName).join(' + ')}` +
-          (fusion.unreachable ? ` (${t('routeFusionImpossible', lang)})` : ` (${fusion.earliestFloor}F+)`),
-      );
-    }
-  }
-  if (plan.generalDrops.length > 0) {
-    lines.push('');
-    lines.push(`${t('routeGeneralDrops', lang)} (${t('routeGeneralNotSure', lang)})`);
-    for (const id of plan.generalDrops) lines.push(`  - ${giftName(id)}`);
   }
   if (plan.unresolved.length > 0) {
     lines.push('');

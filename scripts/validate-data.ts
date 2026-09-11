@@ -234,6 +234,47 @@ function checkInvariants(
     }
   }
 
+  // 클리어 보상 gifts hang off exactly one EXTREME pack; hidden-battle gifts off none. Together with
+  // the choice-event gifts they are precisely the season's globalExcludeEgoGifts.
+  const packById = new Map(packs.map((p) => [p.id, p]));
+  for (const gift of gifts) {
+    const { kind, clearRewardOf, packs: giftPacks } = gift.acquisition;
+    if (kind === 'clearReward') {
+      const pack = clearRewardOf !== null ? packById.get(clearRewardOf) : undefined;
+      if (!pack) err('invariant', `clear-reward gift ${gift.id} (${gift.name.ko}) names no pack`);
+      else {
+        if (pack.availability.extreme.length === 0) err('invariant', `clear-reward gift ${gift.id} pack ${pack.id} is not an EXTREME pack`);
+        if (giftPacks.length !== 1 || giftPacks[0] !== pack.id) err('invariant', `clear-reward gift ${gift.id} must list only pack ${pack.id}`);
+      }
+    } else if (clearRewardOf !== null) {
+      err('invariant', `gift ${gift.id} has clearRewardOf but kind ${kind}`);
+    }
+    if (kind === 'hiddenBattle' && giftPacks.length > 0) err('invariant', `hidden-battle gift ${gift.id} must not list packs`);
+    if ((kind === 'clearReward' || kind === 'hiddenBattle') && gift.observable) {
+      err('invariant', `gift ${gift.id} (${kind}) is in the observation pool, which the planner does not expect`);
+    }
+  }
+  const dropPoolFile = readJsonIfExists<{ list?: { dungeonId: number; globalExcludeEgoGifts?: number[] }[] }>(
+    repoPath(`data/raw/static/mirrordungeon-egogift-droppool/mirrordungeon-egogift-droppool-${rules.dungeonId}.json`),
+  );
+  const globalExclude = dropPoolFile?.list?.find((p) => p.dungeonId === rules.dungeonId)?.globalExcludeEgoGifts;
+  if (globalExclude) {
+    const offPath = gifts
+      .filter((g) => ['event', 'clearReward', 'hiddenBattle'].includes(g.acquisition.kind))
+      .map((g) => g.id)
+      .sort((a, b) => a - b)
+      .join(',');
+    const expected = [...globalExclude].sort((a, b) => a - b).join(',');
+    if (offPath !== expected) {
+      strict('invariant', `event ∪ clearReward ∪ hiddenBattle (${offPath}) differs from globalExcludeEgoGifts (${expected})`);
+    }
+  }
+  if (rules.hiddenBattle) {
+    for (const id of rules.hiddenBattle.gifts) {
+      if (gifts.find((g) => g.id === id)?.acquisition.kind !== 'hiddenBattle') err('invariant', `rules.hiddenBattle lists ${id}, which is not a hidden-battle gift`);
+    }
+  }
+
   // EXTREME packs carry no exclusives, so their pool is exactly the general gift set. This is the
   // cross-check that the general/exclusive split is still being derived correctly.
   const generalGifts = new Set(gifts.filter((g) => g.acquisition.kind === 'general').map((g) => g.id));

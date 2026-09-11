@@ -1,0 +1,9 @@
+# Cloudflare Pages response headers. Hashed build assets can be cached forever; the data files
+# and index.html keep short caches so a data refresh reaches users within minutes.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+/data/*
+  Cache-Control: public, max-age=600, stale-while-revalidate=86400
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin

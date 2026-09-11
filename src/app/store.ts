@@ -29,6 +29,8 @@ interface AppState extends SharedState {
   toggleWanted: (giftId: number, dropWithIt?: number[]) => void;
   removeWanted: (giftId: number) => void;
   clearWanted: () => void;
+  /** Pin or unpin a wanted gift for 기프트 관측; at most `max` pins. */
+  toggleObserved: (giftId: number, max: number) => void;
   setOptions: (patch: Partial<PlanOptions>) => void;
   resetOptions: () => void;
   setStep: (step: Step) => void;
@@ -49,6 +51,27 @@ function prefersDark(): boolean {
   return typeof window === 'undefined' || typeof window.matchMedia !== 'function'
     ? true
     : window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
+/**
+ * Keep only the option keys the planner knows, so a link or a saved state from an older version
+ * (which carried `giftObservationMax`) cannot smuggle stale keys into the plan.
+ */
+export function sanitizeOptions(raw: unknown): PlanOptions {
+  const defaults = defaultOptions();
+  const source = (raw ?? {}) as Record<string, unknown>;
+  const out = { ...defaults } as Record<string, unknown>;
+  for (const key of Object.keys(defaults)) if (key in source) out[key] = source[key];
+  if ('deployed' in source) out.deployed = source.deployed;
+  const observed = Array.isArray(out.observedGifts) ? out.observedGifts : [];
+  out.observedGifts = [...new Set(observed.filter((n): n is number => typeof n === 'number'))];
+  return out as unknown as PlanOptions;
+}
+
+/** A pinned observation only makes sense for a wanted gift. */
+function withObservedIn(options: PlanOptions, wanted: number[]): PlanOptions {
+  const observedGifts = options.observedGifts.filter((id) => wanted.includes(id));
+  return observedGifts.length === options.observedGifts.length ? options : { ...options, observedGifts };
 }
 
 function uniqueDeck(ids: number[]): number[] {
@@ -112,15 +135,30 @@ export const useApp = create<AppState>()(
         }),
 
       toggleWanted: (giftId, dropWithIt = []) =>
-        set((state) => ({
-          wanted: state.wanted.includes(giftId)
+        set((state) => {
+          const wanted = state.wanted.includes(giftId)
             ? state.wanted.filter((id) => id !== giftId)
-            : [...state.wanted.filter((id) => !dropWithIt.includes(id)), giftId].sort((a, b) => a - b),
-        })),
+            : [...state.wanted.filter((id) => !dropWithIt.includes(id)), giftId].sort((a, b) => a - b);
+          return { wanted, options: withObservedIn(state.options, wanted) };
+        }),
 
-      removeWanted: (giftId) => set((state) => ({ wanted: state.wanted.filter((id) => id !== giftId) })),
+      removeWanted: (giftId) =>
+        set((state) => {
+          const wanted = state.wanted.filter((id) => id !== giftId);
+          return { wanted, options: withObservedIn(state.options, wanted) };
+        }),
 
-      clearWanted: () => set({ wanted: [] }),
+      clearWanted: () => set((state) => ({ wanted: [], options: { ...state.options, observedGifts: [] } })),
+
+      toggleObserved: (giftId, max) =>
+        set((state) => {
+          const has = state.options.observedGifts.includes(giftId);
+          if (!has && (state.options.observedGifts.length >= max || !state.wanted.includes(giftId))) return {};
+          const observedGifts = has
+            ? state.options.observedGifts.filter((id) => id !== giftId)
+            : [...state.options.observedGifts, giftId];
+          return { options: { ...state.options, observedGifts } };
+        }),
 
       setOptions: (patch) => set((state) => ({ options: { ...state.options, ...patch } })),
       resetOptions: () => set({ options: defaultOptions() }),
@@ -133,20 +171,21 @@ export const useApp = create<AppState>()(
           deck: shared.deck,
           deployed: shared.deployed.filter((id) => shared.deck.includes(id)),
           wanted: shared.wanted,
-          options: { ...defaultOptions(), ...shared.options },
+          options: sanitizeOptions(shared.options),
           step: shared.deck.length === 0 ? 1 : shared.wanted.length === 0 ? 2 : 3,
         }),
     }),
     {
       name: 'md-route-planner',
-      version: 2,
+      version: 3,
       migrate: (persisted, version) => {
-        const state = (persisted ?? {}) as Partial<AppState>;
+        let state = (persisted ?? {}) as Partial<AppState>;
         if (version < 2) {
           const deck = Array.isArray(state.deck) ? state.deck : [];
-          return { ...state, deck, deployed: deck.slice(0, LEGACY_DEPLOYED), step: 1 as Step } as AppState;
+          state = { ...state, deck, deployed: deck.slice(0, LEGACY_DEPLOYED), step: 1 as Step };
         }
-        return state as AppState;
+        // v3 replaced the observation count with pinned observation gifts.
+        return { ...state, options: sanitizeOptions(state.options) } as AppState;
       },
       partialize: (state) => ({
         deck: state.deck,
@@ -194,7 +233,7 @@ export function decodeShared(hash: string): SharedState | null {
       deck,
       deployed,
       wanted: parsed.wanted.filter((n): n is number => typeof n === 'number'),
-      options: { ...defaultOptions(), ...parsed.options },
+      options: sanitizeOptions(parsed.options),
     };
   } catch {
     return null;

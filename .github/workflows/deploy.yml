@@ -1,8 +1,9 @@
-name: Deploy to GitHub Pages
+name: Deploy to GitHub Pages (fallback)
 
+# Production is served by Cloudflare Pages through its Git integration (see
+# .claude/skills/deploy/SKILL.md). This workflow stays as a manual fallback so the GitHub Pages
+# copy can be refreshed on demand; it no longer runs on every push to main.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
