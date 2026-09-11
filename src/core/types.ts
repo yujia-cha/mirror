@@ -62,6 +62,16 @@ export interface ConditionReport {
   reachedTiers: number[];
   have: number | null;
   need: number | null;
+  /**
+   * What is being counted, as raw game ids. The planner never carries display names, so the UI
+   * localizes these through `enums.json` and builds its own sentence.
+   */
+  subject: {
+    kind: 'keyword' | 'faction' | 'resonance' | 'text';
+    ids: string[];
+    scope: 'deployed' | 'formation' | 'reserve' | null;
+  };
+  /** A plain fallback sentence for the CLI and for copy-as-text. */
   detail: { ko: string; en: string };
 }
 

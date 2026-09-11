@@ -101,6 +101,19 @@ function describe(condition: Condition, have: number | null): { ko: string; en: 
   }
 }
 
+function subjectOf(condition: Condition): ConditionReport['subject'] {
+  switch (condition.type) {
+    case 'keywordSkillCount':
+      return { kind: 'keyword', ids: [condition.keyword], scope: condition.scope };
+    case 'factionCount':
+      return { kind: 'faction', ids: [...condition.factions], scope: condition.scope };
+    case 'fullResonance':
+      return { kind: 'resonance', ids: [], scope: null };
+    case 'unparsed':
+      return { kind: 'text', ids: [], scope: null };
+  }
+}
+
 function scopeKo(scope: Scope): string {
   switch (scope) {
     case 'deployed':
@@ -135,7 +148,15 @@ export function evaluateConditions(
         have !== null && 'tiers' in condition
           ? condition.tiers.filter((tier) => have >= tier.min).map((tier) => tier.min)
           : [];
-      reports.push({ giftId, satisfied, reachedTiers, have, need, detail: describe(condition, have) });
+      reports.push({
+        giftId,
+        satisfied,
+        reachedTiers,
+        have,
+        need,
+        subject: subjectOf(condition),
+        detail: describe(condition, have),
+      });
     }
   }
   return reports;
