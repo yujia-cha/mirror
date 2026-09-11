@@ -36,4 +36,7 @@ npm run data:fetch -- --update
 npm run data:build
 npm run data:validate
 npm run data:diff
+npm run data:changelog
 ```
+
+매월 1일 `.github/workflows/data-update.yml`이 같은 절차를 돌려 변경이 있으면 드래프트 PR을 연다. 손으로 돌리려면 Actions 탭의 **Update game data → Run workflow**.

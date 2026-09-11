@@ -1,0 +1,144 @@
+name: Update game data
+
+# 매월 1일 18:00 UTC(= 한국 2일 03:00). 게임 패치 직후에 돌리고 싶으면 Actions 탭에서 수동 실행한다.
+# schedule은 기본 브랜치에 있는 워크플로만 돌기 때문에, 이 파일이 기본 브랜치에 머지되어야 자동으로 돈다.
+on:
+  schedule:
+    - cron: '0 18 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: data-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Fetch upstream game data
+        id: fetch
+        continue-on-error: true
+        run: npm run data:fetch -- --update
+
+      # 파일이 404면 fetch-sources가 exit 1을 낸다. 대개 시즌이 바뀌면서 이름이 바뀐 경우라
+      # 사람이 sources.lock.json을 고쳐야 하므로, 반쯤 받아온 데이터로 빌드하지 않고 여기서 멈춘다.
+      - name: Stop if a source file is missing
+        if: steps.fetch.outcome == 'failure'
+        run: |
+          {
+            echo '## 원본 파일을 받지 못했습니다'
+            echo ''
+            echo '시즌 교체로 파일 이름이 바뀌었을 가능성이 높습니다.'
+            echo '`data/sources.lock.json`의 파일 목록을 갱신하세요 — `update-game-data` 스킬 3절.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      - name: Rebuild generated data
+        run: npm run data:build
+
+      - name: Detect changes
+        id: changed
+        run: |
+          if git diff --quiet -- data public/data; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo '원본과 생성 데이터 모두 그대로입니다. 열 PR이 없습니다.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+            echo "version=$(node -p "require('./public/data/meta.json').dataVersion")" >> "$GITHUB_OUTPUT"
+          fi
+
+      # data:diff는 커밋 전에 돌려야 한다 — 비교 대상이 git에 남아 있는 이전 산출물이다.
+      - name: Summarise the change
+        if: steps.changed.outputs.changed == 'true'
+        run: |
+          npm run -s data:diff | tee data-diff.txt
+          {
+            echo '## 데이터 변경 요약'
+            echo '```'
+            cat data-diff.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record the refresh in the changelog
+        if: steps.changed.outputs.changed == 'true'
+        run: npm run -s data:changelog
+
+      # GITHUB_TOKEN이 연 PR에는 ci.yml이 자동으로 붙지 않는다. 그래서 같은 검사를 여기서 돌리고
+      # 결과를 PR 본문에 적는다. 실패해도 PR은 열고(사람이 diff를 봐야 하므로) 잡을 빨갛게 끝낸다.
+      - name: Full check
+        id: check
+        if: steps.changed.outputs.changed == 'true'
+        continue-on-error: true
+        run: npm run check
+
+      - name: Open a pull request
+        if: steps.changed.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.changed.outputs.version }}
+          BRANCH: data/auto-update-${{ steps.changed.outputs.version }}
+          BASE: ${{ github.event.repository.default_branch }}
+          CHECK: ${{ steps.check.outcome }}
+        run: |
+          set -euo pipefail
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A data public/data docs/research/changelog.md
+          git commit -m "data: 원본 갱신 반영 (dataVersion $VERSION)"
+
+          # 브랜치 이름에 dataVersion(입력 전체의 해시)이 들어가므로 내용이 다르면 이름도 다르다.
+          # 따라서 force가 필요 없고, 그래서 남의 커밋을 덮어쓸 일도 없다.
+          git push origin "HEAD:refs/heads/$BRANCH"
+
+          if [ "$CHECK" = 'success' ]; then
+            check_line='`npm run check` 통과 (lint · typecheck · 테스트 · data:validate).'
+          else
+            check_line='⚠️ `npm run check` 실패 — 워크플로 로그를 보고 파서/불변식이 깨졌는지 확인하세요.'
+          fi
+
+          {
+            echo '`npm run data:update`를 돌려 원본 게임 데이터를 갱신했습니다.'
+            echo ''
+            echo "- dataVersion: \`$VERSION\`"
+            echo "- $check_line"
+            echo '- 이 PR은 GITHUB_TOKEN이 열었기 때문에 `ci.yml`이 자동으로 붙지 않습니다. 위 검사 결과가 그 대신입니다.'
+            echo ''
+            echo '## 변경 요약'
+            echo ''
+            echo '```'
+            cat data-diff.txt
+            echo '```'
+            echo ''
+            echo '## 봐야 할 것'
+            echo ''
+            echo '- [ ] 추가·삭제된 기프트/팩/인격이 실제 패치 내용과 맞는지'
+            echo '- [ ] `rules: changed`가 있다면 바뀐 상수가 무엇인지'
+            echo '- [ ] 조건 파서 스냅샷이 바뀌었다면 새 문형을 눈으로 읽었는지 (`update-game-data` 스킬 4절)'
+            echo '- [ ] `docs/research/changelog.md`의 새 줄에 맥락(시즌/패치)을 덧붙일지'
+          } > pr-body.md
+
+          existing="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --body-file pr-body.md
+            echo "PR #$existing 갱신" >> "$GITHUB_STEP_SUMMARY"
+          else
+            gh pr create --draft --base "$BASE" --head "$BRANCH" \
+              --title "data: 원본 갱신 반영 ($VERSION)" \
+              --body-file pr-body.md
+          fi
+
+      - name: Fail the run when the check failed
+        if: steps.check.outcome == 'failure'
+        run: exit 1

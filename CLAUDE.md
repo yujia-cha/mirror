@@ -15,6 +15,7 @@ npm run data:fetch     # 원본 게임 데이터 내려받기 (sources.lock.json
 npm run data:build     # data/raw + data/curated → public/data
 npm run data:validate  # 스키마 · 참조 무결성 · 도메인 불변식 검사
 npm run data:diff      # 이전 커밋 대비 데이터 변경 요약
+npm run data:changelog # 갱신 내역을 docs/research/changelog.md에 한 줄 추가
 npm run route -- --deck 10101,... --want 9088,... --floors 1-5 --difficulty hard
 ```
 

@@ -8,6 +8,7 @@
 2. **[M1](M1.md)** — 게임 데이터 파이프라인과 생성 데이터
 3. **[M2](M2.md)** — 루트 계산 코어와 테스트
 4. **[M3](M3.md)** — 웹 UI
+5. **[M5](M5.md)** — 데이터 갱신 자동화 (M4 배포는 워크플로와 PR 자체라 별도 문서가 없습니다)
 
 처음 보신다면 도메인 규칙부터 확인하는 편이 빠릅니다: `CLAUDE.md` → `docs/research/mechanics.md` → `src/core/schema.ts` → `data/curated/rules.json`.
 
@@ -18,7 +19,7 @@ git fetch origin claude/mirror-dungeon-deck-router-h3il0h
 git checkout claude/mirror-dungeon-deck-router-h3il0h
 npm ci
 
-npm run check                  # lint + typecheck + test(125개) + 데이터 검증
+npm run check                  # lint + typecheck + test(135개) + 데이터 검증
 npm run data:build             # 생성물 재현성 확인 — 이후 git status가 깨끗해야 함
 npm run dev                    # http://localhost:5173
 
