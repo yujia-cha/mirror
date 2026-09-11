@@ -20,6 +20,9 @@
   /* 확정 badge · primary button · fixed timetable block */
   --color-ink: #292524;
   --color-ink-fg: #ffffff;
+  /* The two hues the palette allows: condition judgement on gift icon borders (met / not met). */
+  --color-ok: #2f8f5b;
+  --color-bad: #c9403a;
   --color-transparent: transparent;
   --color-current: currentColor;
 
@@ -55,6 +58,8 @@
   --color-fg-3: #948d85;
   --color-ink: #e7e2dc;
   --color-ink-fg: #1c1917;
+  --color-ok: #4cc38a;
+  --color-bad: #f0665e;
   --shadow-card: none;
   --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.5);
 }
@@ -76,6 +81,16 @@ body {
 :focus-visible {
   outline: 2px solid var(--color-fg-2);
   outline-offset: 2px;
+}
+
+/* The timetable widens the hovered floor; the transition is skipped when motion is reduced. */
+.grid-animate {
+  transition: grid-template-columns 160ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .grid-animate {
+    transition: none;
+  }
 }
 
 /* Filter rows may scroll sideways; the page itself never does. */

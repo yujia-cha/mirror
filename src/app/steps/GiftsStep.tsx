@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Search, User, X } from 'lucide-react';
+import { ArrowRight, ChevronDown, ChevronLeft, ChevronRight, Eye, RefreshCw, Search, User, X } from 'lucide-react';
 import type { AcquisitionKind, GameData, Gift, Keyword, Sin } from '../../core/schema.ts';
-import { evaluateConditions } from '../../core/index.ts';
+import { evaluateConditions, observable } from '../../core/index.ts';
 import type { ConditionReport, DeckStats, GameIndexes } from '../../core/types.ts';
 import { pick, t, type Lang } from '../i18n.ts';
 import { useApp } from '../store.ts';
@@ -10,7 +10,9 @@ import { conditionText } from '../condition-text.ts';
 import { SIN_LABEL, badgeFor } from '../lib/labels.ts';
 import { prioritiseGifts, type GiftEntry, type GiftGroup } from '../lib/gift-priority.ts';
 import { useVirtualRows } from '../lib/useVirtualRows.ts';
+import { judgementOf } from '../lib/judgement.ts';
 import { Badge, Button, Card, FilterSelect } from '../components/ui.tsx';
+import { GiftIcon } from '../components/GiftIcon.tsx';
 
 interface Props {
   data: GameData;
@@ -60,7 +62,10 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
   const toggleWanted = useApp((s) => s.toggleWanted);
   const removeWanted = useApp((s) => s.removeWanted);
   const clearWanted = useApp((s) => s.clearWanted);
+  const observedGifts = useApp((s) => s.options.observedGifts);
+  const toggleObserved = useApp((s) => s.toggleObserved);
   const setStep = useApp((s) => s.setStep);
+  const observeMax = data.rules.giftObservation.max;
 
   const [query, setQuery] = useState('');
   const [keyword, setKeyword] = useState<Keyword | 'all'>('all');
@@ -166,6 +171,7 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
             className="h-4 w-4 flex-none accent-[var(--color-ink)]"
           />
           <ArrowRight size={12} aria-hidden className="flex-none text-fg-3" />
+          <GiftIcon gift={gift} size={20} judgement={judgementOf(conditionByGift.get(gift.id))} lang={lang} />
           <span className="min-w-0 flex-1 truncate text-sm text-fg-2">{pick(gift.name, lang)}</span>
           <span className="font-mono text-xs text-fg-3">T{gift.tier ?? '?'}</span>
           {parentSelected ? <Badge tone="sure">{t('giftIncluded', lang)}</Badge> : <Badge tone={badge}>{t(label, lang)}</Badge>}
@@ -193,6 +199,7 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
             aria-label={pick(gift.name, lang)}
             className="h-[18px] w-[18px] flex-none accent-[var(--color-ink)]"
           />
+          <GiftIcon gift={gift} size={32} judgement={judgementOf(row.entry.reports)} lang={lang} />
           <button type="button" onClick={() => setExpanded(open ? null : gift.id)} aria-expanded={open} className="min-w-0 flex-1 truncate text-left text-sm font-medium text-fg">
             {pick(gift.name, lang)}
           </button>
@@ -305,7 +312,7 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
 
   const keywordOptions = data.enums.keywords.map((k) => ({ value: k.id as Keyword, label: pick(k.name, lang) }));
   const sinOptions = data.enums.sins.map((s) => ({ value: s as Sin, label: t(SIN_LABEL[s as Sin], lang) }));
-  const acqOptions = (['general', 'packLimited', 'fusionOnly', 'startOnly', 'event'] as AcquisitionKind[]).map((k) => ({
+  const acqOptions = (['general', 'packLimited', 'fusionOnly', 'startOnly', 'clearReward', 'hiddenBattle', 'event'] as AcquisitionKind[]).map((k) => ({
     value: k,
     label: t(badgeFor(k).label, lang),
   }));
@@ -345,16 +352,36 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
       {wanted.length > 0 ? (
         <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-line bg-surface-2 px-2.5 py-2" aria-label={t('giftsSelected', lang, { n: wanted.length })}>
           <span className="mr-0.5 text-xs font-medium text-fg-2">{t('giftsSelected', lang, { n: wanted.length })}</span>
-          {wanted.map((id) => (
-            <span key={id} className="inline-flex h-6 items-center gap-1 rounded-full border border-line-strong bg-surface pl-2 pr-1 text-xs text-fg">
-              <button type="button" onClick={() => jumpTo(id)} aria-label={t('giftGoTo', lang, { name: giftName(id) })} className="hover:underline">
-                {giftName(id)}
-              </button>
-              <button type="button" onClick={() => removeWanted(id)} aria-label={t('removeFromSelection', lang, { name: giftName(id) })} className="text-fg-3">
-                <X size={11} />
-              </button>
-            </span>
-          ))}
+          {wanted.map((id) => {
+            const gift = indexes.giftById.get(id);
+            const pinned = observedGifts.includes(id);
+            const canObserve = gift ? observable(gift, data.rules) : false;
+            const full = !pinned && observedGifts.length >= observeMax;
+            const why = !canObserve ? t('giftsObserveNotAllowed', lang) : full ? t('giftsObserveFull', lang, { max: observeMax }) : t('giftsObserve', lang, { name: giftName(id) });
+            return (
+              <span key={id} className="inline-flex h-7 items-center gap-1 rounded-full border border-line-strong bg-surface pl-1 pr-1 text-xs text-fg">
+                {gift ? <GiftIcon gift={gift} size={20} judgement={judgementOf(conditionByGift.get(id))} lang={lang} /> : null}
+                <button type="button" onClick={() => jumpTo(id)} aria-label={t('giftGoTo', lang, { name: giftName(id) })} className="hover:underline">
+                  {giftName(id)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleObserved(id, observeMax)}
+                  disabled={!canObserve || full}
+                  aria-pressed={pinned}
+                  aria-label={t('giftsObserve', lang, { name: giftName(id) })}
+                  title={why}
+                  className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${pinned ? 'bg-ink text-ink-fg' : 'text-fg-3'} disabled:opacity-30`}
+                >
+                  <Eye size={11} />
+                </button>
+                <button type="button" onClick={() => removeWanted(id)} aria-label={t('removeFromSelection', lang, { name: giftName(id) })} className="text-fg-3">
+                  <X size={11} />
+                </button>
+              </span>
+            );
+          })}
+          <span className="text-xs text-fg-3">{t('giftsObserveHint', lang, { n: observedGifts.length, max: observeMax })}</span>
           <button type="button" onClick={clearWanted} className="ml-auto text-xs text-fg-3 underline">
             {t('giftsClear', lang)}
           </button>
