@@ -117,23 +117,18 @@ export function assignPacks(input: SearchInput): SearchResult {
   const supplier = new Map<number, number>();
   const missed: number[] = [];
 
+  // Counters kept in step with the DFS stack: recomputing them per node was the hot spot.
+  let missedRequired = 0;
+  let missedOptional = 0;
+  // Pinned floors are part of the plan from the start, so they seed the floor total.
+  let floorSum = [...pinned.keys()].reduce((sum, floor) => sum + floor, 0);
+
   const score = (): {
     missedRequired: number;
     missedOptional: number;
     packCount: number;
     floorSum: number;
-  } => {
-    let missedRequired = 0;
-    let missedOptional = 0;
-    for (const giftId of missed) {
-      const candidate = candidates.find((c) => c.giftId === giftId);
-      if (candidate?.required) missedRequired += 1;
-      else missedOptional += 1;
-    }
-    let floorSum = 0;
-    for (const floor of assignment.keys()) floorSum += floor;
-    return { missedRequired, missedOptional, packCount: assignment.size, floorSum };
-  };
+  } => ({ missedRequired, missedOptional, packCount: assignment.size, floorSum });
 
   const better = (a: ReturnType<typeof score>): boolean =>
     a.missedRequired < best.missedRequired ||
@@ -167,13 +162,19 @@ export function assignPacks(input: SearchInput): SearchResult {
       return;
     }
 
-    // Nothing left to gain once we are already worse than the best complete plan.
+    /**
+     * Prune against the best complete plan found so far. Every term only grows as the search
+     * descends — misses are never taken back, floors are never closed — so a partial plan already
+     * worse on an earlier term can never recover.
+     */
     const partial = score();
-    if (
-      partial.missedRequired > best.missedRequired ||
-      (partial.missedRequired === best.missedRequired && partial.missedOptional > best.missedOptional)
-    ) {
-      return;
+    if (partial.missedRequired > best.missedRequired) return;
+    if (partial.missedRequired === best.missedRequired) {
+      if (partial.missedOptional > best.missedOptional) return;
+      if (partial.missedOptional === best.missedOptional) {
+        if (partial.packCount > best.packCount) return;
+        if (partial.packCount === best.packCount && partial.floorSum > best.floorSum) return;
+      }
     }
 
     const candidate = candidates[index]!;
@@ -190,6 +191,7 @@ export function assignPacks(input: SearchInput): SearchResult {
       if (openedFloor) {
         assignment.set(slot.floor, slot.packId);
         usedPacks.add(slot.packId);
+        floorSum += slot.floor;
       }
       supplier.set(candidate.giftId, slot.floor);
       dfs(index + 1);
@@ -197,13 +199,18 @@ export function assignPacks(input: SearchInput): SearchResult {
       if (openedFloor) {
         assignment.delete(slot.floor);
         usedPacks.delete(slot.packId);
+        floorSum -= slot.floor;
       }
       if (capped) return;
     }
 
     // Giving up on this gift is also a branch: two exclusives can be mutually exclusive.
     missed.push(candidate.giftId);
+    if (candidate.required) missedRequired += 1;
+    else missedOptional += 1;
     dfs(index + 1);
+    if (candidate.required) missedRequired -= 1;
+    else missedOptional -= 1;
     missed.pop();
   };
 
