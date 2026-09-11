@@ -1,15 +1,18 @@
+import type { Keyword } from '../../core/schema.ts';
 import type { RoutePlan } from '../../core/types.ts';
 import { pick, t, type Lang } from '../i18n.ts';
+import { MODE_LABEL } from './labels.ts';
 
-/** A Discord-friendly plain-text rendering of the plan. */
+/** A Discord-friendly plain-text rendering of the plan. Ids are localized by the callbacks. */
 export function planToText(
   plan: RoutePlan,
   giftName: (id: number) => string,
   packName: (id: number) => string,
+  keywordLabel: (id: Keyword) => string,
   lang: Lang,
 ): string {
   const lines: string[] = [];
-  lines.push(`${t('routeStart', lang)}: ${plan.start.keyword ?? '—'}`);
+  lines.push(`${t('routeStart', lang)}: ${plan.start.keyword ? keywordLabel(plan.start.keyword) : '—'}`);
   if (plan.start.startGift) lines.push(`  ${t('routeStartGift', lang)}: ${giftName(plan.start.startGift)}`);
   if (plan.start.observed.length > 0) {
     lines.push(
@@ -29,7 +32,7 @@ export function planToText(
         ? ` [${t('legendEye', lang)} +${floor.observation.starlight}]`
         : ` [${t('routeObservationImpossible', lang)}]`
       : '';
-    lines.push(`${floor.floor}F (${floor.mode}) ${pack}${window}${obs}`);
+    lines.push(`${floor.floor}F (${t(MODE_LABEL[floor.mode], lang)}) ${pack}${window}${obs}`);
     for (const pickup of floor.pickups) {
       const why = pickup.neededFor ? ` -> ${giftName(pickup.neededFor)}` : '';
       const sure = pickup.kind === 'exclusive' ? t('acqSure', lang) : t('acqMaybe', lang);

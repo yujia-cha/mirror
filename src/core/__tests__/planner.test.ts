@@ -431,6 +431,16 @@ describe('floor windows', () => {
     expect(unchanging.window).toEqual({ from: 4, to: 4 });
   });
 
+  it('reports joint possibilities: two packs that could swap floors both keep a window', () => {
+    // 9427 마을을 지킬 작살 → 기어오는 심연 (1014, Hard 3-4); 9423 깨진 안경 → 변하지 않는 (1012, Hard 4-5).
+    // 1014@3+1012@4, 1014@3+1012@5 and 1014@4+1012@5 are all valid, so neither pack is fixed.
+    const result = plan({ wanted: want(9427, 9423), options: options({ hardFromFloor: 1 }) });
+    const abyss = result.floors.find((f) => f.packId === 1014)!;
+    const unchanging = result.floors.find((f) => f.packId === 1012)!;
+    expect(abyss.window).toEqual({ from: 3, to: 4 });
+    expect(unchanging.window).toEqual({ from: 4, to: 5 });
+  });
+
   it('spans all of 평행중첩 for a pack placed there', () => {
     const result = plan({
       wanted: want(9283, 9222),

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight, Copy, Plus, Search, X } from 'lucide-react';
 import type { GameData, Identity } from '../../core/schema.ts';
 import type { DeckStats, GameIndexes } from '../../core/types.ts';
@@ -7,6 +7,7 @@ import { sinnerOf, useApp } from '../store.ts';
 import { factionName, keywordName } from '../format.ts';
 import { identitiesFromFormationCode } from '../lib/formation-code.ts';
 import { deckSummaryChips } from '../lib/deck-summary.ts';
+import { stepIndex, useDismiss } from '../lib/useDismiss.ts';
 import { Button, Chip, Notice } from '../components/ui.tsx';
 
 interface Props {
@@ -41,7 +42,7 @@ function KeywordChips({ identity, data, lang }: { identity: Identity; data: Game
   return (
     <>
       {entries.map(([keyword, info]) => (
-        <Chip key={keyword}>
+        <Chip key={keyword} title={t('deckKeywordSkills', lang, { keyword: keywordName(keyword as never, data.enums, lang), n: info.skills })}>
           {keywordName(keyword as never, data.enums, lang)} <b className="font-semibold text-fg">{info.skills}</b>
         </Chip>
       ))}
@@ -65,6 +66,9 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
   const [code, setCode] = useState('');
   const [importMessage, setImportMessage] = useState<string | null>(null);
 
+  const [activeIndex, setActiveIndex] = useState(0);
+  const searchRef = useRef<HTMLDivElement | null>(null);
+
   const bySinner = useMemo(() => new Map(deck.map((id) => [sinnerOf(id), id])), [deck]);
   const needle = query.trim().toLowerCase();
   const globalResults = useMemo(() => {
@@ -74,6 +78,20 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
       .sort((a, b) => a.sinnerId - b.sinnerId || b.rank - a.rank || a.id - b.id)
       .slice(0, 40);
   }, [data, needle]);
+  const listOpen = needle.length > 0;
+  const closeSearch = useCallback(() => setQuery(''), []);
+  useDismiss(searchRef, closeSearch, listOpen);
+  useEffect(() => setActiveIndex(0), [needle]);
+  const onSearchKey = (event: React.KeyboardEvent<HTMLInputElement>): void => {
+    const next = stepIndex(event.key, activeIndex, globalResults.length);
+    if (next !== null) {
+      event.preventDefault();
+      setActiveIndex(next);
+    } else if (event.key === 'Enter' && listOpen && globalResults[activeIndex]) {
+      event.preventDefault();
+      pickIdentity(globalResults[activeIndex]);
+    }
+  };
 
   const pickIdentity = (identity: Identity): void => {
     setDeckSlot(identity.sinnerId, identity.id, data.rules.deployment.default);
@@ -96,14 +114,20 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="relative flex flex-wrap items-center gap-2">
+      <div className="relative flex flex-wrap items-center gap-2" ref={searchRef}>
         <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-sm border border-line-strong bg-surface px-2.5 text-sm">
           <Search size={14} aria-hidden className="flex-none text-fg-3" />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={onSearchKey}
             placeholder={t('deckSearchAll', lang)}
             aria-label={t('deckSearchAll', lang)}
+            role="combobox"
+            aria-expanded={listOpen}
+            aria-controls="deck-search-listbox"
+            aria-autocomplete="list"
+            aria-activedescendant={listOpen && globalResults[activeIndex] ? `deck-option-${globalResults[activeIndex].id}` : undefined}
             className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-fg-3"
           />
           {query ? (
@@ -122,8 +146,9 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
           <Copy size={14} aria-hidden />
           <span className="hidden sm:inline">{t('deckImport', lang)}</span>
         </Button>
-        {needle.length > 0 ? (
+        {listOpen ? (
           <div
+            id="deck-search-listbox"
             role="listbox"
             aria-label={t('deckSearchAll', lang)}
             className="absolute left-0 top-10 z-20 flex max-h-[420px] w-full max-w-[560px] flex-col overflow-y-auto rounded-md border border-line-strong bg-surface shadow-pop"
@@ -131,14 +156,16 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
             <div className="border-b border-line px-3 py-2 text-xs text-fg-3">
               {globalResults.length > 0 ? t('deckSearchHint', lang, { n: globalResults.length }) : t('deckSearchNone', lang)}
             </div>
-            {globalResults.map((identity) => (
+            {globalResults.map((identity, i) => (
               <button
                 key={identity.id}
+                id={`deck-option-${identity.id}`}
                 type="button"
                 role="option"
-                aria-selected={bySinner.get(identity.sinnerId) === identity.id}
+                aria-selected={i === activeIndex}
                 onClick={() => pickIdentity(identity)}
-                className="flex h-11 items-center gap-3 border-b border-line px-3 text-left hover:bg-surface-2"
+                onPointerMove={() => setActiveIndex(i)}
+                className={`flex h-11 items-center gap-3 border-b border-line px-3 text-left hover:bg-surface-2 ${i === activeIndex ? 'bg-surface-2' : ''}`}
               >
                 <span className="w-16 flex-none text-xs font-medium text-fg-2">{pick(identity.sinner, lang)}</span>
                 <span className="min-w-0 flex-1 truncate text-sm text-fg">
@@ -185,7 +212,7 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
           return (
             <li
               key={sinner.id}
-              className={`flex flex-col gap-1.5 rounded-md p-3 ${
+              className={`relative flex flex-col gap-1.5 rounded-md p-3 ${
                 identity
                   ? isDeployed
                     ? 'border border-line-strong bg-surface shadow-card'
@@ -218,7 +245,7 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
                 type="button"
                 onClick={() => setOpenSinner(open ? null : sinner.id)}
                 aria-expanded={open}
-                className="flex min-w-0 flex-col items-start gap-1 text-left"
+                className="flex min-w-0 flex-col items-start gap-1 rounded-sm text-left hover:underline"
               >
                 {identity ? (
                   <>
@@ -299,18 +326,42 @@ function SinnerPicker({
   onClose: () => void;
 }) {
   const [query, setQuery] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
+  const ref = useRef<HTMLDivElement | null>(null);
   const needle = query.trim().toLowerCase();
   const all = data.identities.filter((identity) => identity.sinnerId === sinner);
   const identities = all
     .filter((identity) => matches(identity, needle, data))
     .sort((a, b) => b.rank - a.rank || a.id - b.id);
+  useDismiss(ref, onClose, true);
+  useEffect(() => setActiveIndex(0), [needle]);
+  const onKey = (event: React.KeyboardEvent<HTMLInputElement>): void => {
+    const next = stepIndex(event.key, activeIndex, identities.length);
+    if (next !== null) {
+      event.preventDefault();
+      setActiveIndex(next);
+    } else if (event.key === 'Enter' && identities[activeIndex]) {
+      event.preventDefault();
+      onPick(identities[activeIndex].id);
+    }
+  };
   return (
-    <div className="mt-1 flex flex-col overflow-hidden rounded-md border border-line-strong bg-surface shadow-pop">
+    <div
+      ref={ref}
+      className="mt-1 flex flex-col overflow-hidden rounded-md border border-line-strong bg-surface shadow-pop sm:absolute sm:left-0 sm:top-full sm:z-20 sm:mt-0 sm:w-[340px] sm:max-w-[calc(100vw-32px)]"
+      data-testid="sinner-picker"
+    >
       <div className="flex items-center gap-2 border-b border-line px-2.5 py-2">
         <input
           autoFocus
           value={query}
           onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={onKey}
+          role="combobox"
+          aria-expanded="true"
+          aria-controls={`sinner-listbox-${sinner}`}
+          aria-autocomplete="list"
+          aria-activedescendant={identities[activeIndex] ? `sinner-option-${identities[activeIndex].id}` : undefined}
           placeholder={t('deckSinnerSearch', lang, { sinner: sinnerName })}
           aria-label={t('deckSinnerSearch', lang, { sinner: sinnerName })}
           className="h-8 min-w-0 flex-1 rounded-sm border border-line-strong bg-surface px-2 text-xs outline-none"
@@ -319,7 +370,7 @@ function SinnerPicker({
           <X size={14} />
         </button>
       </div>
-      <ul className="max-h-64 overflow-y-auto">
+      <ul className="max-h-64 overflow-y-auto" role="listbox" id={`sinner-listbox-${sinner}`}>
         {selected !== null ? (
           <li>
             <button type="button" onClick={() => onPick(null)} className="flex h-9 w-full items-center px-3 text-left text-xs text-fg-2 hover:bg-surface-2">
@@ -327,14 +378,15 @@ function SinnerPicker({
             </button>
           </li>
         ) : null}
-        {identities.map((identity) => (
-          <li key={identity.id}>
+        {identities.map((identity, i) => (
+          <li key={identity.id} role="option" id={`sinner-option-${identity.id}`} aria-selected={i === activeIndex}>
             <button
               type="button"
               onClick={() => onPick(identity.id)}
+              onPointerMove={() => setActiveIndex(i)}
               aria-pressed={identity.id === selected}
               className={`flex min-h-11 w-full flex-wrap items-center gap-1.5 px-3 py-1.5 text-left text-sm hover:bg-surface-2 ${
-                identity.id === selected ? 'bg-surface-2' : ''
+                identity.id === selected || i === activeIndex ? 'bg-surface-2' : ''
               }`}
             >
               <span className="font-medium text-fg">{pick(identity.title, lang)}</span>
