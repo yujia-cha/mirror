@@ -2,6 +2,29 @@ import type { FloorPlan } from '../../core/types.ts';
 
 export const MAX_FLOOR = 15;
 
+/** Phone layout: every floor row is this tall, so a block's height is its floor span. */
+export const ROW_PX = 64;
+/** Phone layout: a run of free floors folds into one short row. */
+export const FREE_ROW_PX = 40;
+/** Desktop layout: every lane row is this tall; a block's width is its floor span. */
+export const LANE_PX = 132;
+
+/** With this many blocks side by side on a phone, each lane is too narrow for text. */
+export function compactLanes(lanes: number): boolean {
+  return lanes >= 4;
+}
+
+/**
+ * How many pickup icons a block shows before folding the rest into a "+n" chip. Cells are fixed
+ * size, so this is a count the span can hold rather than a measurement: two rows of icons per
+ * floor column on desktop, a wrap of four per floor row on a phone, one per floor when lanes are
+ * compact.
+ */
+export function iconCap(span: number, layout: 'columns' | 'rows' | 'compact'): number {
+  const perFloor = layout === 'columns' ? 2 : layout === 'rows' ? 4 : 1;
+  return Math.max(1, span * perFloor);
+}
+
 export interface Block {
   floor: FloorPlan;
   from: number;

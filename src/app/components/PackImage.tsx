@@ -7,7 +7,7 @@ import type { ThemePack } from '../../core/schema.ts';
 import { pick, type Lang } from '../i18n.ts';
 import { packImageUrl } from '../lib/assets.ts';
 
-export function PackImage({ pack, size, lang }: { pack: ThemePack; size: 28 | 40; lang: Lang }) {
+export function PackImage({ pack, size, lang }: { pack: ThemePack; size: 24 | 28 | 32 | 40; lang: Lang }) {
   const [failed, setFailed] = useState(false);
   const url = packImageUrl(pack.sprite);
   return (

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Ban, ChevronLeft, ChevronRight, Copy, Eye, Hourglass, RefreshCw, RotateCcw, Star, TriangleAlert } from 'lucide-react';
 import type { GameData, Keyword } from '../../core/schema.ts';
-import { planAlternatives, planRoute } from '../../core/index.ts';
+import { observable, planAlternatives, planRoute } from '../../core/index.ts';
 import type { DeckStats, GameIndexes } from '../../core/types.ts';
 import { pick, t, type Lang } from '../i18n.ts';
 import { useApp } from '../store.ts';
@@ -362,8 +362,12 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
       <div className="order-6 lg:order-none">
         <Timetable
           plan={shown}
-          lastFloor={options.lastFloor}
           indexes={indexes}
+          isMust={(id) => priorityOf(priority, id) === 'must'}
+          observable={(id) => {
+            const gift = indexes.giftById.get(id);
+            return gift ? observable(gift, data.rules) : false;
+          }}
           judgements={judgements}
           giftTitle={giftTitle}
           packName={packName}

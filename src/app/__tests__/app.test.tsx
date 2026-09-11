@@ -334,8 +334,7 @@ describe('RouteStep', () => {
     expect(screen.getByText('항상 1~15층 · Hard로 계획합니다')).toBeInTheDocument();
     const columns = screen.getByTestId('timetable-columns');
     const header = within(columns).getByText('15').parentElement!;
-    const tracks = header.style.gridTemplateColumns.match(/\d+px|minmax\([^)]*\)/g)!;
-    expect(tracks).toHaveLength(16);
+    expect(header.style.gridTemplateColumns).toBe('84px repeat(15, minmax(0, 1fr))');
     // Free floors after the last needed pack fold into one cell.
     expect(within(columns).getByText('자유 · 6~15층')).toBeInTheDocument();
   });
@@ -346,16 +345,27 @@ describe('RouteStep', () => {
     expect(useApp.getState().options).toMatchObject({ lastFloor: 15, hardFromFloor: 1 });
   });
 
-  it('draws a pack that may sit on several floors as a window block', () => {
+  it('draws a pack that may sit on several floors as a window block whose length is its floor span', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
-    useApp.getState().setOptions({ hardFromFloor: 1 });
     // 달궈진 놋쇠 → 화왕지절 (1402), Hard 4-5. Not in the observation pool, so it must be routed.
     useApp.getState().toggleWanted(9267);
     renderRoute();
     const columns = screen.getByTestId('timetable-columns');
     expect(within(columns).queryAllByTestId('block-fixed')).toHaveLength(0);
-    expect(within(columns).getAllByTestId('block-window')).toHaveLength(1);
-    expect(within(columns).getByText('4~5층 중 한 층 · 추천 4')).toBeInTheDocument();
+    const block = within(columns).getByTestId('block-window');
+    expect(block).toHaveTextContent('4~5 · 추천 4');
+    // Start column + floors 4 and 5.
+    expect(block.parentElement!.style.gridColumn).toBe('5 / span 2');
+    expect(block.parentElement!.parentElement!.style.gridTemplateRows).toBe('repeat(1, 132px)');
+    // The phone layout spans the same two floor rows, each a fixed 64px, with the labels in the grid.
+    const rows = screen.getByTestId('timetable-rows');
+    const grid = rows.firstElementChild as HTMLElement;
+    expect(grid.style.gridTemplateRows).toBe('auto 40px 64px 64px 40px');
+    expect(grid.querySelector(':scope > .absolute')).toBeNull();
+    const label4 = within(rows).getAllByTestId('row-label').find((el) => el.textContent === '4')!;
+    expect(label4.style.gridRow).toBe('3');
+    expect(label4.style.gridColumn).toBe('1');
+    expect(within(rows).getByTestId('block-window').parentElement!.style.gridRow).toBe('3 / span 2');
   });
 
   it('collapses that window to a fixed block when another required pack takes floor 5', () => {
@@ -420,27 +430,76 @@ describe('RouteStep', () => {
     for (const text of ['별빛', '합성', '범용 드랍', '나올 수 있음', '관측 최대']) expect(screen.queryByText(new RegExp(text))).toBeNull();
   });
 
-  it('widens the hovered block\'s floors so its contents are not cut off', () => {
+  it('keeps the grid still on hover and opens the block\'s details in a popover', async () => {
     useApp.getState().setDeck(BURN_DECK, 7);
-    useApp.getState().setOptions({ hardFromFloor: 1 });
     useApp.getState().toggleWanted(9267); // 화왕지절, Hard 4-5
     renderRoute();
     const columns = screen.getByTestId('timetable-columns');
-    const block = within(columns).getByTestId('block-window').parentElement!;
+    const block = within(columns).getByRole('button', { name: /화왕지절 · 4~5층 중 · 기프트 1개 · 자세히/ });
     const body = block.parentElement!;
-    expect(body.style.gridTemplateColumns).not.toContain('2.2fr');
+    const before = body.style.gridTemplateColumns;
+    expect(before).toBe('84px repeat(15, minmax(0, 1fr))');
     fireEvent.pointerEnter(block);
-    const tracks = body.style.gridTemplateColumns.match(/\d+px|minmax\([^)]*\)/g)!;
-    // start + 15 floors
-    expect(tracks).toHaveLength(16);
-    expect(tracks[4]).toBe('minmax(0, 2.2fr)');
-    expect(tracks[5]).toBe('minmax(0, 2.2fr)');
-    expect(tracks[1]).toBe('minmax(0, 1fr)');
+    const popover = await within(columns).findByRole('dialog', { name: '화왕지절' });
+    expect(body.style.gridTemplateColumns).toBe(before);
+    expect(popover).toHaveTextContent('4~5층 중 한 층 · 추천 4');
+    expect(popover).toHaveTextContent('달궈진 놋쇠');
     fireEvent.pointerLeave(block);
-    expect(body.style.gridTemplateColumns).not.toContain('2.2fr');
-    // Each pickup is an icon tile with the gift name under it.
-    expect(within(block).getByLabelText(/달궈진 놋쇠/)).toBeInTheDocument();
+    await waitFor(() => expect(within(columns).queryByRole('dialog')).toBeNull());
+    // Keyboard focus opens it at once and Escape closes it.
+    fireEvent.focus(block);
+    expect(within(columns).getByRole('dialog')).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(within(columns).queryByRole('dialog')).toBeNull();
+    // Pickups are icon tiles without names; the name is in the popover.
+    expect(within(block).getByTestId('gift-icon')).toHaveAttribute('aria-label', expect.stringContaining('달궈진 놋쇠'));
     expect(within(block).getByTestId('pack-image')).toBeInTheDocument();
+  });
+
+  it('folds pickups past the cell\'s capacity into a +n chip', () => {
+    useApp.getState().setDeck(BURN_DECK, 7);
+    for (const id of [9712, 9713, 9714, 9715, 9716]) useApp.getState().toggleWanted(id); // 육참골단, one block on 3~4
+    renderRoute();
+    const block = within(screen.getByTestId('timetable-columns')).getByTestId('block-window');
+    expect(within(block).getAllByTestId('gift-icon')).toHaveLength(3);
+    expect(within(block).getByTestId('block-more')).toHaveTextContent('+2');
+    // A phone row is wider, so the same block shows every icon.
+    const row = within(screen.getByTestId('timetable-rows')).getByTestId('block-window');
+    expect(within(row).getAllByTestId('gift-icon')).toHaveLength(5);
+    expect(within(row).queryByTestId('block-more')).toBeNull();
+  });
+
+  it('opens a bottom sheet from a phone block and from an observed tile', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267);
+    useApp.getState().toggleWanted(9423); // observable; the planner recommends observing it
+    renderRoute();
+    const rows = screen.getByTestId('timetable-rows');
+    await user.click(within(rows).getByRole('button', { name: /기프트 1개 · 자세히/ }));
+    const sheet = screen.getByTestId('block-sheet');
+    expect(sheet).toHaveAttribute('role', 'dialog');
+    expect(sheet).toHaveTextContent('5층 고정');
+    expect(sheet).toHaveTextContent('달궈진 놋쇠');
+    await user.click(within(sheet).getByRole('button', { name: '닫기' }));
+    expect(screen.queryByTestId('block-sheet')).toBeNull();
+    // The start cell's tile explains the observation and pins it from the sheet.
+    const tile = within(within(rows).getByTestId('start-cell')).getByTestId('observed-tile');
+    await user.click(tile);
+    const observed = screen.getByTestId('block-sheet');
+    expect(observed).toHaveTextContent('변하지 않는 안 가도 됨');
+    await user.click(within(observed).getByRole('button', { name: '깨진 안경 관측 지정 전환' }));
+    expect(useApp.getState().options.observedGifts).toEqual([9423]);
+  });
+
+  it('marks a must-have gift with a star badge on its tile', () => {
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267);
+    useApp.getState().setPriority(9267, 'must');
+    renderRoute();
+    const icon = within(within(screen.getByTestId('timetable-columns')).getByTestId('block-window')).getByTestId('gift-icon');
+    expect(icon).toHaveAttribute('data-must', 'true');
+    expect(icon).toHaveAttribute('aria-label', expect.stringMatching(/^반드시 · /));
   });
 
   it('shows recommended observations in the start cell and lets one be pinned', async () => {
@@ -452,7 +511,8 @@ describe('RouteStep', () => {
     const cell = within(screen.getByTestId('timetable-columns')).getByTestId('start-cell');
     const tile = within(cell).getByTestId('observed-tile');
     expect(tile).toHaveTextContent('추천');
-    expect(tile).toHaveAttribute('title', expect.stringContaining('변하지 않는 안 가도 됨'));
+    expect(tile).toHaveAttribute('title', '깨진 안경 · 관측 · 변하지 않는 안 가도 됨');
+    expect(tile.className).not.toContain('w-full');
     await user.click(tile);
     expect(useApp.getState().options.observedGifts).toEqual([9423]);
     expect(within(screen.getByTestId('timetable-columns')).getByTestId('observed-tile')).toHaveTextContent('지정');
