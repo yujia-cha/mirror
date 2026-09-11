@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { loadGameDataFromDisk } from '../data/node.ts';
-import { buildIndexes, defaultOptions, planRoute } from '../index.ts';
+import { buildIndexes, defaultOptions, planAlternatives, planRoute } from '../index.ts';
 import { analyseDeck, dominantKeyword } from '../deck.ts';
 import { expandRequirements } from '../requirements.ts';
 import { modeForFloor, observationCost } from '../search.ts';
@@ -14,6 +14,8 @@ import type { PlanInput, PlanOptions } from '../types.ts';
 
 const data = loadGameDataFromDisk();
 const indexes = buildIndexes(data);
+/** The same season with 기프트 관측 switched off, for tests about the pack search alone. */
+const noObservation = { ...data, rules: { ...data.rules, giftObservation: { ...data.rules.giftObservation, max: 0 } } };
 
 /** Identity ids used below, chosen because their factions and keywords are stable. */
 const BLADE_LINEAGE_DECK = [10403, 10308, 10208, 10108, 11005, 10104];
@@ -21,6 +23,14 @@ const MIXED_DECK = [10101, 10203, 10312, 10403, 10505, 10601];
 
 function options(overrides: Partial<PlanOptions> = {}): PlanOptions {
   return { ...defaultOptions(), ...overrides };
+}
+
+function planWithout(input: Partial<PlanInput> & { wanted: PlanInput['wanted'] }) {
+  return planRoute(
+    { deck: input.deck ?? MIXED_DECK, wanted: input.wanted, options: input.options ?? options() },
+    noObservation,
+    indexes,
+  );
 }
 
 function plan(input: Partial<PlanInput> & { wanted: PlanInput['wanted'] }) {
@@ -78,9 +88,9 @@ describe('pack-exclusive gifts', () => {
   });
 
   it('cannot reach a Hard-only pack on a Normal plan', () => {
-    const result = plan({
+    const result = planWithout({
       wanted: want(9283),
-      options: options({ hardFromFloor: null, giftObservationMax: 0 }),
+      options: options({ hardFromFloor: null }),
     });
     expect(result.unresolved.map((u) => u.giftId)).toContain(9283);
     expect(result.unresolved.find((u) => u.giftId === 9283)?.reason).toBe('no-pack-in-range');
@@ -90,31 +100,45 @@ describe('pack-exclusive gifts', () => {
   it('reports a conflict when two exclusives need the same single floor', () => {
     // 상납된 시가 is exclusive to 교본 and 새하얀 캔버스 to 검과 작품; both packs only appear on
     // Hard floor 5, so one run cannot hold both.
-    const result = plan({
+    const result = planWithout({
       wanted: want(9283, 9222),
-      options: options({ hardFromFloor: 1, giftObservationMax: 0 }),
+      options: options({ hardFromFloor: 1 }),
     });
     expect(result.unresolved).toHaveLength(1);
     expect(result.unresolved[0]!.reason).toBe('pack-conflict');
     expect(result.stats.coveredWanted).toBe(1);
   });
 
-  it('resolves that conflict with starlight observation when a budget is allowed', () => {
+  it('resolves that conflict by observing the gift that occupies the contested floor', () => {
+    // 상납된 시가 itself is not in the observation pool, so the planner observes 새하얀 캔버스 and
+    // gives floor 5 to 교본 instead.
     const result = plan({
       wanted: want(9283, 9222),
-      options: options({ hardFromFloor: 1, giftObservationMax: 3 }),
+      options: options({ hardFromFloor: 1 }),
     });
     expect(result.unresolved).toEqual([]);
+    expect(result.start.observed).toEqual([{ giftId: 9222, pinned: false, freedPack: 1026 }]);
+    expect(result.start.starlight).toBe(70);
+    expect(result.floors.find((f) => f.floor === 5)!.packId).toBe(1025);
+    // The cost table now comes from the season data, so no caveat.
+    expect(result.warnings.map((w) => w.code)).not.toContain('gift-observation-unverified');
+  });
+
+  it('still warns about the cost table when the rules say it is unverified', () => {
+    const unverified = { ...data, rules: { ...data.rules, giftObservation: { ...data.rules.giftObservation, verified: false } } };
+    const result = planRoute(
+      { deck: BLADE_LINEAGE_DECK, wanted: want(9283, 9222), options: options({ hardFromFloor: 1 }) },
+      unverified,
+      indexes,
+    );
     expect(result.start.observed).toHaveLength(1);
-    expect(result.start.starlight).toBeGreaterThan(0);
-    // The cost table is an older season's, so the plan must say so.
     expect(result.warnings.map((w) => w.code)).toContain('gift-observation-unverified');
   });
 
   it('frees up a second floor when the plan extends into 평행중첩', () => {
-    const result = plan({
+    const result = planWithout({
       wanted: want(9283, 9222),
-      options: options({ lastFloor: 10, giftObservationMax: 0 }),
+      options: options({ lastFloor: 10 }),
     });
     expect(result.unresolved).toEqual([]);
     const used = result.floors.filter((f) => f.packId !== null);
@@ -286,9 +310,9 @@ describe('observation cost', () => {
   });
 
   it('does not charge for an EXTREME floor, where observation is impossible', () => {
-    const result = plan({
+    const result = planWithout({
       wanted: want(9283),
-      options: options({ lastFloor: 15, giftObservationMax: 0 }),
+      options: options({ lastFloor: 15 }),
     });
     for (const floor of result.floors.filter((f) => f.mode === 'extreme')) {
       expect(floor.observation.possible).toBe(false);
@@ -310,9 +334,9 @@ describe('pins and bans', () => {
   });
 
   it('never uses a banned pack', () => {
-    const result = plan({
+    const result = planWithout({
       wanted: want(9283),
-      options: options({ hardFromFloor: 1, bannedPacks: [1025], giftObservationMax: 0 }),
+      options: options({ hardFromFloor: 1, bannedPacks: [1025] }),
     });
     expect(result.floors.every((f) => f.packId !== 1025)).toBe(true);
     expect(result.unresolved.map((u) => u.giftId)).toContain(9283);
@@ -365,7 +389,7 @@ describe('guarantees', () => {
     const accountedFor = new Set([
       ...pickedUp,
       ...result.generalDrops,
-      ...result.start.observed,
+      ...result.start.observed.map((o) => o.giftId),
       ...(result.start.startGift ? [result.start.startGift] : []),
       ...result.fusions.map((f) => f.result),
       ...result.unresolved.map((u) => u.giftId),
@@ -406,7 +430,7 @@ describe('guarantees', () => {
 
 describe('floor windows', () => {
   it('pins a pack that is offered on a single Hard floor', () => {
-    const result = plan({ wanted: want(9283), options: options({ hardFromFloor: 1 }) });
+    const result = planWithout({ wanted: want(9283), options: options({ hardFromFloor: 1 }) });
     const floor5 = result.floors.find((f) => f.floor === 5)!;
     expect(floor5.packId).toBe(1025);
     expect(floor5.window).toEqual({ from: 5, to: 5 });
@@ -415,14 +439,14 @@ describe('floor windows', () => {
 
   it('reports the whole 4-5 range for 변하지 않는 when nothing else competes', () => {
     // 9423 깨진 안경 is exclusive to pack 1012, offered on Hard floors 4 and 5.
-    const result = plan({ wanted: want(9423), options: options({ hardFromFloor: 1 }) });
+    const result = planWithout({ wanted: want(9423), options: options({ hardFromFloor: 1 }) });
     const used = result.floors.find((f) => f.packId === 1012)!;
     expect(used.window).toEqual({ from: 4, to: 5 });
   });
 
   it('shrinks the window when another required pack takes one of its floors', () => {
     // 9208 인연 얽힘 needs 해방된 분노 (1302), which only appears on Hard floor 5.
-    const result = plan({ wanted: want(9423, 9208), options: options({ hardFromFloor: 1 }) });
+    const result = planWithout({ wanted: want(9423, 9208), options: options({ hardFromFloor: 1 }) });
     const unchanging = result.floors.find((f) => f.packId === 1012)!;
     const wrath = result.floors.find((f) => f.packId === 1302)!;
     expect(wrath.floor).toBe(5);
@@ -434,7 +458,7 @@ describe('floor windows', () => {
   it('reports joint possibilities: two packs that could swap floors both keep a window', () => {
     // 9427 마을을 지킬 작살 → 기어오는 심연 (1014, Hard 3-4); 9423 깨진 안경 → 변하지 않는 (1012, Hard 4-5).
     // 1014@3+1012@4, 1014@3+1012@5 and 1014@4+1012@5 are all valid, so neither pack is fixed.
-    const result = plan({ wanted: want(9427, 9423), options: options({ hardFromFloor: 1 }) });
+    const result = planWithout({ wanted: want(9427, 9423), options: options({ hardFromFloor: 1 }) });
     const abyss = result.floors.find((f) => f.packId === 1014)!;
     const unchanging = result.floors.find((f) => f.packId === 1012)!;
     expect(abyss.window).toEqual({ from: 3, to: 4 });
@@ -442,16 +466,16 @@ describe('floor windows', () => {
   });
 
   it('spans all of 평행중첩 for a pack placed there', () => {
-    const result = plan({
+    const result = planWithout({
       wanted: want(9283, 9222),
-      options: options({ lastFloor: 10, giftObservationMax: 0 }),
+      options: options({ lastFloor: 10 }),
     });
     const parallel = result.floors.find((f) => f.packId !== null && f.mode === 'parallel')!;
     expect(parallel.window).toEqual({ from: 6, to: 10 });
   });
 
   it('collapses the window to the pinned floor', () => {
-    const result = plan({
+    const result = planWithout({
       wanted: want(9423),
       options: options({ hardFromFloor: 1, pinnedPacks: { 5: 1012 } }),
     });
@@ -461,7 +485,7 @@ describe('floor windows', () => {
   });
 
   it('clamps lastFloor into 1-15', () => {
-    const result = plan({ wanted: want(9283), options: options({ lastFloor: 99 }) });
+    const result = planWithout({ wanted: want(9283), options: options({ lastFloor: 99 }) });
     expect(result.floors.at(-1)!.floor).toBe(15);
   });
 });
@@ -476,5 +500,128 @@ describe('upgradeOf', () => {
       const parent = indexes.giftById.get(g.upgradeOf!)!;
       expect(parent.keyword, `${g.id}`).toBe(g.keyword);
     }
+  });
+});
+
+describe('gift observation', () => {
+  it('honours a pinned observation and routes the rest', () => {
+    const result = plan({ wanted: want(9283, 9222), options: options({ hardFromFloor: 1, observedGifts: [9222] }) });
+    expect(result.start.observed).toEqual([{ giftId: 9222, pinned: true, freedPack: null }]);
+    expect(result.floors.find((f) => f.floor === 5)!.packId).toBe(1025);
+    expect(result.unresolved).toEqual([]);
+  });
+
+  it('recommends observing a gift whose pack the route would otherwise be forced to visit', () => {
+    const result = plan({ wanted: want(9423), options: options({ hardFromFloor: 1 }) });
+    expect(result.start.observed).toEqual([{ giftId: 9423, pinned: false, freedPack: 1012 }]);
+    expect(result.stats.requiredPacks).toBe(0);
+    expect(result.start.starlight).toBe(70);
+    expect(result.floors.every((f) => f.packId === null)).toBe(true);
+  });
+
+  it('frees several packs while slots remain', () => {
+    const result = plan({ wanted: want(9427, 9423), options: options({ hardFromFloor: 1 }) });
+    expect(result.start.observed.map((o) => o.giftId)).toEqual([9423, 9427]);
+    expect(result.start.observed.map((o) => o.freedPack)).toEqual([1012, 1014]);
+    expect(result.stats.requiredPacks).toBe(0);
+  });
+
+  it('never frees a pinned floor', () => {
+    const result = plan({ wanted: want(9423), options: options({ hardFromFloor: 1, pinnedPacks: { 4: 1012 } }) });
+    expect(result.start.observed).toEqual([]);
+    expect(result.floors.find((f) => f.floor === 4)!.packId).toBe(1012);
+  });
+
+  it('rescues first and leaves a conflict it cannot afford', () => {
+    // Five single-source exclusives whose packs all sit on Hard floor 5: three observations plus
+    // one routed pack cover four; the fifth stays a conflict.
+    const result = plan({ wanted: want(9283, 9222, 9217, 9435, 9751), options: options({ hardFromFloor: 1 }) });
+    expect(result.start.observed).toHaveLength(3);
+    expect(result.start.observed.every((o) => !o.pinned)).toBe(true);
+    expect(result.stats.coveredWanted).toBe(4);
+    expect(result.unresolved.map((u) => u.reason)).toEqual(['pack-conflict']);
+  });
+
+  it('drops pinned gifts that cannot be observed and says so', () => {
+    const result = plan({ wanted: want(9283), options: options({ hardFromFloor: 1, observedGifts: [9283, 9283, 999999] }) });
+    expect(result.start.observed).toEqual([]);
+    expect(result.warnings.map((w) => w.code)).toContain('observation-trimmed');
+    expect(result.floors.find((f) => f.floor === 5)!.packId).toBe(1025);
+  });
+
+  it('follows the observation pool from the season data', () => {
+    expect(indexes.giftById.get(9222)!.observable).toBe(true);
+    expect(indexes.giftById.get(9283)!.observable).toBe(false);
+    expect(indexes.giftById.get(9250)!.observable).toBe(false);
+    expect(data.rules.giftObservation).toMatchObject({ max: 3, costTable: [70, 160, 270], verified: true });
+  });
+});
+
+describe('clear rewards and hidden battles', () => {
+  it('routes a 클리어 보상 gift to its EXTREME pack as an exclusive pickup', () => {
+    const result = plan({ wanted: want(9250), options: options({ lastFloor: 15 }) });
+    const floor = result.floors.find((f) => f.packId === 1511)!;
+    expect(floor.mode).toBe('extreme');
+    expect(floor.pickups).toEqual([{ giftId: 9250, kind: 'exclusive', neededFor: null }]);
+    expect(floor.window).toEqual({ from: 11, to: 15 });
+    expect(result.unresolved).toEqual([]);
+    expect(result.start.observed).toEqual([]);
+  });
+
+  it('reports a clear reward as out of range below floor 11', () => {
+    const result = plan({ wanted: want(9250), options: options({ lastFloor: 5 }) });
+    expect(result.unresolved).toEqual([expect.objectContaining({ giftId: 9250, reason: 'no-pack-in-range' })]);
+  });
+
+  it('never plans for a hidden-battle gift', () => {
+    const result = plan({ wanted: want(9256), options: options({ lastFloor: 15 }) });
+    expect(result.unresolved).toEqual([expect.objectContaining({ giftId: 9256, reason: 'chance-only' })]);
+    expect(result.stats.requiredPacks).toBe(0);
+    expect(result.unresolved[0]!.detail.ko).toContain('11~15층');
+  });
+
+  it('classifies the four researched gifts', () => {
+    expect(indexes.giftById.get(9828)!.acquisition).toMatchObject({ kind: 'clearReward', clearRewardOf: 1519, packs: [1519] });
+    expect(indexes.giftById.get(9251)!.acquisition).toMatchObject({ kind: 'clearReward', clearRewardOf: 1512 });
+    expect(indexes.giftById.get(9254)!.acquisition).toMatchObject({ kind: 'clearReward', clearRewardOf: 1515 });
+    expect(indexes.giftById.get(9256)!.acquisition.kind).toBe('hiddenBattle');
+  });
+});
+
+describe('alternative routes', () => {
+  it('returns nothing when the main plan has no pack conflict', () => {
+    expect(planAlternatives({ deck: BLADE_LINEAGE_DECK, wanted: want(9423), options: options({ hardFromFloor: 1 }) }, data, indexes)).toEqual([]);
+  });
+
+  it('offers one route per gift worth leaving out, best coverage first', () => {
+    const input = { deck: BLADE_LINEAGE_DECK, wanted: want(9283, 9222, 9423), options: options({ hardFromFloor: 1 }) };
+    const main = planRoute(input, noObservation, indexes);
+    expect(main.unresolved.map((u) => u.giftId)).toEqual([9283]);
+    const variants = planAlternatives(input, noObservation, indexes, main);
+    expect(variants.map((v) => v.dropped)).toEqual([[9222], [9283]]);
+    for (const variant of variants) {
+      expect(variant.plan.unresolved).toEqual([]);
+      expect(variant.plan.stats.coveredWanted).toBe(2);
+    }
+    expect(variants[0]!.plan.floors.find((f) => f.floor === 5)!.packId).toBe(1025);
+    expect(variants[1]!.plan.floors.find((f) => f.floor === 5)!.packId).toBe(1026);
+  });
+
+  it('works with observation on, dropping either side of the leftover conflict', () => {
+    const input = { deck: BLADE_LINEAGE_DECK, wanted: want(9283, 9222, 9217, 9435, 9751), options: options({ hardFromFloor: 1 }) };
+    const variants = planAlternatives(input, data, indexes);
+    expect(variants.map((v) => v.dropped)).toEqual([[9283], [9751]]);
+    expect(variants.every((v) => v.plan.unresolved.length === 0 && v.plan.stats.coveredWanted === 4)).toBe(true);
+  });
+
+  it('caps the list and stays deterministic', () => {
+    const input = { deck: BLADE_LINEAGE_DECK, wanted: want(9250, 9251, 9252, 9253, 9254, 9255), options: options({ lastFloor: 15 }) };
+    const first = planAlternatives(input, data, indexes);
+    const second = planAlternatives(input, data, indexes);
+    expect(first.length).toBe(4);
+    expect(first.every((v) => v.dropped.length === 1 && v.plan.stats.coveredWanted === 5)).toBe(true);
+    expect(JSON.stringify(first.map((v) => ({ d: v.dropped, f: v.plan.floors.map((x) => x.packId) })))).toBe(
+      JSON.stringify(second.map((v) => ({ d: v.dropped, f: v.plan.floors.map((x) => x.packId) }))),
+    );
   });
 });

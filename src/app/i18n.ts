@@ -91,6 +91,8 @@ export const STRINGS = {
   acqFuse: { ko: '조합', en: 'Fusion' },
   acqStart: { ko: '시작', en: 'Start' },
   acqEvent: { ko: '이벤트', en: 'Event' },
+  acqClear: { ko: '클리어 보상', en: 'Clear reward' },
+  acqChance: { ko: '확률 보상', en: 'Chance drop' },
   acqMaterial: { ko: '재료', en: 'Material' },
   acqUnknown: { ko: '경로 불명', en: 'Unknown' },
   hardOnly: { ko: 'Hard', en: 'Hard' },
@@ -172,9 +174,11 @@ export const STRINGS = {
   unresolvedIngredient: { ko: '재료 미해결', en: 'Ingredient unresolved' },
   unresolvedNotObtainable: { ko: '획득 불가', en: 'Not obtainable' },
   unresolvedObservation: { ko: '관측 예산', en: 'Observation budget' },
+  unresolvedChance: { ko: '확률 보상', en: 'Chance only' },
   actionExtendFloors: { ko: '{n}층까지 계획', en: 'Plan to floor {n}' },
   actionSwitchHard: { ko: 'Hard로 전환', en: 'Switch to Hard' },
-  actionObserveMore: { ko: '관측 +1', en: 'Observe +1' },
+  actionObserveGift: { ko: '{name} 관측 지정', en: 'Observe {name}' },
+  actionReleaseObservations: { ko: '관측 지정 해제', en: 'Release pinned observations' },
 } as const satisfies Record<string, Localized>;
 
 export type StringKey = keyof typeof STRINGS;

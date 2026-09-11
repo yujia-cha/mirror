@@ -30,11 +30,14 @@ export interface RawThemePack {
   egoGiftPool?: number[];
   specificEgoGiftPool?: number[];
   mapGenOption?: { bossPool?: number[] };
+  uiConfigs?: { packSpriteId?: string; bossSpriteId?: string };
   unlockCondition?: unknown;
 }
 
 export interface RawGift {
   id: number;
+  /** Sprite-atlas key when it differs from the gift id. */
+  iconId?: number;
   attributeType?: string;
   keyword?: string;
   tag?: string[];
@@ -110,6 +113,27 @@ export interface RawCommonData {
   };
   startEgoGiftPools?: { keyword: string; normalpool?: number[]; buffpool?: number[] }[];
   pieceEgoGiftIds?: number[];
+  /** A random extra battle offered on EXTREME floors; its stages carry the 히든 전투 reward gifts. */
+  hiddenBattleInfo?: {
+    minFloorCondition?: number;
+    pool?: number[];
+    probInfo?: { floor: number; prob: number }[];
+  };
+}
+
+/** A battle stage; `rewardList` is how boss stages hand out 클리어 보상 gifts. */
+export interface RawStage {
+  id: number;
+  stageType?: string;
+  rewardList?: { type?: string; rewardId?: number; num?: number; prob?: number }[] | null;
+}
+
+/** `mirror-dungeon-egogift-observation-data-*.json`: what 기프트 관측 can offer and what it costs. */
+export interface RawObservationData {
+  mirrordungeonId: number;
+  observationEgoGiftCostDataList?: { egogiftCount: number; starlightCost: number }[];
+  observationEgoGiftDataList?: { uiKeyword?: string; egogiftKeyword?: string; egogiftIdList?: number[] }[];
+  unobservableEgoGiftIds?: number[];
 }
 
 export interface RawDropPool {
@@ -168,6 +192,24 @@ export function readCommonData(): { data: RawCommonData; file: string } | null {
     if (!best || (data.currentDungeonId ?? 0) > (best.data.currentDungeonId ?? 0)) best = { data, file };
   }
   return best;
+}
+
+/** Mirror Dungeon battle stages (`battle-mirrordungeon/*.json`), keyed by stage id. */
+export function readStages(): Map<number, RawStage> {
+  const files = listFiles(join(STATIC_DIR, 'battle-mirrordungeon'), /\.json$/);
+  const out = new Map<number, RawStage>();
+  for (const f of files) for (const stage of staticList<RawStage>(readJson(f))) out.set(stage.id, stage);
+  return out;
+}
+
+export function readObservationData(dungeonId: number): RawObservationData | null {
+  const files = listFiles(join(STATIC_DIR, 'mirror-dungeon-egogift-observation-data'), /\.json$/);
+  for (const f of files) {
+    for (const entry of staticList<RawObservationData>(readJson(f))) {
+      if (entry.mirrordungeonId === dungeonId) return entry;
+    }
+  }
+  return null;
 }
 
 export function readDropPool(dungeonId: number): RawDropPool | null {

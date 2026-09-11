@@ -130,6 +130,8 @@ export const acquisitionKindSchema = z.enum([
   'packLimited', // 테마 팩 한정: listed in some pack's specificEgoGiftPool
   'fusionOnly', // shop/rest fusion only; never in a pack pool
   'startOnly', // only offered as a starting keyword gift
+  'clearReward', // 클리어 보상: the guaranteed boss reward of one EXTREME (11-15) pack
+  'hiddenBattle', // reward of the random 히든 전투 on floors 11-15; pack-independent, never guaranteed
   'event', // in the season pool but no pack path: specific choice events, 저주-축복, transforming gifts
   'material', // 잔영 series — exists only to be fused or sold
   'unknown', // referenced by the game data with no acquisition path we can see
@@ -174,7 +176,13 @@ export const giftSchema = z.object({
     exclusiveTo: z.array(z.number().int()),
     /** Set when the gift appears in a starting keyword pool. */
     startKeyword: keywordSchema.nullable(),
+    /** The EXTREME pack whose boss drops this gift on clear (kind `clearReward`). */
+    clearRewardOf: z.number().int().nullable(),
   }),
+  /** Offered by the starlight-funded 기프트 관측 (from the season's observation data). */
+  observable: z.boolean(),
+  /** Sprite-atlas key for the gift icon; equals the id unless the data says otherwise. */
+  icon: z.number().int(),
   fusion: z
     .object({
       recipes: z.array(fusionRecipeSchema),
@@ -218,6 +226,8 @@ export const themePackSchema = z.object({
   sinAffinity: sinSchema.nullable(),
   attackTypeAffinity: attackTypeSchema.nullable(),
   bossIds: z.array(z.number().int()),
+  /** Sprite key for the pack artwork (`uiConfigs.packSpriteId`), e.g. `Burn_hard`. */
+  sprite: z.string(),
   notes: localizedSchema.optional(),
 });
 
@@ -338,6 +348,15 @@ export const rulesSchema = z.object({
       probability: z.number().nullable(),
       verified: z.boolean(),
       source: z.string().optional(),
+    })
+    .nullable(),
+  /** The random extra battle on EXTREME floors whose stages drop the `hiddenBattle` gifts. */
+  hiddenBattle: z
+    .object({
+      gifts: z.array(z.number().int()),
+      floors: z.array(floorSchema),
+      /** Chance the battle is offered on each of `floors`; null when the data gives none. */
+      probabilityPerFloor: z.number().nullable(),
     })
     .nullable(),
 });

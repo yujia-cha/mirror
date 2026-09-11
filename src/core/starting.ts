@@ -1,4 +1,4 @@
-import type { Keyword, Rules } from './schema.ts';
+import type { Gift, Keyword, Rules } from './schema.ts';
 import type { DeckStats, GameIndexes, Requirement } from './types.ts';
 import { dominantKeyword } from './deck.ts';
 import { scarcity } from './requirements.ts';
@@ -6,19 +6,22 @@ import { scarcity } from './requirements.ts';
 export interface StartSelection {
   keyword: Keyword | null;
   startGift: number | null;
-  observed: number[];
-  starlight: number;
 }
 
 /**
- * Decide what the run starts with.
- *
- * Two separate mechanics:
- *  - the starting keyword pool hands over one gift for free, chosen from three per keyword;
- *  - "E.G.O 기프트 관측" spends starlight to add more, and cannot produce fusion results.
- *
- * Both are spent on the hardest-to-route requirements, since everything else can be picked up
- * along the way.
+ * Whether the starlight-funded 기프트 관측 can offer this gift. The season data lists the eligible
+ * gifts explicitly; fusion results are additionally gated by the rules.
+ */
+export function observable(gift: Gift, rules: Rules): boolean {
+  if (!gift.observable) return false;
+  if (!rules.giftObservation.fusionResultsAllowed && gift.acquisition.kind === 'fusionOnly') return false;
+  return true;
+}
+
+/**
+ * Decide what the run starts with: the starting keyword pool hands over one gift for free, chosen
+ * from three per keyword. It goes to the hardest-to-route wanted gift in that pool, since
+ * everything else can be picked up along the way. Observation is decided after the pack search.
  */
 export function chooseStart(
   requirements: Requirement[],
@@ -26,7 +29,6 @@ export function chooseStart(
   rules: Rules,
   stats: DeckStats,
   requestedKeyword: Keyword | 'auto',
-  observationMax: number,
 ): StartSelection {
   const keyword: Keyword | null = requestedKeyword === 'auto' ? dominantKeyword(stats) : requestedKeyword;
 
@@ -41,28 +43,5 @@ export function chooseStart(
           .sort((a, b) => scarcity(a, indexes) - scarcity(b, indexes))[0] ?? null)
       : null;
 
-  // Observation candidates: wanted gifts that are not fusion results and not already the free pick.
-  const candidates = requirements
-    .filter((r) => r.giftId !== startGift)
-    .filter((r) => {
-      const gift = indexes.giftById.get(r.giftId);
-      if (!gift) return false;
-      if (!rules.giftObservation.fusionResultsAllowed && gift.acquisition.kind === 'fusionOnly') return false;
-      return true;
-    })
-    // Hardest first: fewest packs that can supply it, required before optional, then id.
-    .sort(
-      (a, b) =>
-        scarcity(a.giftId, indexes) - scarcity(b.giftId, indexes) ||
-        Number(b.required) - Number(a.required) ||
-        a.giftId - b.giftId,
-    );
-
-  const max = Math.min(observationMax, rules.giftObservation.max);
-  const observed = candidates.slice(0, Math.max(0, max)).map((r) => r.giftId);
-
-  const costTable = rules.giftObservation.costTable;
-  const starlight = observed.length === 0 ? 0 : (costTable[observed.length - 1] ?? 0);
-
-  return { keyword, startGift, observed: observed.sort((a, b) => a - b), starlight };
+  return { keyword, startGift };
 }

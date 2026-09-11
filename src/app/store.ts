@@ -51,6 +51,21 @@ function prefersDark(): boolean {
     : window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
+/**
+ * Keep only the option keys the planner knows, so a link or a saved state from an older version
+ * (which carried `giftObservationMax`) cannot smuggle stale keys into the plan.
+ */
+export function sanitizeOptions(raw: unknown): PlanOptions {
+  const defaults = defaultOptions();
+  const source = (raw ?? {}) as Record<string, unknown>;
+  const out = { ...defaults } as Record<string, unknown>;
+  for (const key of Object.keys(defaults)) if (key in source) out[key] = source[key];
+  if ('deployed' in source) out.deployed = source.deployed;
+  const observed = Array.isArray(out.observedGifts) ? out.observedGifts : [];
+  out.observedGifts = [...new Set(observed.filter((n): n is number => typeof n === 'number'))];
+  return out as unknown as PlanOptions;
+}
+
 function uniqueDeck(ids: number[]): number[] {
   const seen = new Set<number>();
   const out: number[] = [];
@@ -133,20 +148,21 @@ export const useApp = create<AppState>()(
           deck: shared.deck,
           deployed: shared.deployed.filter((id) => shared.deck.includes(id)),
           wanted: shared.wanted,
-          options: { ...defaultOptions(), ...shared.options },
+          options: sanitizeOptions(shared.options),
           step: shared.deck.length === 0 ? 1 : shared.wanted.length === 0 ? 2 : 3,
         }),
     }),
     {
       name: 'md-route-planner',
-      version: 2,
+      version: 3,
       migrate: (persisted, version) => {
-        const state = (persisted ?? {}) as Partial<AppState>;
+        let state = (persisted ?? {}) as Partial<AppState>;
         if (version < 2) {
           const deck = Array.isArray(state.deck) ? state.deck : [];
-          return { ...state, deck, deployed: deck.slice(0, LEGACY_DEPLOYED), step: 1 as Step } as AppState;
+          state = { ...state, deck, deployed: deck.slice(0, LEGACY_DEPLOYED), step: 1 as Step };
         }
-        return state as AppState;
+        // v3 replaced the observation count with pinned observation gifts.
+        return { ...state, options: sanitizeOptions(state.options) } as AppState;
       },
       partialize: (state) => ({
         deck: state.deck,
@@ -194,7 +210,7 @@ export function decodeShared(hash: string): SharedState | null {
       deck,
       deployed,
       wanted: parsed.wanted.filter((n): n is number => typeof n === 'number'),
-      options: { ...defaultOptions(), ...parsed.options },
+      options: sanitizeOptions(parsed.options),
     };
   } catch {
     return null;

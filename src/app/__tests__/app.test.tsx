@@ -59,6 +59,15 @@ describe('share links', () => {
     expect(decoded?.deployed).toEqual([10101, 10203, 10312, 10403, 10505, 10601]);
   });
 
+  it('drops option keys the planner no longer knows, such as the old observation count', () => {
+    const stale = lzString.compressToEncodedURIComponent(
+      JSON.stringify({ v: 2, deck: [10101], deployed: [10101], wanted: [9283], options: { ...defaultOptions(), giftObservationMax: 2, observedGifts: [9222, 9222] } }),
+    );
+    const decoded = decodeShared(`#s=${stale}`)!;
+    expect('giftObservationMax' in decoded.options).toBe(false);
+    expect(decoded.options.observedGifts).toEqual([9222]);
+  });
+
   it('ignores a hash that is not a share link', () => {
     expect(decodeShared('#other')).toBeNull();
     expect(decodeShared('#s=not-valid')).toBeNull();
@@ -304,7 +313,8 @@ describe('RouteStep', () => {
   it('draws a pack that may sit on several floors as a window block', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
     useApp.getState().setOptions({ hardFromFloor: 1 });
-    useApp.getState().toggleWanted(9423); // 변하지 않는 (1012), Hard 4-5
+    // 달궈진 놋쇠 → 화왕지절 (1402), Hard 4-5. Not in the observation pool, so it must be routed.
+    useApp.getState().toggleWanted(9267);
     renderRoute();
     const columns = screen.getByTestId('timetable-columns');
     expect(within(columns).queryAllByTestId('block-fixed')).toHaveLength(0);
@@ -315,7 +325,7 @@ describe('RouteStep', () => {
   it('collapses that window to a fixed block when another required pack takes floor 5', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
     useApp.getState().setOptions({ hardFromFloor: 1 });
-    useApp.getState().toggleWanted(9423);
+    useApp.getState().toggleWanted(9754); // 굴레 → 2호선 (1109), Hard 4-5, not observable
     useApp.getState().toggleWanted(9208); // 해방된 분노 (1302), Hard 5 only
     renderRoute();
     const columns = screen.getByTestId('timetable-columns');
@@ -339,7 +349,7 @@ describe('RouteStep', () => {
   it('extends the plan only as far as the missing pack needs', () => {
     const options = { ...defaultOptions(), lastFloor: 3, hardFromFloor: 1 };
     const entry = { giftId: 9423, reason: 'no-pack-in-range' as const, detail: { ko: '', en: '' } };
-    const actions = actionsFor(entry, indexes.giftById.get(9423), indexes.packById, options);
+    const actions = actionsFor(entry, indexes.giftById.get(9423), indexes.packById, options, data.rules);
     const extend = actions.find((a) => a.kind === 'extendFloors')!;
     expect(extend.floor).toBe(5);
     expect(extend.patch).toEqual({ lastFloor: 5 });
@@ -357,7 +367,7 @@ describe('RouteStep', () => {
   it('keeps a valid column template when the plan reaches floor 15', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
-    useApp.getState().toggleWanted(9423);
+    useApp.getState().toggleWanted(9267);
     renderRoute();
     await user.click(screen.getByRole('radio', { name: '15' }));
     const grids = screen.getByTestId('timetable-columns').querySelectorAll<HTMLElement>('.grid');

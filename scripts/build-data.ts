@@ -20,9 +20,11 @@ import {
   readGiftStatics,
   readGiftTexts,
   readLockedDescs,
+  readObservationData,
   readPersonalities,
   readPersonalitySkills,
   readPersonalityTexts,
+  readStages,
   readThemeNames,
   readThemePacks,
   staticDataPresent,
@@ -134,6 +136,8 @@ const dungeonId = common?.data.currentDungeonId ?? 7;
 const combineTable = common?.data.egoGiftCombineFixedTable ?? {};
 const hardOnlyIds = new Set(combineTable.nonAcquireableInEasyIds ?? []);
 const dropPool = readDropPool(dungeonId);
+const stages = readStages();
+const observation = readObservationData(dungeonId);
 
 const rawPacks = readThemePacks();
 const rawGifts = readGiftStatics();
@@ -215,6 +219,7 @@ const packs: ThemePack[] = rawPacks
       sinAffinity: group === 'sin' ? affinity.sin : null,
       attackTypeAffinity: group === 'attackType' ? affinity.attackType : null,
       bossIds: sortNums(raw.mapGenOption?.bossPool ?? []),
+      sprite: raw.uiConfigs?.packSpriteId ?? String(raw.id),
       ...(notes ? { notes } : {}),
     };
   })
@@ -271,6 +276,43 @@ for (const pool of common?.data.startEgoGiftPools ?? []) {
   }
 }
 
+/** Gift ids a stage's boss hands out on clear (`rewardList` entries of type EGO_GIFT). */
+function stageRewardGifts(stageId: number): number[] {
+  return sortNums(
+    (stages.get(stageId)?.rewardList ?? [])
+      .filter((r) => r.type === 'EGO_GIFT' && typeof r.rewardId === 'number')
+      .map((r) => r.rewardId as number),
+  );
+}
+
+/**
+ * 클리어 보상: an EXTREME pack's boss stage (`mapGenOption.bossPool`) drops a fixed gift. The link
+ * only exists through the stage files, so it is derived here rather than read off the gift.
+ * Rewards without any text (993005 on the N사 boss-rush packs) are placeholders and skipped.
+ */
+const clearRewardPackByGift = new Map<number, number>();
+for (const pack of selectablePacks) {
+  if (pack.availability.extreme.length === 0) continue;
+  for (const stageId of pack.bossIds) {
+    for (const giftId of stageRewardGifts(stageId)) {
+      if (!giftTextKo.has(giftId)) continue;
+      if (!clearRewardPackByGift.has(giftId)) clearRewardPackByGift.set(giftId, pack.id);
+    }
+  }
+}
+
+/** 히든 전투: a random battle on EXTREME floors whose stages drop their own gifts. */
+const hiddenBattleInfo = common?.data.hiddenBattleInfo;
+const hiddenBattleGifts = new Set(
+  (hiddenBattleInfo?.pool ?? []).flatMap((stageId) => stageRewardGifts(stageId)).filter((id) => giftTextKo.has(id)),
+);
+
+/** What 기프트 관측 can offer this season; the data lists eligible gifts explicitly. */
+const observableIds = new Set(
+  (observation?.observationEgoGiftDataList ?? []).flatMap((entry) => entry.egogiftIdList ?? []),
+);
+for (const id of observation?.unobservableEgoGiftIds ?? []) observableIds.delete(id);
+
 /**
  * Everything the season can hand out. `excludeEgoGifts` does NOT mean unobtainable — it removes a
  * gift from the *generic* reward roll because it has its own path (pack-exclusive, fusion, or a
@@ -295,6 +337,8 @@ const giftIds = new Set<number>([
   ...recipesByResult.keys(),
   ...mixedByResult.keys(),
   ...startKeywordByGift.keys(),
+  ...clearRewardPackByGift.keys(),
+  ...hiddenBattleGifts,
   ...hardOnlyIds,
   ...(common?.data.pieceEgoGiftIds ?? []),
 ]);
@@ -330,8 +374,10 @@ const gifts: Gift[] = [...giftIds]
      * fusion-only (those never appear in a pool). The planner decides how hard a general gift is
      * to get from `acquisition.packs.length`, not from this label.
      */
+    const clearRewardOf = clearRewardPackByGift.get(id) ?? null;
     let kind: AcquisitionKind;
     if (exclusiveList.length > 0) kind = 'packLimited';
+    else if (clearRewardOf !== null) kind = 'clearReward';
     else if (packList.length > 0) kind = 'general';
     else if (recipes.length > 0 || mixed) kind = 'fusionOnly';
     // The game's own "획득 조건: 상점 「E.G.O 기프트 합성」" text catches fusion results whose
@@ -339,6 +385,7 @@ const gifts: Gift[] = [...giftIds]
     else if (fusionOnlyByLockedDesc.has(id)) kind = 'fusionOnly';
     else if (startKeywordByGift.has(id)) kind = 'startOnly';
     else if (materialIds.has(id)) kind = 'material';
+    else if (hiddenBattleGifts.has(id)) kind = 'hiddenBattle';
     else if (dropPoolIds.has(id)) kind = 'event';
     else kind = 'unknown';
 
@@ -371,11 +418,21 @@ const gifts: Gift[] = [...giftIds]
       upgradeLevels: Math.min(2, Math.max(0, (stat?.upgradeDataList?.length ?? 1) - 1)) as 0 | 1 | 2,
       tags,
       hardOnly: hardOnlyIds.has(id),
-      obtainable: dropPoolIds.has(id) || materialIds.has(id) || recipes.length > 0 || Boolean(mixed),
+      obtainable:
+        dropPoolIds.has(id) ||
+        materialIds.has(id) ||
+        recipes.length > 0 ||
+        Boolean(mixed) ||
+        clearRewardOf !== null ||
+        hiddenBattleGifts.has(id),
+      observable: observableIds.has(id),
+      icon: stat?.iconId ?? id,
       acquisition: {
         kind,
-        packs: packList,
+        // A clear reward has exactly one source: the pack whose boss drops it.
+        packs: clearRewardOf !== null ? [clearRewardOf] : packList,
         exclusiveTo: exclusiveList,
+        clearRewardOf,
         startKeyword:
           startKeyword && (KEYWORDS as readonly string[]).includes(startKeyword)
             ? (startKeyword as Gift['keyword'])
@@ -534,12 +591,19 @@ const rules: Rules = {
     newKeywordChipCost: common?.data.selectNewStartEgoGiftCategoryChip ?? 12,
     refreshStarlightCost: starlight?.startBuffEgoGiftRefreshDefaultPoint ?? 10,
   },
-  giftObservation: curated.rules.giftObservation ?? {
-    max: 3,
-    fusionResultsAllowed: false,
-    costTable: [],
-    verified: false,
-  },
+  giftObservation:
+    curated.rules.giftObservation ??
+    (observation?.observationEgoGiftCostDataList?.length
+      ? {
+          max: observation.observationEgoGiftCostDataList.length,
+          fusionResultsAllowed: false,
+          costTable: [...observation.observationEgoGiftCostDataList]
+            .sort((a, b) => a.egogiftCount - b.egogiftCount)
+            .map((row) => row.starlightCost),
+          verified: true,
+          source: `mirror-dungeon-egogift-observation-data-md${dungeonId}.json observationEgoGiftCostDataList`,
+        }
+      : { max: 3, fusionResultsAllowed: false, costTable: [], verified: false }),
   starlight: {
     initial: starlight?.initPoint ?? 0,
     hardClearMultiplier: starlight?.rewardInfo?.hardDifficultyBonusMultiplier ?? 1,
@@ -560,6 +624,13 @@ const rules: Rules = {
   upgradeCostByTier,
   generalGiftPackShare: generalShare,
   hiddenPack: curated.rules.hiddenPack ?? null,
+  hiddenBattle: hiddenBattleInfo
+    ? {
+        gifts: sortNums(hiddenBattleGifts),
+        floors: sortNums((hiddenBattleInfo.probInfo ?? []).map((row) => row.floor)).filter((f) => f >= 1 && f <= 15),
+        probabilityPerFloor: hiddenBattleInfo.probInfo?.[0]?.prob ?? null,
+      }
+    : null,
 };
 
 // ---------------------------------------------------------------------------

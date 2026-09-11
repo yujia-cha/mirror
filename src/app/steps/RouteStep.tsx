@@ -10,7 +10,7 @@ import { conditionText } from '../condition-text.ts';
 import { UNRESOLVED_LABEL, bandOf } from '../lib/labels.ts';
 import { planToText } from '../lib/plan-text.ts';
 import { actionsFor, type UnresolvedAction } from '../lib/unresolved-actions.ts';
-import { Badge, Button, Card, Chip, Notice, SectionTitle, Segmented, Toast } from '../components/ui.tsx';
+import { Badge, Button, Card, Chip, Notice, SectionTitle, Toast } from '../components/ui.tsx';
 import { Timetable } from '../components/Timetable.tsx';
 import { MAX_FLOOR } from '../lib/timetable.ts';
 
@@ -58,14 +58,16 @@ function FloorBandPicker({ lastFloor, onChange, lang }: { lastFloor: number; onC
   );
 }
 
-function actionLabel(action: UnresolvedAction, lang: Lang): string {
+function actionLabel(action: UnresolvedAction, lang: Lang, giftName: (id: number) => string): string {
   switch (action.kind) {
     case 'switchHard':
       return t('actionSwitchHard', lang);
     case 'extendFloors':
       return t('actionExtendFloors', lang, { n: action.floor ?? 0 });
-    case 'observeMore':
-      return t('actionObserveMore', lang);
+    case 'observeGift':
+      return t('actionObserveGift', lang, { name: action.giftId !== undefined ? giftName(action.giftId) : '' });
+    case 'releaseObservations':
+      return t('actionReleaseObservations', lang);
   }
 }
 
@@ -118,15 +120,6 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
               {t('optionHardSwitch', lang)}
             </Button>
           )}
-        </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-xs text-fg-3">{t('optionObservation', lang)}</span>
-          <Segmented
-            label={t('optionObservation', lang)}
-            value={options.giftObservationMax}
-            options={[0, 1, 2, 3].map((n) => ({ value: n, label: String(n) }))}
-            onChange={(giftObservationMax) => setOptions({ giftObservationMax })}
-          />
         </div>
         <div className="flex flex-col gap-1">
           <span className="text-xs text-fg-3">{t('optionStartKeyword', lang)}</span>
@@ -282,9 +275,9 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
 
   // Actions shared by several entries appear once in the header; entry-specific ones stay inline.
   const unresolvedActions = plan.unresolved.map((entry) =>
-    actionsFor(entry, indexes.giftById.get(entry.giftId), indexes.packById, options).map((action) => ({
+    actionsFor(entry, indexes.giftById.get(entry.giftId), indexes.packById, options, data.rules).map((action) => ({
       ...action,
-      label: actionLabel(action, lang),
+      label: actionLabel(action, lang, giftName),
     })),
   );
   const sharedLabels = new Set(
@@ -343,7 +336,7 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
   const observed =
     plan.start.observed.length > 0 ? (
       <Notice icon={<Eye size={14} aria-hidden />}>
-        {t('routeObserved', lang)}: {plan.start.observed.map(giftName).join(', ')} · {t('routeStarlight', lang)} {plan.start.starlight}
+        {t('routeObserved', lang)}: {plan.start.observed.map((o) => giftName(o.giftId)).join(', ')} · {t('routeStarlight', lang)} {plan.start.starlight}
         {plan.start.starlightVerified ? '' : ` (${t('routeUnverified', lang)})`}
         {plan.start.keyword ? ` · ${t('optionStartKeyword', lang)} ${keywordName(plan.start.keyword, data.enums, lang)}` : ''}
       </Notice>

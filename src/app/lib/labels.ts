@@ -15,6 +15,10 @@ export function badgeFor(kind: AcquisitionKind): { badge: BadgeKind; label: Stri
       return { badge: 'maybe', label: 'acqMaybe' };
     case 'fusionOnly':
       return { badge: 'fuse', label: 'acqFuse' };
+    case 'clearReward':
+      return { badge: 'sure', label: 'acqClear' };
+    case 'hiddenBattle':
+      return { badge: 'maybe', label: 'acqChance' };
     case 'event':
       return { badge: 'neutral', label: 'acqEvent' };
     case 'material':
@@ -47,6 +51,7 @@ export const UNRESOLVED_LABEL: Record<UnresolvedReason, StringKey> = {
   'hard-only': 'unresolvedHardOnly',
   'fusion-ingredient-unresolved': 'unresolvedIngredient',
   'not-obtainable': 'unresolvedNotObtainable',
+  'chance-only': 'unresolvedChance',
   'observation-budget': 'unresolvedObservation',
 };
 

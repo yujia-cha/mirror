@@ -99,7 +99,8 @@
       "ko": "잊혀진 자들"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_I"
   },
   {
     "attackTypeAffinity": null,
@@ -208,7 +209,8 @@
       "ko": "속하지 못하는"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_I_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -311,7 +313,8 @@
       "ko": "카지노 푸어"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_II"
   },
   {
     "attackTypeAffinity": null,
@@ -421,7 +424,8 @@
       "ko": "공장 자동화"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_II_mid"
   },
   {
     "attackTypeAffinity": null,
@@ -528,7 +532,8 @@
       "ko": "사랑할 수 없는"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_II_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -630,7 +635,8 @@
       "ko": "못과 망치"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_III"
   },
   {
     "attackTypeAffinity": null,
@@ -739,7 +745,8 @@
       "ko": "신앙과 침식"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_III_mid"
   },
   {
     "attackTypeAffinity": null,
@@ -845,7 +852,8 @@
       "ko": "마주하지 않는"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_III_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -947,7 +955,8 @@
       "ko": "둥지, 공방, 기술"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_IV"
   },
   {
     "attackTypeAffinity": null,
@@ -1055,7 +1064,8 @@
       "ko": "낙화"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_IV_mid1"
   },
   {
     "attackTypeAffinity": null,
@@ -1159,7 +1169,8 @@
       "ko": "흘리는 것들"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_IV_mid2"
   },
   {
     "attackTypeAffinity": null,
@@ -1268,7 +1279,8 @@
       "ko": "변하지 않는"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_IV_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -1370,7 +1382,8 @@
       "ko": "레이크 월드"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_V"
   },
   {
     "attackTypeAffinity": null,
@@ -1481,7 +1494,8 @@
       "ko": "기어오는 심연"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_V_mid"
   },
   {
     "attackTypeAffinity": null,
@@ -1592,7 +1606,8 @@
       "ko": "악으로 규정되는"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_V_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -1736,7 +1751,8 @@
       "ko": "저택의 부산물"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_VI"
   },
   {
     "attackTypeAffinity": null,
@@ -1879,7 +1895,8 @@
       "ko": "어느 세계"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_VI_mid"
   },
   {
     "attackTypeAffinity": null,
@@ -1959,7 +1976,8 @@
       "ko": "마음이 어긋나는"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_VI_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -2046,7 +2064,8 @@
       "ko": "다시 열린 라만차랜드"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_VII"
   },
   {
     "attackTypeAffinity": null,
@@ -2132,7 +2151,8 @@
       "ko": "끝나지 않는 행렬"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_VII_mid"
   },
   {
     "attackTypeAffinity": null,
@@ -2218,7 +2238,8 @@
       "ko": "꿈이 끝나는"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_VII_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -2366,7 +2387,8 @@
       "ko": "사대 가문과 욕망"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_VIII"
   },
   {
     "attackTypeAffinity": null,
@@ -2513,7 +2535,8 @@
       "ko": "바라볼 수밖에 없는"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_VIII_mid"
   },
   {
     "attackTypeAffinity": null,
@@ -2627,7 +2650,8 @@
       "ko": "현혹, 방황, 불신"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_IX"
   },
   {
     "attackTypeAffinity": null,
@@ -2742,7 +2766,8 @@
       "ko": "교본"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_IX_mid"
   },
   {
     "attackTypeAffinity": null,
@@ -2859,7 +2884,8 @@
       "ko": "검과 작품"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_IX_mid2"
   },
   {
     "attackTypeAffinity": null,
@@ -2974,7 +3000,8 @@
       "ko": "끊어지지 않는"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_IX_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -3087,7 +3114,8 @@
       "ko": "헬스치킨"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_HellsChicken"
   },
   {
     "attackTypeAffinity": null,
@@ -3195,7 +3223,8 @@
       "ko": "우.미.다"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_SEA"
   },
   {
     "attackTypeAffinity": null,
@@ -3305,7 +3334,8 @@
       "ko": "20번구의 기적"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_Miracle20"
   },
   {
     "attackTypeAffinity": null,
@@ -3425,7 +3455,8 @@
       "ko": "육참골단"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_YFCB"
   },
   {
     "attackTypeAffinity": null,
@@ -3550,7 +3581,8 @@
       "ko": "시간살인시간"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_TimeKillingTime"
   },
   {
     "attackTypeAffinity": null,
@@ -3677,7 +3709,8 @@
       "ko": "워프특급 살인사건"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_MOWE"
   },
   {
     "attackTypeAffinity": null,
@@ -3795,7 +3828,8 @@
       "ko": "자색 정오의 시련"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Walpu4_NoonOfViolet"
   },
   {
     "attackTypeAffinity": null,
@@ -3849,7 +3883,8 @@
       "ko": "1호선"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "RailwayDungeon_1"
   },
   {
     "attackTypeAffinity": null,
@@ -3904,7 +3939,8 @@
       "ko": "2호선"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "RailwayDungeon_2"
   },
   {
     "attackTypeAffinity": null,
@@ -3964,7 +4000,8 @@
       "ko": "3호선"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "RailwayDungeon_3"
   },
   {
     "attackTypeAffinity": null,
@@ -4024,7 +4061,8 @@
       "ko": "4호선 - 제 3 구간"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "RailwayDungeon_4"
   },
   {
     "attackTypeAffinity": null,
@@ -4084,7 +4122,8 @@
       "ko": "4호선 - 제 4 구간"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "RailwayDungeon_4_2"
   },
   {
     "attackTypeAffinity": null,
@@ -4206,7 +4245,8 @@
       "ko": "20번구의 기적 BokGak"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_Miracle20_BokGak"
   },
   {
     "attackTypeAffinity": null,
@@ -4322,7 +4362,8 @@
       "ko": "탄환이 찍은 마침표"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Walpu5_ChurchOfGears"
   },
   {
     "attackTypeAffinity": null,
@@ -4405,7 +4446,8 @@
       "ko": "LCB 정기검진"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_LCBCheckUp"
   },
   {
     "attackTypeAffinity": null,
@@ -4534,7 +4576,8 @@
       "ko": "육참골단 BokGak"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_YFCB_BokGak"
   },
   {
     "attackTypeAffinity": null,
@@ -4602,7 +4645,8 @@
       "ko": "심야청소"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_NightSweep"
   },
   {
     "attackTypeAffinity": null,
@@ -4666,7 +4710,8 @@
       "ko": "5호선"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "RailwayDungeon_5"
   },
   {
     "attackTypeAffinity": null,
@@ -4785,7 +4830,8 @@
       "ko": "증오와 절망"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Walpu6_MagicalGirl"
   },
   {
     "attackTypeAffinity": null,
@@ -4915,7 +4961,8 @@
       "ko": "시간살인시간 BokGak"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_TimeKillingTime_BokGak"
   },
   {
     "attackTypeAffinity": null,
@@ -5038,7 +5085,8 @@
       "ko": "절차탁춘"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_XiChunMaker"
   },
   {
     "attackTypeAffinity": null,
@@ -5140,7 +5188,8 @@
       "ko": "스토리 던전 전용 팩이라 거울 던전에서는 선택할 수 없다."
     },
     "selectable": false,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_Pilgrimage"
   },
   {
     "attackTypeAffinity": null,
@@ -5275,7 +5324,8 @@
       "ko": "워프특급 살인사건 BokGak"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_MOWE_BokGak"
   },
   {
     "attackTypeAffinity": null,
@@ -5398,7 +5448,8 @@
       "ko": "호박색 어스름의 시련"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Walpu8_Amber"
   },
   {
     "attackTypeAffinity": null,
@@ -5487,7 +5538,8 @@
       "ko": "LCB 정기검진 BokGak"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_LCBCheckUp_BokGak"
   },
   {
     "attackTypeAffinity": null,
@@ -5608,7 +5660,8 @@
       "ko": "타래 엮기"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_TwiningThread"
   },
   {
     "attackTypeAffinity": null,
@@ -5678,7 +5731,8 @@
       "ko": "심야청소 BokGak"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_NightSweep_BokGak"
   },
   {
     "attackTypeAffinity": null,
@@ -5800,7 +5854,8 @@
       "ko": "경험기억"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_RecordMemory"
   },
   {
     "attackTypeAffinity": "Slash",
@@ -5885,7 +5940,8 @@
       "ko": "가르고 베는 이들"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "AttackType_normal"
   },
   {
     "attackTypeAffinity": "Slash",
@@ -5972,7 +6028,8 @@
       "ko": "베어낼 것"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "AttackType_effective"
   },
   {
     "attackTypeAffinity": "Penetrate",
@@ -6056,7 +6113,8 @@
       "ko": "꿰고 뚫는 이들"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "AttackType_normal"
   },
   {
     "attackTypeAffinity": "Penetrate",
@@ -6143,7 +6201,8 @@
       "ko": "꿰뚫을 것"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "AttackType_effective"
   },
   {
     "attackTypeAffinity": "Hit",
@@ -6228,7 +6287,8 @@
       "ko": "부수고 깨뜨릴 이들"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "AttackType_normal"
   },
   {
     "attackTypeAffinity": "Hit",
@@ -6316,7 +6376,8 @@
       "ko": "바스라질 것"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "AttackType_effective"
   },
   {
     "attackTypeAffinity": null,
@@ -6412,7 +6473,8 @@
       "ko": "억눌린 분노"
     },
     "selectable": true,
-    "sinAffinity": "WRATH"
+    "sinAffinity": "WRATH",
+    "sprite": "Crimson_normal"
   },
   {
     "attackTypeAffinity": null,
@@ -6517,7 +6579,8 @@
       "ko": "해방된 분노"
     },
     "selectable": true,
-    "sinAffinity": "WRATH"
+    "sinAffinity": "WRATH",
+    "sprite": "Crimson_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -6611,7 +6674,8 @@
       "ko": "감정에 짓눌리는 것"
     },
     "selectable": true,
-    "sinAffinity": "WRATH"
+    "sinAffinity": "WRATH",
+    "sprite": "Crimson_effective"
   },
   {
     "attackTypeAffinity": null,
@@ -6704,7 +6768,8 @@
       "ko": "빠져드는 색욕"
     },
     "selectable": true,
-    "sinAffinity": "LUST"
+    "sinAffinity": "LUST",
+    "sprite": "Scarlet_normal"
   },
   {
     "attackTypeAffinity": null,
@@ -6803,7 +6868,8 @@
       "ko": "옭아매는 색욕"
     },
     "selectable": true,
-    "sinAffinity": "LUST"
+    "sinAffinity": "LUST",
+    "sprite": "Scarlet_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -6893,7 +6959,8 @@
       "ko": "감정에 홀리는 것"
     },
     "selectable": true,
-    "sinAffinity": "LUST"
+    "sinAffinity": "LUST",
+    "sprite": "Scarlet_effective"
   },
   {
     "attackTypeAffinity": null,
@@ -6988,7 +7055,8 @@
       "ko": "헛도는 나태"
     },
     "selectable": true,
-    "sinAffinity": "SLOTH"
+    "sinAffinity": "SLOTH",
+    "sprite": "Amber_normal"
   },
   {
     "attackTypeAffinity": null,
@@ -7089,7 +7157,8 @@
       "ko": "멎어버린 나태"
     },
     "selectable": true,
-    "sinAffinity": "SLOTH"
+    "sinAffinity": "SLOTH",
+    "sprite": "Amber_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -7183,7 +7252,8 @@
       "ko": "감정 앞에 게으른 것"
     },
     "selectable": true,
-    "sinAffinity": "SLOTH"
+    "sinAffinity": "SLOTH",
+    "sprite": "Amber_effective"
   },
   {
     "attackTypeAffinity": null,
@@ -7277,7 +7347,8 @@
       "ko": "먹어치운 탐식"
     },
     "selectable": true,
-    "sinAffinity": "GLUTTONY"
+    "sinAffinity": "GLUTTONY",
+    "sprite": "Shamrock_normal"
   },
   {
     "attackTypeAffinity": null,
@@ -7376,7 +7447,8 @@
       "ko": "넘쳐흐른 탐식"
     },
     "selectable": true,
-    "sinAffinity": "GLUTTONY"
+    "sinAffinity": "GLUTTONY",
+    "sprite": "Shamrock_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -7467,7 +7539,8 @@
       "ko": "감정에 굶주린 것"
     },
     "selectable": true,
-    "sinAffinity": "GLUTTONY"
+    "sinAffinity": "GLUTTONY",
+    "sprite": "Shamrock_effective"
   },
   {
     "attackTypeAffinity": null,
@@ -7564,7 +7637,8 @@
       "ko": "전락하는 우울"
     },
     "selectable": true,
-    "sinAffinity": "GLOOM"
+    "sinAffinity": "GLOOM",
+    "sprite": "Azure_normal"
   },
   {
     "attackTypeAffinity": null,
@@ -7669,7 +7743,8 @@
       "ko": "가라앉은 우울"
     },
     "selectable": true,
-    "sinAffinity": "GLOOM"
+    "sinAffinity": "GLOOM",
+    "sprite": "Azure_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -7764,7 +7839,8 @@
       "ko": "감정에 침수된 것"
     },
     "selectable": true,
-    "sinAffinity": "GLOOM"
+    "sinAffinity": "GLOOM",
+    "sprite": "Azure_effective"
   },
   {
     "attackTypeAffinity": null,
@@ -7861,7 +7937,8 @@
       "ko": "허세짙은 오만"
     },
     "selectable": true,
-    "sinAffinity": "PRIDE"
+    "sinAffinity": "PRIDE",
+    "sprite": "Indigo_normal"
   },
   {
     "attackTypeAffinity": null,
@@ -7961,7 +8038,8 @@
       "ko": "독선적인 오만"
     },
     "selectable": true,
-    "sinAffinity": "PRIDE"
+    "sinAffinity": "PRIDE",
+    "sprite": "Indigo_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -8055,7 +8133,8 @@
       "ko": "감정에 복종한 것"
     },
     "selectable": true,
-    "sinAffinity": "PRIDE"
+    "sinAffinity": "PRIDE",
+    "sprite": "Indigo_effective"
   },
   {
     "attackTypeAffinity": null,
@@ -8154,7 +8233,8 @@
       "ko": "초라한 질투"
     },
     "selectable": true,
-    "sinAffinity": "ENVY"
+    "sinAffinity": "ENVY",
+    "sprite": "Violet_normal"
   },
   {
     "attackTypeAffinity": null,
@@ -8258,7 +8338,8 @@
       "ko": "처량한 질투"
     },
     "selectable": true,
-    "sinAffinity": "ENVY"
+    "sinAffinity": "ENVY",
+    "sprite": "Violet_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -8354,7 +8435,8 @@
       "ko": "감정으로 평가된 것"
     },
     "selectable": true,
-    "sinAffinity": "ENVY"
+    "sinAffinity": "ENVY",
+    "sprite": "Violet_effective"
   },
   {
     "attackTypeAffinity": null,
@@ -8440,7 +8522,8 @@
       "ko": "타오르는 일렁임"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Burn_normal"
   },
   {
     "attackTypeAffinity": null,
@@ -8539,7 +8622,8 @@
       "ko": "화왕지절"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Burn_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -8628,7 +8712,8 @@
       "ko": "새어나온 적혈"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Bleed_normal"
   },
   {
     "attackTypeAffinity": null,
@@ -8724,7 +8809,8 @@
       "ko": "시산혈해"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Bleed_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -8810,7 +8896,8 @@
       "ko": "어지러운 파동"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Tremor_normal"
   },
   {
     "attackTypeAffinity": null,
@@ -8903,7 +8990,8 @@
       "ko": "이상진역"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Tremor_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -8990,7 +9078,8 @@
       "ko": "부서뜨리는 외력"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Rupture_normal"
   },
   {
     "attackTypeAffinity": null,
@@ -9085,7 +9174,8 @@
       "ko": "파죽지세"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Rupture_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -9173,7 +9263,8 @@
       "ko": "잠겨드는 아림"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Sinking_normal"
   },
   {
     "attackTypeAffinity": null,
@@ -9272,7 +9363,8 @@
       "ko": "침잠쇄도"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Sinking_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -9358,7 +9450,8 @@
       "ko": "내쉬어진 한숨"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Poise_normal"
   },
   {
     "attackTypeAffinity": null,
@@ -9453,7 +9546,8 @@
       "ko": "순환호흡"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Poise_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -9539,7 +9633,8 @@
       "ko": "차오르는 동력"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Charge_normal"
   },
   {
     "attackTypeAffinity": null,
@@ -9633,7 +9728,8 @@
       "ko": "벽력섬전"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Charge_hard"
   },
   {
     "attackTypeAffinity": null,
@@ -9851,7 +9947,8 @@
       "ko": "N사 신 구인회"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "CorpN_Extreme"
   },
   {
     "attackTypeAffinity": null,
@@ -10069,7 +10166,8 @@
       "ko": "개화하는 녹림"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Plant_Extreme"
   },
   {
     "attackTypeAffinity": null,
@@ -10287,7 +10385,8 @@
       "ko": "3호선 - 종착역"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "RailwayDungeon3_Extreme"
   },
   {
     "attackTypeAffinity": null,
@@ -10508,7 +10607,8 @@
       "ko": "영겁의 굴레"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "DealCut_Extreme"
   },
   {
     "attackTypeAffinity": null,
@@ -10726,7 +10826,8 @@
       "ko": "우.미.다 게.판"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_SEA_Extreme"
   },
   {
     "attackTypeAffinity": null,
@@ -10944,7 +11045,8 @@
       "ko": "끝도 없이 막힌 길"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Canto_VI_Extreme"
   },
   {
     "attackTypeAffinity": null,
@@ -11162,7 +11264,8 @@
       "ko": "혈귀가 되지 못한 자들"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "BloodFiend_Extreme"
   },
   {
     "attackTypeAffinity": null,
@@ -11377,7 +11480,8 @@
       "ko": "아름다운 목소리"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Distortion_Extreme"
   },
   {
     "attackTypeAffinity": null,
@@ -11592,7 +11696,8 @@
       "ko": "녹빛 여명의 시련"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Walpu2_Extreme"
   },
   {
     "attackTypeAffinity": null,
@@ -11807,7 +11912,8 @@
       "ko": "어느 도서관의 어떤 책 속으로"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Walpu3_Extreme"
   },
   {
     "attackTypeAffinity": null,
@@ -12025,7 +12131,8 @@
       "ko": "코드 퍼플"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "KCorp_Extreme"
   },
   {
     "attackTypeAffinity": null,
@@ -12243,7 +12350,8 @@
       "ko": "무게를 진 자들"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "HeavyHeld_Extreme"
   },
   {
     "attackTypeAffinity": null,
@@ -12461,7 +12569,8 @@
       "ko": "1호선 : 광기"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "RailwayDungeon1_Extreme"
   },
   {
     "attackTypeAffinity": null,
@@ -12679,7 +12788,8 @@
       "ko": "축복의 카니발"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "LamanchaParade_Extreme"
   },
   {
     "attackTypeAffinity": null,
@@ -12897,7 +13007,8 @@
       "ko": "페어리테일"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Fairy_Extreme"
   },
   {
     "attackTypeAffinity": null,
@@ -13115,7 +13226,8 @@
       "ko": "핏물진 비린내"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "HeadlessIchthys_Extreme"
   },
   {
     "attackTypeAffinity": null,
@@ -13333,7 +13445,8 @@
       "ko": "즉결처형의 시간"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "Ricardo_Extreme"
   },
   {
     "attackTypeAffinity": null,
@@ -13551,7 +13664,8 @@
       "ko": "라만차랜드의 주인"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "LamanchaOwner_Extreme"
   },
   {
     "attackTypeAffinity": null,
@@ -13769,7 +13883,8 @@
       "ko": "삽시호"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "LeiHeng_Extreme"
   },
   {
     "attackTypeAffinity": null,
@@ -13987,6 +14102,7 @@
       "ko": "한 봄 밤의 꿈 2"
     },
     "selectable": true,
-    "sinAffinity": null
+    "sinAffinity": null,
+    "sprite": "AF2_Extreme"
   }
 ]

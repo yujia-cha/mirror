@@ -264,7 +264,24 @@ describe('rules', () => {
     for (const [keyword, ids] of pools) expect(ids, keyword).toHaveLength(3);
   });
 
-  it('flags the gift observation cost table as unverified', () => {
-    expect(rules.giftObservation.verified).toBe(false);
+  it('reads the gift observation cost table and pool from the season data', () => {
+    expect(rules.giftObservation).toMatchObject({ max: 3, costTable: [70, 160, 270], verified: true });
+    expect(gifts.filter((g) => g.observable).length).toBe(312);
+  });
+
+  it('derives EXTREME clear rewards and hidden-battle gifts from the stage files', () => {
+    const byKind = (kind: string) => gifts.filter((g) => g.acquisition.kind === kind).map((g) => g.id);
+    expect(byKind('clearReward')).toEqual([9250, 9251, 9252, 9253, 9254, 9255, 9827, 9828, 9829, 9830]);
+    expect(byKind('hiddenBattle')).toEqual([9256, 9257, 9258, 9259]);
+    expect(byKind('event')).toHaveLength(10);
+    expect(giftById.get(9828)!.acquisition.clearRewardOf).toBe(1519);
+    expect(rules.hiddenBattle).toEqual({ gifts: [9256, 9257, 9258, 9259], floors: [11, 12, 13, 14, 15], probabilityPerFloor: 0.1 });
+  });
+
+  it('carries an icon key per gift and a sprite key per pack', () => {
+    expect(giftById.get(9403)!.icon).toBe(1005);
+    expect(giftById.get(9088)!.icon).toBe(9088);
+    expect(packs.every((p) => p.sprite.length > 0)).toBe(true);
+    expect(packs.find((p) => p.id === 1501)!.sprite).toBe('CorpN_Extreme');
   });
 });

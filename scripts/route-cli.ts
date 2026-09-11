@@ -5,13 +5,14 @@
  *   npm run route -- --want 9083 --floors 1-15 --json
  *   npm run route -- --share '#s=...'        (a URL hash copied from the web app)
  *
- * Flags: --deck, --want, --floors, --difficulty normal|hard, --hard-from N, --observe N,
- *        --pin floor:pack,…, --ban pack,…, --json, --explain, --trace
+ * Flags: --deck, --want, --floors, --difficulty normal|hard, --hard-from N,
+ *        --observe gift,gift (pin these for 기프트 관측), --no-observe (planner may not observe),
+ *        --pin floor:pack,…, --ban pack,…, --alternatives, --json, --explain, --trace
  */
 // lz-string ships CommonJS, so under Node's ESM loader it only has a default export.
 import lzString from 'lz-string';
 import { loadGameDataFromDisk } from '../src/core/data/node.ts';
-import { buildIndexes, defaultOptions, planRoute } from '../src/core/index.ts';
+import { buildIndexes, defaultOptions, planAlternatives, planRoute } from '../src/core/index.ts';
 import type { Keyword } from '../src/core/schema.ts';
 import type { PlanInput, PlanOptions } from '../src/core/types.ts';
 import { flagValue, hasFlag } from './lib/io.ts';
@@ -57,7 +58,11 @@ function fromShare(hash: string): PlanInput | null {
   }
 }
 
-const data = loadGameDataFromDisk();
+const loaded = loadGameDataFromDisk();
+// --no-observe removes the observation slots altogether, for reproducing a pure pack route.
+const data = hasFlag('--no-observe')
+  ? { ...loaded, rules: { ...loaded.rules, giftObservation: { ...loaded.rules.giftObservation, max: 0 } } }
+  : loaded;
 const indexes = buildIndexes(data);
 
 const share = flagValue('--share');
@@ -76,16 +81,17 @@ const input: PlanInput = share
               ? 1
               : null,
         startKeyword: (flagValue('--keyword') as Keyword | undefined) ?? 'auto',
-        giftObservationMax: Number(flagValue('--observe') ?? 3),
+        observedGifts: numbers(flagValue('--observe')),
         pinnedPacks: parsePins(flagValue('--pin')),
         bannedPacks: numbers(flagValue('--ban')),
       },
     };
 
 const plan = planRoute(input, data, indexes);
+const variants = hasFlag('--alternatives') ? planAlternatives(input, data, indexes, plan) : [];
 
 if (hasFlag('--json')) {
-  console.log(JSON.stringify(plan, null, 2));
+  console.log(JSON.stringify(hasFlag('--alternatives') ? { plan, variants } : plan, null, 2));
   process.exit(0);
 }
 
@@ -108,9 +114,13 @@ if (input.deck.length > 0) {
 console.log('\n시작');
 console.log(`  키워드: ${plan.start.keyword ?? '(없음)'}`);
 console.log(`  시작 기프트: ${plan.start.startGift ? giftName(plan.start.startGift) : '(없음)'}`);
+const observedText = plan.start.observed.map((o) => {
+  const why = o.pinned ? '지정' : o.freedPack !== null ? `추천, ${packName(o.freedPack)} 불필요` : '추천';
+  return `${giftName(o.giftId)} (${why})`;
+});
 console.log(
-  `  관측: ${plan.start.observed.length > 0 ? plan.start.observed.map(giftName).join(', ') : '(없음)'}` +
-    `${plan.start.observed.length > 0 ? ` — 별빛 ${plan.start.starlight}${plan.start.starlightVerified ? '' : ' (미확인 값)'}` : ''}`,
+  `  관측: ${observedText.length > 0 ? observedText.join(', ') : '(없음)'}` +
+    `${observedText.length > 0 ? ` — 별빛 ${plan.start.starlight}${plan.start.starlightVerified ? '' : ' (미확인 값)'}` : ''}`,
 );
 
 console.log('\n층별 루트');
@@ -175,6 +185,18 @@ console.log(
   `\n요약: 필요 팩 ${plan.stats.requiredPacks}개, 별빛 ${plan.stats.starlight}, ` +
     `${plan.stats.coveredWanted}/${plan.stats.totalWanted} 확보, ${plan.stats.elapsedMs}ms`,
 );
+
+if (variants.length > 0) {
+  console.log('\n대안 루트');
+  for (const variant of variants) {
+    const packs = variant.plan.floors.filter((f) => f.packId !== null).map((f) => `${f.floor}층 ${packName(f.packId!)}`);
+    console.log(
+      `  ${variant.dropped.map(giftName).join(', ')} 제외 → ${variant.plan.stats.coveredWanted}/${variant.plan.stats.totalWanted} 확보, ` +
+        `${packs.join(' · ') || '자유'}` +
+        (variant.plan.unresolved.length > 0 ? ` (미해결 ${variant.plan.unresolved.map((u) => giftName(u.giftId)).join(', ')})` : ''),
+    );
+  }
+}
 
 if (hasFlag('--trace')) {
   console.log(`탐색 노드 ${plan.stats.searchNodes}${plan.stats.searchCapped ? ' (한도 도달)' : ''}`);

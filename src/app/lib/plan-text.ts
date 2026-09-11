@@ -16,7 +16,7 @@ export function planToText(
   if (plan.start.startGift) lines.push(`  ${t('routeStartGift', lang)}: ${giftName(plan.start.startGift)}`);
   if (plan.start.observed.length > 0) {
     lines.push(
-      `  ${t('routeObserved', lang)}: ${plan.start.observed.map(giftName).join(', ')} ` +
+      `  ${t('routeObserved', lang)}: ${plan.start.observed.map((o) => giftName(o.giftId)).join(', ')} ` +
         `(${t('routeStarlight', lang)} ${plan.start.starlight})`,
     );
   }
