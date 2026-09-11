@@ -32,6 +32,8 @@ npm run route -- --deck 10101,10203 --want 9088 --floors 1-5 --difficulty hard
 
 구조와 규칙은 [`CLAUDE.md`](CLAUDE.md), 게임 메커니즘 조사 기록은 [`docs/research/mechanics.md`](docs/research/mechanics.md), 데이터 출처는 [`docs/research/data-sources.md`](docs/research/data-sources.md)에 있습니다.
 
+코드를 리뷰하신다면 [`docs/review/`](docs/review/README.md)에 마일스톤별 요약과 읽는 순서, 검증 로그가 있습니다.
+
 ## 데이터와 권리
 
 게임 데이터·텍스트·이미지의 권리는 **Project Moon**에 있습니다. 이 저장소는 비상업 팬 프로젝트이며, 플래너가 동작하는 데 필요한 범위의 게임 데이터를 [OpenLethe](https://github.com/LEAGUE-OF-NINE/OpenLethe)와 [LocalizeLimbusCompany](https://github.com/LocalizeLimbusCompany/LocalizeLimbusCompany)에서 가져와 사용합니다. 자세한 내용은 [`data/README.md`](data/README.md)를 보세요.
