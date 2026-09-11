@@ -14,6 +14,43 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reject commits from disallowed author/committer emails
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Emails from GitHub accounts that must never show up as a contributor
+          # on this repo (e.g. an old account mixed in by mistake). GitHub also
+          # reads Co-authored-by trailers for the contributors graph, so a
+          # squash-merge can reintroduce a disallowed account even when every
+          # commit's top-level author looks fine.
+          disallowed=(
+            "2donghun8585@gmail.com"
+          )
+          fail=0
+          while IFS='|' read -r sha author_email committer_email subject; do
+            for bad in "${disallowed[@]}"; do
+              if [ "$author_email" = "$bad" ] || [ "$committer_email" = "$bad" ]; then
+                echo "::error::commit $sha ($subject) is authored/committed with a disallowed email ($bad)"
+                fail=1
+              fi
+            done
+            body="$(git log -1 --format=%B "$sha")"
+            for bad in "${disallowed[@]}"; do
+              if grep -qF "<$bad>" <<<"$body"; then
+                echo "::error::commit $sha ($subject) has a Co-authored-by trailer referencing a disallowed email ($bad)"
+                fail=1
+              fi
+            done
+          done < <(git log --format='%H|%ae|%ce|%s' "$BASE_SHA..$HEAD_SHA")
+          if [ "$fail" -ne 0 ]; then
+            echo "Fix: amend/rebase the offending commit(s) with the correct git identity, then force-push the branch."
+            exit 1
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: 22
