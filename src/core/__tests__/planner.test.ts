@@ -1,0 +1,373 @@
+/**
+ * Scenario tests for the planner, run against the real generated game data.
+ *
+ * Each case encodes a rule a player would recognise, so a regression here means the tool would
+ * give bad advice — not merely that an implementation detail moved.
+ */
+import { describe, expect, it } from 'vitest';
+import { loadGameDataFromDisk } from '../data/node.ts';
+import { buildIndexes, defaultOptions, planRoute } from '../index.ts';
+import { analyseDeck, dominantKeyword } from '../deck.ts';
+import { expandRequirements } from '../requirements.ts';
+import { modeForFloor, observationCost } from '../search.ts';
+import type { PlanInput, PlanOptions } from '../types.ts';
+
+const data = loadGameDataFromDisk();
+const indexes = buildIndexes(data);
+
+/** Identity ids used below, chosen because their factions and keywords are stable. */
+const BLADE_LINEAGE_DECK = [10403, 10308, 10208, 10108, 11005, 10104];
+const MIXED_DECK = [10101, 10203, 10312, 10403, 10505, 10601];
+
+function options(overrides: Partial<PlanOptions> = {}): PlanOptions {
+  return { ...defaultOptions(), ...overrides };
+}
+
+function plan(input: Partial<PlanInput> & { wanted: PlanInput['wanted'] }) {
+  return planRoute(
+    { deck: input.deck ?? MIXED_DECK, wanted: input.wanted, options: input.options ?? options() },
+    data,
+    indexes,
+  );
+}
+
+function want(...giftIds: number[]): PlanInput['wanted'] {
+  return giftIds.map((giftId) => ({ giftId, required: true }));
+}
+
+describe('floor modes', () => {
+  it('maps floors onto the four run modes around the Hard switch point', () => {
+    const normalRun = options({ hardFromFloor: null });
+    expect(modeForFloor(1, normalRun)).toBe('normal');
+    expect(modeForFloor(5, normalRun)).toBe('normal');
+
+    const switchAtThree = options({ hardFromFloor: 3 });
+    expect(modeForFloor(2, switchAtThree)).toBe('normal');
+    expect(modeForFloor(3, switchAtThree)).toBe('hard');
+
+    expect(modeForFloor(6, normalRun)).toBe('parallel');
+    expect(modeForFloor(10, normalRun)).toBe('parallel');
+    expect(modeForFloor(11, normalRun)).toBe('extreme');
+    expect(modeForFloor(15, normalRun)).toBe('extreme');
+  });
+});
+
+describe('general gifts', () => {
+  it('never forces a pack for a gift that any pack can drop', () => {
+    // 재에서 재로 is in two thirds of the packs and exclusive to none.
+    const result = plan({ wanted: want(9003) });
+    expect(result.generalDrops).toContain(9003);
+    expect(result.floors.every((floor) => floor.packId === null)).toBe(true);
+    expect(result.stats.requiredPacks).toBe(0);
+  });
+
+  it('says plainly that a general drop is not guaranteed', () => {
+    const result = plan({ wanted: want(9003) });
+    expect(result.warnings.map((w) => w.code)).toContain('general-drop-not-guaranteed');
+  });
+});
+
+describe('pack-exclusive gifts', () => {
+  it('routes 상납된 시가 to 교본 on Hard floor 5', () => {
+    const result = plan({ wanted: want(9283), options: options({ hardFromFloor: 1 }) });
+    const floor5 = result.floors.find((f) => f.floor === 5)!;
+    expect(floor5.packId).toBe(1025);
+    expect(floor5.mode).toBe('hard');
+    expect(floor5.pickups).toEqual([{ giftId: 9283, kind: 'exclusive', neededFor: null }]);
+    expect(result.unresolved).toEqual([]);
+  });
+
+  it('cannot reach a Hard-only pack on a Normal plan', () => {
+    const result = plan({
+      wanted: want(9283),
+      options: options({ hardFromFloor: null, giftObservationMax: 0 }),
+    });
+    expect(result.unresolved.map((u) => u.giftId)).toContain(9283);
+    expect(result.unresolved.find((u) => u.giftId === 9283)?.reason).toBe('no-pack-in-range');
+    expect(result.warnings.map((w) => w.code)).toContain('hard-required');
+  });
+
+  it('reports a conflict when two exclusives need the same single floor', () => {
+    // 상납된 시가 is exclusive to 교본 and 새하얀 캔버스 to 검과 작품; both packs only appear on
+    // Hard floor 5, so one run cannot hold both.
+    const result = plan({
+      wanted: want(9283, 9222),
+      options: options({ hardFromFloor: 1, giftObservationMax: 0 }),
+    });
+    expect(result.unresolved).toHaveLength(1);
+    expect(result.unresolved[0]!.reason).toBe('pack-conflict');
+    expect(result.stats.coveredWanted).toBe(1);
+  });
+
+  it('resolves that conflict with starlight observation when a budget is allowed', () => {
+    const result = plan({
+      wanted: want(9283, 9222),
+      options: options({ hardFromFloor: 1, giftObservationMax: 3 }),
+    });
+    expect(result.unresolved).toEqual([]);
+    expect(result.start.observed).toHaveLength(1);
+    expect(result.start.starlight).toBeGreaterThan(0);
+    // The cost table is an older season's, so the plan must say so.
+    expect(result.warnings.map((w) => w.code)).toContain('gift-observation-unverified');
+  });
+
+  it('frees up a second floor when the plan extends into 평행중첩', () => {
+    const result = plan({
+      wanted: want(9283, 9222),
+      options: options({ lastFloor: 10, giftObservationMax: 0 }),
+    });
+    expect(result.unresolved).toEqual([]);
+    const used = result.floors.filter((f) => f.packId !== null);
+    expect(used.map((f) => f.packId).sort()).toEqual([1025, 1026]);
+    // One of them has to sit on a 평행중첩 floor.
+    expect(used.some((f) => f.mode === 'parallel')).toBe(true);
+  });
+
+  it('forces Hard from floor 1 when planning past floor 5, and says why', () => {
+    const result = plan({ wanted: want(9283), options: options({ lastFloor: 10, hardFromFloor: null }) });
+    expect(result.floors.filter((f) => f.floor <= 5).every((f) => f.mode === 'hard')).toBe(true);
+    expect(result.warnings.map((w) => w.code)).toContain('parallel-requires-hard');
+  });
+});
+
+describe('fusion', () => {
+  it('expands 진혼 into a two-step chain that fits the shop', () => {
+    const result = plan({ wanted: want(9088) });
+    expect(result.fusions.map((f) => f.result)).toEqual([9157, 9088]);
+    // Ingredients before results: 요리 비법 전서 is consumed by 진혼.
+    expect(result.fusions[1]!.ingredients).toContain(9157);
+    for (const fusion of result.fusions) {
+      expect(fusion.ingredients.length).toBeLessThanOrEqual(data.rules.fusion.maxShopSlots);
+      expect(fusion.unreachable).toBe(false);
+    }
+  });
+
+  it('prefers the recipe that fits the shop over the spelled-out one', () => {
+    const expansion = expandRequirements(
+      want(9088),
+      indexes,
+      analyseDeck(MIXED_DECK, indexes),
+      data.rules.fusion.maxShopSlots,
+    );
+    const top = expansion.fusions.find((f) => f.result === 9088)!;
+    expect(top.ingredients).toEqual([9003, 9053, 9157]);
+  });
+
+  it('warns when a recipe would need more fusion slots than a shop has', () => {
+    const result = planRoute(
+      { deck: MIXED_DECK, wanted: want(9088), options: options() },
+      { ...data, rules: { ...data.rules, fusion: { ...data.rules.fusion, maxShopSlots: 2 } } },
+      indexes,
+    );
+    expect(result.warnings.map((w) => w.code)).toContain('fusion-slots');
+  });
+
+  it('schedules a fusion no earlier than the floor that supplies its last ingredient', () => {
+    const result = plan({ wanted: want(9280), options: options({ hardFromFloor: 1 }) });
+    const fusion = result.fusions.find((f) => f.result === 9280)!;
+    const supplyFloors = result.floors
+      .filter((f) => f.pickups.some((p) => fusion.ingredients.includes(p.giftId)))
+      .map((f) => f.floor);
+    for (const floor of supplyFloors) expect(fusion.earliestFloor).toBeGreaterThanOrEqual(floor);
+  });
+
+  it('picks keyword capstones matching the deck for the cross-keyword recipe', () => {
+    const burnDeck = [11216, 10716];
+    const expansion = expandRequirements(
+      want(9083),
+      indexes,
+      analyseDeck(burnDeck, indexes),
+      data.rules.fusion.maxShopSlots,
+    );
+    const mixed = expansion.fusions.find((f) => f.result === 9083)!;
+    // Three attack-type capstones are mandatory, plus two of the seven keyword ones.
+    expect(mixed.ingredients).toHaveLength(5);
+    for (const id of [9142, 9147, 9152]) expect(mixed.ingredients).toContain(id);
+  });
+});
+
+describe('deck conditions', () => {
+  it('counts identities that inflict a keyword, not identities tagged with it', () => {
+    const stats = analyseDeck([10101, 10914], indexes);
+    // 10101 inflicts Sinking; 10914 inflicts Sinking and Charge.
+    expect(stats.keywordCounts.formation.Sinking).toBe(2);
+    expect(stats.keywordCounts.formation.Charge).toBe(1);
+  });
+
+  it('separates the deployed six from the whole formation', () => {
+    const stats = analyseDeck([10101, 10102, 10403, 10505, 10601, 10707, 10914], indexes);
+    expect(stats.deployed).toHaveLength(6);
+    expect(stats.reserve).toEqual([10914]);
+    expect(stats.keywordCounts.reserve.Sinking).toBe(1);
+  });
+
+  it('reports an unmet faction condition with the real counts', () => {
+    const result = plan({ deck: [10101], wanted: want(9283), options: options({ hardFromFloor: 1 }) });
+    const report = result.conditions.find((c) => c.giftId === 9283)!;
+    expect(report.satisfied).toBe(false);
+    expect(report.have).toBe(0);
+    expect(report.need).toBe(3);
+    expect(result.warnings.map((w) => w.code)).toContain('condition-unmet');
+  });
+
+  it('satisfies a Blade Lineage condition with a Blade Lineage deck', () => {
+    const bladeIdentities = data.identities
+      .filter((identity) => identity.factions.includes('BLADE_LINEAGE'))
+      .slice(0, 3)
+      .map((identity) => identity.id);
+    expect(bladeIdentities.length).toBeGreaterThanOrEqual(3);
+    const result = plan({
+      deck: bladeIdentities,
+      wanted: want(9280),
+      options: options({ hardFromFloor: 1 }),
+    });
+    const report = result.conditions.find((c) => c.giftId === 9280)!;
+    expect(report.satisfied).toBe(true);
+    expect(report.have).toBeGreaterThanOrEqual(3);
+  });
+
+  it('still routes a gift whose condition the deck fails', () => {
+    const result = plan({ deck: [10101], wanted: want(9283), options: options({ hardFromFloor: 1 }) });
+    expect(result.floors.find((f) => f.floor === 5)?.packId).toBe(1025);
+    expect(result.unresolved).toEqual([]);
+  });
+
+  it('picks the deck dominant keyword when asked for an automatic start', () => {
+    const stats = analyseDeck(BLADE_LINEAGE_DECK, indexes);
+    const keyword = dominantKeyword(stats);
+    expect(keyword).not.toBeNull();
+    const result = plan({ deck: BLADE_LINEAGE_DECK, wanted: want(9003) });
+    expect(result.start.keyword).toBe(keyword);
+  });
+});
+
+describe('observation cost', () => {
+  it('rises by the step for each use in a run', () => {
+    expect(observationCost(0, data.rules, false)).toBe(0);
+    expect(observationCost(1, data.rules, false)).toBe(20);
+    expect(observationCost(2, data.rules, false)).toBe(50);
+    expect(observationCost(3, data.rules, false)).toBe(90);
+  });
+
+  it('applies the unvisited-pack multiplier when asked', () => {
+    expect(observationCost(1, data.rules, true)).toBe(30);
+  });
+
+  it('does not charge for an EXTREME floor, where observation is impossible', () => {
+    const result = plan({
+      wanted: want(9283),
+      options: options({ lastFloor: 15, giftObservationMax: 0 }),
+    });
+    for (const floor of result.floors.filter((f) => f.mode === 'extreme')) {
+      expect(floor.observation.possible).toBe(false);
+      expect(floor.observation.starlight).toBe(0);
+    }
+  });
+});
+
+describe('pins and bans', () => {
+  it('keeps a pinned pack and charges no observation for it', () => {
+    const result = plan({
+      wanted: want(9283),
+      options: options({ hardFromFloor: 1, pinnedPacks: { 5: 1025 } }),
+    });
+    const floor5 = result.floors.find((f) => f.floor === 5)!;
+    expect(floor5.packId).toBe(1025);
+    expect(floor5.reason).toBe('pinned');
+    expect(floor5.observation.needed).toBe(false);
+  });
+
+  it('never uses a banned pack', () => {
+    const result = plan({
+      wanted: want(9283),
+      options: options({ hardFromFloor: 1, bannedPacks: [1025], giftObservationMax: 0 }),
+    });
+    expect(result.floors.every((f) => f.packId !== 1025)).toBe(true);
+    expect(result.unresolved.map((u) => u.giftId)).toContain(9283);
+  });
+});
+
+describe('guarantees', () => {
+  it('is deterministic: the same input produces byte-identical output', () => {
+    const input = {
+      deck: MIXED_DECK,
+      wanted: want(9283, 9222, 9088, 9003),
+      options: options({ lastFloor: 10 }),
+    };
+    const first = planRoute(input, data, indexes);
+    const second = planRoute(input, data, indexes);
+    // elapsedMs is wall-clock, so compare everything else.
+    expect({ ...second, stats: { ...second.stats, elapsedMs: 0 } }).toEqual({
+      ...first,
+      stats: { ...first.stats, elapsedMs: 0 },
+    });
+  });
+
+  it('never assigns the same pack to two floors', () => {
+    const result = plan({
+      wanted: want(9283, 9222, 9217, 9214, 9273),
+      options: options({ lastFloor: 15 }),
+    });
+    const used = result.floors.map((f) => f.packId).filter((id): id is number => id !== null);
+    expect(new Set(used).size).toBe(used.length);
+  });
+
+  it('only assigns packs that are actually available on their floor and mode', () => {
+    const result = plan({
+      wanted: want(9283, 9222, 9217, 9214, 9273),
+      options: options({ lastFloor: 15 }),
+    });
+    for (const floor of result.floors) {
+      if (floor.packId === null) continue;
+      const pack = indexes.packById.get(floor.packId)!;
+      expect(pack.availability[floor.mode], `floor ${floor.floor} pack ${floor.packId}`).toContain(
+        floor.floor,
+      );
+    }
+  });
+
+  it('accounts for every wanted gift, either in the plan or in unresolved', () => {
+    const wanted = want(9283, 9222, 9088, 9003, 9999999);
+    const result = plan({ wanted, options: options({ lastFloor: 10 }) });
+    const pickedUp = new Set(result.floors.flatMap((f) => f.pickups.map((p) => p.giftId)));
+    const accountedFor = new Set([
+      ...pickedUp,
+      ...result.generalDrops,
+      ...result.start.observed,
+      ...(result.start.startGift ? [result.start.startGift] : []),
+      ...result.fusions.map((f) => f.result),
+      ...result.unresolved.map((u) => u.giftId),
+    ]);
+    for (const entry of wanted) expect(accountedFor.has(entry.giftId), String(entry.giftId)).toBe(true);
+  });
+
+  it('plans a 15-floor run with twenty wanted gifts inside the time budget', () => {
+    const wanted = data.gifts
+      .filter((g) => g.acquisition.kind === 'packLimited')
+      .slice(0, 20)
+      .map((g) => ({ giftId: g.id, required: true }));
+    const started = performance.now();
+    const result = planRoute(
+      { deck: MIXED_DECK, wanted, options: options({ lastFloor: 15 }) },
+      data,
+      indexes,
+    );
+    const elapsed = performance.now() - started;
+    expect(elapsed).toBeLessThan(100);
+    expect(result.floors).toHaveLength(15);
+  });
+
+  it('handles an empty request without inventing work', () => {
+    const result = plan({ wanted: [] });
+    expect(result.floors.every((f) => f.packId === null)).toBe(true);
+    expect(result.unresolved).toEqual([]);
+    expect(result.stats.totalWanted).toBe(0);
+  });
+
+  it('reports an unknown gift id instead of crashing', () => {
+    const result = plan({ wanted: want(9999999) });
+    expect(result.unresolved).toEqual([
+      expect.objectContaining({ giftId: 9999999, reason: 'not-obtainable' }),
+    ]);
+  });
+});
