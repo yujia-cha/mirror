@@ -285,7 +285,11 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
 
   // b) rescue: what the search had to leave out
   if (search.unresolvedGiftIds.length > 0 && observed.length < budget) {
-    const missed = [...search.unresolvedGiftIds].sort((a, b) => scarcity(a, indexes) - scarcity(b, indexes) || a - b);
+    // Required gifts are rescued first; among equals the scarcer one, then the lower id.
+    const isRequired = (giftId: number): number => (requirements.some((r) => r.giftId === giftId && r.required) ? 1 : 0);
+    const missed = [...search.unresolvedGiftIds].sort(
+      (a, b) => isRequired(b) - isRequired(a) || scarcity(a, indexes) - scarcity(b, indexes) || a - b,
+    );
     let changed = false;
     for (const giftId of missed) {
       if (observed.length >= budget) break;
@@ -464,6 +468,7 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
     unresolved.push({
       giftId: fusion.result,
       reason: 'fusion-ingredient-unresolved',
+      missing,
       detail: {
         ko: `재료 ${missing.join(', ')}를 구할 수 없어 조합할 수 없습니다.`,
         en: `Cannot be fused: ingredients ${missing.join(', ')} are not obtainable in this plan.`,

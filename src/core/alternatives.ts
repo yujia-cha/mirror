@@ -69,7 +69,13 @@ export function planAlternatives(
     .filter((floor) => floor.reason === 'required' && contested.has(floor.floor))
     .flatMap((floor) => floor.pickups.flatMap((p) => roots(p.giftId)));
 
+  // A gift the user marked as required is never the one to give up — as long as the input tells
+  // required gifts apart from the rest. When everything is required (the CLI default) there is no
+  // preference to honour and every side of the conflict is a candidate.
+  const tiered = input.wanted.some((w) => !w.required);
+  const required = new Set(tiered ? input.wanted.filter((w) => w.required).map((w) => w.giftId) : []);
   const candidates = [...new Set([...conflicts.flatMap((id) => roots(id)), ...occupants])]
+    .filter((id) => !required.has(id))
     .sort((a, b) => a - b)
     .slice(0, maxRuns);
 

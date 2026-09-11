@@ -11,14 +11,13 @@ import type { FloorPlan, GameIndexes, ObservedGift, RoutePlan } from '../../core
 import { t, type Lang } from '../i18n.ts';
 import { bandOf } from '../lib/labels.ts';
 import type { Judgement } from '../lib/judgement.ts';
-import { MAX_FLOOR, freeRuns, laneBlocks, timetableRows, type Block } from '../lib/timetable.ts';
+import { freeRuns, laneBlocks, timetableRows, type Block } from '../lib/timetable.ts';
 import { GiftIcon } from './GiftIcon.tsx';
 import { PackImage } from './PackImage.tsx';
 
 export interface TimetableProps {
   plan: RoutePlan;
   lastFloor: number;
-  hard: boolean;
   indexes: GameIndexes;
   /** Condition judgement per wanted gift, for the icon borders. */
   judgements: Map<number, Judgement | null>;
@@ -196,7 +195,7 @@ function Legend({ lang }: { lang: Lang }) {
   );
 }
 
-export function Timetable({ plan, lastFloor, hard, indexes, judgements, giftTitle, packName, keywordLabel, onToggleObserved, lang }: TimetableProps) {
+export function Timetable({ plan, lastFloor, indexes, judgements, giftTitle, packName, keywordLabel, onToggleObserved, lang }: TimetableProps) {
   const blocks = laneBlocks(plan.floors);
   const lanes = Math.max(1, ...blocks.map((b) => b.lane + 1));
   const runs = freeRuns(plan.floors, blocks);
@@ -227,10 +226,9 @@ export function Timetable({ plan, lastFloor, hard, indexes, judgements, giftTitl
   const freeLabel = (run: { from: number; to: number }): string =>
     run.from === run.to ? t('routeFree', lang) : t('routeFreeRange', lang, { from: run.from, to: run.to });
   const laneRows = `repeat(${lanes}, minmax(96px, auto))`;
-  const outCount = MAX_FLOOR - lastFloor;
 
   const bandLabels: [number, number, string][] = [
-    [1, 5, t(hard ? 'optionBandHard' : 'optionBandNormal', lang)],
+    [1, 5, t('optionBandHard', lang)],
     [6, 10, t('optionBandParallel', lang)],
     [11, 15, t('optionBandExtreme', lang)],
   ];
@@ -241,8 +239,7 @@ export function Timetable({ plan, lastFloor, hard, indexes, judgements, giftTitl
     const grown = focus !== null && floor >= focus.from && floor <= focus.to;
     return grown ? 'minmax(0, 2.2fr)' : 'minmax(0, 1fr)';
   });
-  const columns = ['84px', ...floorTracks, outCount > 0 ? '44px' : ''].filter(Boolean).join(' ');
-  const outColumn = lastFloor + 2;
+  const columns = ['84px', ...floorTracks].join(' ');
   const focusHandlers = (block: Block) => ({
     onPointerEnter: () => setFocus({ from: block.from, to: block.to }),
     onPointerLeave: () => setFocus(null),
@@ -264,7 +261,6 @@ export function Timetable({ plan, lastFloor, hard, indexes, judgements, giftTitl
               {label}
             </div>
           ))}
-        {outCount > 0 ? <div className="h-6 bg-hatch" style={{ gridColumn: outColumn }} /> : null}
       </div>
       <div className="grid-animate grid border-b border-line-strong" style={{ gridTemplateColumns: columns }}>
         <div className="flex h-9 items-center justify-center border-r border-line font-mono text-xs">{t('routeStart', lang)}</div>
@@ -273,11 +269,6 @@ export function Timetable({ plan, lastFloor, hard, indexes, judgements, giftTitl
             {f}
           </div>
         ))}
-        {outCount > 0 ? (
-          <div className="flex h-9 items-center justify-center bg-hatch font-mono text-xs text-fg-3" style={{ gridColumn: outColumn }}>
-            {lastFloor + 1}~
-          </div>
-        ) : null}
       </div>
       <div className="grid-animate relative grid" style={{ gridTemplateColumns: columns, gridTemplateRows: laneRows }}>
         <div aria-hidden className="grid-animate pointer-events-none absolute inset-0 grid" style={{ gridTemplateColumns: columns }}>
@@ -285,7 +276,6 @@ export function Timetable({ plan, lastFloor, hard, indexes, judgements, giftTitl
           {Array.from({ length: lastFloor }, (_, i) => (
             <div key={i} className={`border-r border-line ${bandClass(bandOf(i + 1))}`} />
           ))}
-          {outCount > 0 ? <div className="bg-hatch" /> : null}
         </div>
         {startCell ? (
           <div className="relative m-1.5 flex min-w-0 flex-col items-center gap-2 rounded-sm border border-line-strong bg-surface px-1 py-1.5" style={{ gridColumn: 1, gridRow: `1 / span ${lanes}` }} data-testid="start-cell">
@@ -312,15 +302,6 @@ export function Timetable({ plan, lastFloor, hard, indexes, judgements, giftTitl
             <BlockBody block={block} indexes={indexes} judgements={judgements} giftTitle={giftTitle} packName={packName} lang={lang} orientation="columns" />
           </div>
         ))}
-        {outCount > 0 ? (
-          <div
-            className="relative flex items-center justify-center px-1 text-center text-xs leading-tight text-fg-3"
-            style={{ gridColumn: outColumn, gridRow: `1 / span ${lanes}` }}
-            title={`${lastFloor + 1}~${MAX_FLOOR}`}
-          >
-            {t('routeOutOfRange', lang)}
-          </div>
-        ) : null}
       </div>
     </div>
   );

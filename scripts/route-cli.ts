@@ -6,6 +6,7 @@
  *   npm run route -- --share '#s=...'        (a URL hash copied from the web app)
  *
  * Flags: --deck, --want, --floors, --difficulty normal|hard, --hard-from N,
+ *        --must gift,gift (these are required; the rest are best-effort),
  *        --observe gift,gift (pin these for 기프트 관측), --no-observe (planner may not observe),
  *        --pin floor:pack,…, --ban pack,…, --alternatives, --json, --explain, --trace
  */
@@ -70,7 +71,10 @@ const input: PlanInput = share
   ? (fromShare(share) ?? { deck: [], wanted: [], options: defaultOptions() })
   : {
       deck: numbers(flagValue('--deck')),
-      wanted: numbers(flagValue('--want')).map((giftId) => ({ giftId, required: true })),
+      wanted: numbers(flagValue('--want')).map((giftId) => ({
+        giftId,
+        required: flagValue('--must') === undefined || numbers(flagValue('--must')).includes(giftId),
+      })),
       options: {
         ...defaultOptions(),
         lastFloor: parseFloors(flagValue('--floors')),

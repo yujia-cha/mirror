@@ -4,6 +4,7 @@ import lzString from 'lz-string';
 import type { PlanOptions } from '../core/types.ts';
 import { defaultOptions } from '../core/index.ts';
 import type { Lang } from './i18n.ts';
+import type { Priority, PriorityMap } from './lib/plan-input.ts';
 
 export type Step = 1 | 2 | 3;
 
@@ -13,6 +14,8 @@ export interface SharedState {
   /** Who fights, as a subset of `deck`; the order comes from the deck. */
   deployed: number[];
   wanted: number[];
+  /** Per-gift priority; gifts absent here are planned as best-effort. */
+  priority: PriorityMap;
   options: PlanOptions;
 }
 
@@ -31,6 +34,8 @@ interface AppState extends SharedState {
   clearWanted: () => void;
   /** Pin or unpin a wanted gift for 기프트 관측; at most `max` pins. */
   toggleObserved: (giftId: number, max: number) => void;
+  /** 반드시 / 보통 / 포기 for a wanted gift. */
+  setPriority: (giftId: number, priority: Priority) => void;
   setOptions: (patch: Partial<PlanOptions>) => void;
   resetOptions: () => void;
   setStep: (step: Step) => void;
@@ -53,19 +58,49 @@ function prefersDark(): boolean {
     : window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
+/** The app always plans the whole run: floors 1-15, which means Hard from floor 1. */
+export const APP_LAST_FLOOR = 15;
+
+/** The planner's defaults with the app's fixed floor range applied. */
+export function appDefaultOptions(): PlanOptions {
+  return { ...defaultOptions(), lastFloor: APP_LAST_FLOOR, hardFromFloor: 1 };
+}
+
 /**
  * Keep only the option keys the planner knows, so a link or a saved state from an older version
- * (which carried `giftObservationMax`) cannot smuggle stale keys into the plan.
+ * (which carried `giftObservationMax`, or a shorter floor range) cannot smuggle stale keys or a
+ * partial run into the plan.
  */
 export function sanitizeOptions(raw: unknown): PlanOptions {
-  const defaults = defaultOptions();
+  const defaults = appDefaultOptions();
   const source = (raw ?? {}) as Record<string, unknown>;
   const out = { ...defaults } as Record<string, unknown>;
   for (const key of Object.keys(defaults)) if (key in source) out[key] = source[key];
   if ('deployed' in source) out.deployed = source.deployed;
   const observed = Array.isArray(out.observedGifts) ? out.observedGifts : [];
   out.observedGifts = [...new Set(observed.filter((n): n is number => typeof n === 'number'))];
+  out.lastFloor = APP_LAST_FLOOR;
+  out.hardFromFloor = 1;
   return out as unknown as PlanOptions;
+}
+
+/** Priorities only for the gifts in `wanted`, with the two non-default values. */
+export function sanitizePriority(raw: unknown, wanted: number[]): PriorityMap {
+  const out: PriorityMap = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const id = Number(key);
+    if (!wanted.includes(id)) continue;
+    if (value === 'must' || value === 'skip') out[id] = value;
+  }
+  return out;
+}
+
+function withoutGift(priority: PriorityMap, giftId: number): PriorityMap {
+  if (!(giftId in priority)) return priority;
+  const next = { ...priority };
+  delete next[giftId];
+  return next;
 }
 
 /** A pinned observation only makes sense for a wanted gift. */
@@ -92,7 +127,8 @@ export const useApp = create<AppState>()(
       deck: [],
       deployed: [],
       wanted: [],
-      options: defaultOptions(),
+      priority: {},
+      options: appDefaultOptions(),
       lang: 'ko',
       dark: prefersDark(),
       step: 1,
@@ -139,16 +175,28 @@ export const useApp = create<AppState>()(
           const wanted = state.wanted.includes(giftId)
             ? state.wanted.filter((id) => id !== giftId)
             : [...state.wanted.filter((id) => !dropWithIt.includes(id)), giftId].sort((a, b) => a - b);
-          return { wanted, options: withObservedIn(state.options, wanted) };
+          return { wanted, priority: sanitizePriority(state.priority, wanted), options: withObservedIn(state.options, wanted) };
         }),
 
       removeWanted: (giftId) =>
         set((state) => {
           const wanted = state.wanted.filter((id) => id !== giftId);
-          return { wanted, options: withObservedIn(state.options, wanted) };
+          return { wanted, priority: withoutGift(state.priority, giftId), options: withObservedIn(state.options, wanted) };
         }),
 
-      clearWanted: () => set((state) => ({ wanted: [], options: { ...state.options, observedGifts: [] } })),
+      clearWanted: () => set((state) => ({ wanted: [], priority: {}, options: { ...state.options, observedGifts: [] } })),
+
+      setPriority: (giftId, priority) =>
+        set((state) => {
+          if (!state.wanted.includes(giftId)) return {};
+          const next = priority === 'normal' ? withoutGift(state.priority, giftId) : { ...state.priority, [giftId]: priority };
+          // A given-up gift is not planned, so a pinned observation on it would be wasted.
+          const options =
+            priority === 'skip' && state.options.observedGifts.includes(giftId)
+              ? { ...state.options, observedGifts: state.options.observedGifts.filter((id) => id !== giftId) }
+              : state.options;
+          return { priority: next, options };
+        }),
 
       toggleObserved: (giftId, max) =>
         set((state) => {
@@ -161,7 +209,7 @@ export const useApp = create<AppState>()(
         }),
 
       setOptions: (patch) => set((state) => ({ options: { ...state.options, ...patch } })),
-      resetOptions: () => set({ options: defaultOptions() }),
+      resetOptions: () => set({ options: appDefaultOptions() }),
       setStep: (step) => set({ step }),
       setLang: (lang) => set({ lang }),
       toggleDark: () => set((state) => ({ dark: !state.dark })),
@@ -171,26 +219,30 @@ export const useApp = create<AppState>()(
           deck: shared.deck,
           deployed: shared.deployed.filter((id) => shared.deck.includes(id)),
           wanted: shared.wanted,
+          priority: sanitizePriority(shared.priority, shared.wanted),
           options: sanitizeOptions(shared.options),
           step: shared.deck.length === 0 ? 1 : shared.wanted.length === 0 ? 2 : 3,
         }),
     }),
     {
       name: 'md-route-planner',
-      version: 3,
+      version: 4,
       migrate: (persisted, version) => {
         let state = (persisted ?? {}) as Partial<AppState>;
         if (version < 2) {
           const deck = Array.isArray(state.deck) ? state.deck : [];
           state = { ...state, deck, deployed: deck.slice(0, LEGACY_DEPLOYED), step: 1 as Step };
         }
-        // v3 replaced the observation count with pinned observation gifts.
-        return { ...state, options: sanitizeOptions(state.options) } as AppState;
+        // v3 replaced the observation count with pinned observation gifts; v4 fixed the floor
+        // range at 15 and added per-gift priorities.
+        const wanted = Array.isArray(state.wanted) ? state.wanted : [];
+        return { ...state, wanted, priority: sanitizePriority(state.priority, wanted), options: sanitizeOptions(state.options) } as AppState;
       },
       partialize: (state) => ({
         deck: state.deck,
         deployed: state.deployed,
         wanted: state.wanted,
+        priority: state.priority,
         options: state.options,
         lang: state.lang,
         dark: state.dark,
@@ -208,10 +260,11 @@ const HASH_PREFIX = '#s=';
 
 export function encodeShared(state: SharedState): string {
   const payload = JSON.stringify({
-    v: 2,
+    v: 3,
     deck: state.deck,
     deployed: state.deployed,
     wanted: state.wanted,
+    priority: state.priority,
     options: state.options,
   });
   return HASH_PREFIX + lzString.compressToEncodedURIComponent(payload);
@@ -229,10 +282,12 @@ export function decodeShared(hash: string): SharedState | null {
     const deployed = Array.isArray(parsed.deployed)
       ? parsed.deployed.filter((n): n is number => typeof n === 'number' && deck.includes(n))
       : deck.slice(0, LEGACY_DEPLOYED);
+    const wanted = parsed.wanted.filter((n): n is number => typeof n === 'number');
     return {
       deck,
       deployed,
-      wanted: parsed.wanted.filter((n): n is number => typeof n === 'number'),
+      wanted,
+      priority: sanitizePriority(parsed.priority, wanted),
       options: sanitizeOptions(parsed.options),
     };
   } catch {
