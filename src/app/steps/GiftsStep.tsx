@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Search, User, X } from 'lucide-react';
 import type { AcquisitionKind, GameData, Gift, Keyword, Sin } from '../../core/schema.ts';
 import { evaluateConditions } from '../../core/index.ts';
@@ -25,7 +25,7 @@ const PRICE_BANDS: Record<PriceFilter, [number, number]> = { p1: [0, 150], p2: [
 
 const ROW = 44;
 const SUB_ROW = 36;
-const DETAIL = 64;
+const DETAIL = 80;
 
 interface Row {
   kind: 'parent' | 'child';
@@ -50,6 +50,10 @@ function Progress({ report, lang, enums }: { report: ConditionReport; lang: Lang
   );
 }
 
+function progressNumber(report: ConditionReport): string {
+  return report.have === null || report.need === null ? '?' : `${report.have}/${report.need}`;
+}
+
 export function GiftsStep({ data, indexes, stats, lang }: Props) {
   const deck = useApp((s) => s.deck);
   const wanted = useApp((s) => s.wanted);
@@ -66,6 +70,7 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
   const [price, setPrice] = useState<PriceFilter | 'all'>('all');
   const [expanded, setExpanded] = useState<number | null>(null);
   const [otherOpen, setOtherOpen] = useState(false);
+  const [jump, setJump] = useState<{ id: number; nonce: number } | null>(null);
   const filtersOn = keyword !== 'all' || tier !== 'all' || acquisition !== 'all' || sin !== 'all' || price !== 'all' || query.trim() !== '';
   const resetFilters = (): void => {
     setQuery('');
@@ -124,6 +129,17 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
   }, [data, indexes, wanted, conditionByGift, childrenOf, query, keyword, tier, acquisition, sin, price]);
 
   const total = groups.active.length + groups.near.length + groups.other.length;
+  useEffect(() => {
+    if (!jump) return;
+    const el = document.getElementById(`gift-${jump.id}`);
+    if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'center' });
+  }, [jump, otherOpen]);
+  const jumpTo = (id: number): void => {
+    const gift = indexes.giftById.get(id);
+    const parentId = gift?.upgradeOf ?? id;
+    if (groups.other.some((e) => e.gift.id === parentId)) setOtherOpen(true);
+    setJump({ id, nonce: Date.now() });
+  };
   const giftName = (id: number): string => pick(indexes.giftById.get(id)?.name, lang);
 
   const toggle = (gift: Gift): void => toggleWanted(gift.id, (childrenOf.get(gift.id) ?? []).map((g) => g.id));
@@ -132,16 +148,28 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
     const gift = row.entry.gift;
     if (row.kind === 'child') {
       const parentSelected = row.parent ? wanted.includes(row.parent.id) : false;
+      const selected = wanted.includes(gift.id);
+      const { badge, label } = badgeFor(gift.acquisition.kind);
       return (
-        <div className="flex h-9 items-center gap-2 border-b border-t border-dashed border-line bg-surface-2 px-3 pl-9" data-testid="gift-child">
-          <ArrowRight size={12} aria-hidden className="text-fg-3" />
+        <div
+          id={`gift-${gift.id}`}
+          className="flex h-9 items-center gap-2 border-b border-t border-dashed border-line bg-surface-2 px-3 pl-7"
+          data-testid="gift-child"
+          title={row.parent ? t('giftSubOf', lang, { parent: pick(row.parent.name, lang) }) : undefined}
+        >
+          <input
+            type="checkbox"
+            checked={parentSelected || selected}
+            disabled={parentSelected}
+            onChange={() => toggleWanted(gift.id)}
+            aria-label={pick(gift.name, lang)}
+            className="h-4 w-4 flex-none accent-[var(--color-ink)]"
+          />
+          <ArrowRight size={12} aria-hidden className="flex-none text-fg-3" />
           <span className="min-w-0 flex-1 truncate text-sm text-fg-2">{pick(gift.name, lang)}</span>
           <span className="font-mono text-xs text-fg-3">T{gift.tier ?? '?'}</span>
-          {parentSelected ? (
-            <Badge tone="sure">{t('giftIncluded', lang)}</Badge>
-          ) : (
-            <span className="text-xs text-fg-3">{t('giftSubOf', lang, { parent: row.parent ? pick(row.parent.name, lang) : '' })}</span>
-          )}
+          {parentSelected ? <Badge tone="sure">{t('giftIncluded', lang)}</Badge> : <Badge tone={badge}>{t(label, lang)}</Badge>}
+          {gift.hardOnly ? <Badge tone="hard">{t('hardOnly', lang)}</Badge> : null}
         </div>
       );
     }
@@ -156,7 +184,7 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
           : null;
     const open = expanded === gift.id;
     return (
-      <div className="border-b border-line" data-testid="gift-row">
+      <div className="border-b border-line" data-testid="gift-row" id={`gift-${gift.id}`}>
         <div className="flex min-h-11 items-center gap-2 px-3">
           <input
             type="checkbox"
@@ -176,9 +204,12 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
             <span className="whitespace-nowrap text-xs font-medium text-fg-2">{t('giftLack', lang, { name: lackName, n: lack.need - lack.have })}</span>
           ) : null}
           {row.entry.reports[0] ? (
-            <span className="hidden sm:flex">
-              <Progress report={row.entry.lack ?? row.entry.reports[0]} lang={lang} enums={data.enums} />
-            </span>
+            <>
+              <span className="font-mono text-xs text-fg-3 sm:hidden">{progressNumber(row.entry.lack ?? row.entry.reports[0])}</span>
+              <span className="hidden sm:flex">
+                <Progress report={row.entry.lack ?? row.entry.reports[0]} lang={lang} enums={data.enums} />
+              </span>
+            </>
           ) : null}
         </div>
         {open ? (
@@ -212,6 +243,8 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
   const section = (group: GiftGroup, titleKey: 'giftsActive' | 'giftsNear' | 'giftsOther', collapsed?: boolean, onToggle?: () => void) => {
     const entries = groups[group];
     const rows = rowsFor(entries);
+    const chosen = rows.filter((row) => wanted.includes(row.entry.gift.id)).length;
+    const jumpIndex = jump ? rows.findIndex((row) => row.entry.gift.id === jump.id) : -1;
     return (
       <Card className="overflow-hidden">
         <button
@@ -220,13 +253,14 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
           aria-expanded={!collapsed}
           className="flex h-9 w-full items-center justify-between border-b border-line bg-surface-2 px-3 text-left"
         >
-          <span className="text-sm font-semibold">
+          <span className="flex items-center gap-2 text-sm font-semibold">
             {t(titleKey, lang)} <span className="font-mono text-xs text-fg-3">{entries.length}</span>
+            {collapsed && chosen > 0 ? <Badge tone="neutral">{t('giftsSelected', lang, { n: chosen })}</Badge> : null}
           </span>
           <span className="text-fg-3">{collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</span>
         </button>
         {collapsed ? null : group === 'other' ? (
-          <VirtualList rows={rows} renderRow={renderRow} total={data.gifts.length} lang={lang} />
+          <VirtualList rows={rows} renderRow={renderRow} lang={lang} scrollTo={jumpIndex >= 0 && jump ? { index: jumpIndex, nonce: jump.nonce } : null} />
         ) : (
           rows.map((row) => <div key={`${row.kind}-${row.entry.gift.id}`}>{renderRow(row)}</div>)
         )}
@@ -313,7 +347,9 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
           <span className="mr-0.5 text-xs font-medium text-fg-2">{t('giftsSelected', lang, { n: wanted.length })}</span>
           {wanted.map((id) => (
             <span key={id} className="inline-flex h-6 items-center gap-1 rounded-full border border-line-strong bg-surface pl-2 pr-1 text-xs text-fg">
-              {giftName(id)}
+              <button type="button" onClick={() => jumpTo(id)} aria-label={t('giftGoTo', lang, { name: giftName(id) })} className="hover:underline">
+                {giftName(id)}
+              </button>
               <button type="button" onClick={() => removeWanted(id)} aria-label={t('removeFromSelection', lang, { name: giftName(id) })} className="text-fg-3">
                 <X size={11} />
               </button>
@@ -340,14 +376,31 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
   );
 }
 
-function VirtualList({ rows, renderRow, total, lang }: { rows: Row[]; renderRow: (row: Row) => React.ReactNode; total: number; lang: Lang }) {
+function VirtualList({
+  rows,
+  renderRow,
+  lang,
+  scrollTo,
+}: {
+  rows: Row[];
+  renderRow: (row: Row) => React.ReactNode;
+  lang: Lang;
+  scrollTo: { index: number; nonce: number } | null;
+}) {
   const ref = useRef<HTMLDivElement | null>(null);
   const heights = useMemo(() => rows.map((r) => r.height), [rows]);
-  const { start, end, padTop, padBottom } = useVirtualRows(heights, ref);
+  const expanded = rows.some((r) => r.height > ROW);
+  const { start, end, padTop, padBottom } = useVirtualRows(heights, ref, expanded ? 10 : 6);
+  useEffect(() => {
+    if (!scrollTo || !ref.current) return;
+    let offset = 0;
+    for (let i = 0; i < scrollTo.index; i += 1) offset += heights[i] ?? 0;
+    ref.current.scrollTop = Math.max(0, offset - 80);
+  }, [scrollTo, heights]);
   return (
     <div>
       <div className="sticky top-0 z-10 border-b border-line bg-surface px-3 py-1 text-right text-xs text-fg-3">
-        {t('giftsShowing', lang, { total, from: Math.min(rows.length, start + 1), to: Math.min(rows.length, end) })}
+        {t('giftsShowing', lang, { total: rows.length, from: Math.min(rows.length, start + 1), to: Math.min(rows.length, end) })}
       </div>
       <div ref={ref} className="max-h-[60vh] overflow-y-auto" data-testid="virtual-list">
         <div style={{ height: padTop }} />

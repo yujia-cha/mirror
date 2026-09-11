@@ -31,10 +31,13 @@ export function App() {
   const [attempt, setAttempt] = useState(0);
   const [sharedCopied, setSharedCopied] = useState(false);
 
-  // A share link must win over whatever localStorage remembers, or the link would not work.
+  // A share link must win over whatever localStorage remembers, or the link would not work. The
+  // hash is consumed once and dropped from the URL, or a later reload would undo the user's edits.
   useEffect(() => {
+    if (!window.location.hash) return;
     const shared = decodeShared(window.location.hash);
     if (shared) applyShared(shared);
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
   }, [applyShared]);
 
   useEffect(() => {
@@ -70,7 +73,6 @@ export function App() {
     const state = useApp.getState();
     const hash = encodeShared({ deck: state.deck, deployed: state.deployed, wanted: state.wanted, options: state.options });
     const url = `${window.location.origin}${window.location.pathname}${hash}`;
-    window.history.replaceState(null, '', hash);
     await navigator.clipboard.writeText(url);
     setSharedCopied(true);
     window.setTimeout(() => setSharedCopied(false), 2000);

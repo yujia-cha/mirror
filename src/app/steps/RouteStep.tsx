@@ -1,14 +1,15 @@
 import { useMemo, useState } from 'react';
-import { ArrowRight, Check, ChevronLeft, ChevronRight, Copy, Eye, Hourglass, Lock, Star, TriangleAlert, X } from 'lucide-react';
+import { ArrowRight, Check, ChevronLeft, ChevronRight, CircleHelp, Copy, Eye, Hourglass, Lock, RefreshCw, Star, TriangleAlert, X } from 'lucide-react';
 import type { GameData, Keyword } from '../../core/schema.ts';
 import { planRoute } from '../../core/index.ts';
-import type { DeckStats, GameIndexes, PlanOptions, Unresolved } from '../../core/types.ts';
+import type { DeckStats, GameIndexes } from '../../core/types.ts';
 import { pick, t, type Lang } from '../i18n.ts';
 import { useApp } from '../store.ts';
 import { keywordName } from '../format.ts';
 import { conditionText } from '../condition-text.ts';
 import { UNRESOLVED_LABEL, bandOf } from '../lib/labels.ts';
 import { planToText } from '../lib/plan-text.ts';
+import { actionsFor, type UnresolvedAction } from '../lib/unresolved-actions.ts';
 import { Badge, Button, Card, Chip, Notice, SectionTitle, Segmented, Toast } from '../components/ui.tsx';
 import { Timetable } from '../components/Timetable.tsx';
 import { MAX_FLOOR } from '../lib/timetable.ts';
@@ -57,19 +58,15 @@ function FloorBandPicker({ lastFloor, onChange, lang }: { lastFloor: number; onC
   );
 }
 
-function actionsFor(entry: Unresolved, options: PlanOptions, lang: Lang, setOptions: (patch: Partial<PlanOptions>) => void) {
-  const out: { label: string; run: () => void }[] = [];
-  if (entry.reason === 'hard-only' && options.hardFromFloor === null) {
-    out.push({ label: t('actionSwitchHard', lang), run: () => setOptions({ hardFromFloor: 1 }) });
+function actionLabel(action: UnresolvedAction, lang: Lang): string {
+  switch (action.kind) {
+    case 'switchHard':
+      return t('actionSwitchHard', lang);
+    case 'extendFloors':
+      return t('actionExtendFloors', lang, { n: action.floor ?? 0 });
+    case 'observeMore':
+      return t('actionObserveMore', lang);
   }
-  if (entry.reason === 'no-pack-in-range' || entry.reason === 'pack-conflict') {
-    const next = options.lastFloor < 10 ? 10 : options.lastFloor < 15 ? 15 : null;
-    if (next !== null) out.push({ label: t('actionExtendFloors', lang, { n: next }), run: () => setOptions({ lastFloor: next, hardFromFloor: 1 }) });
-    if (options.giftObservationMax < 3) {
-      out.push({ label: t('actionObserveMore', lang), run: () => setOptions({ giftObservationMax: options.giftObservationMax + 1 }) });
-    }
-  }
-  return out;
 }
 
 export function RouteStep({ data, indexes, stats, lang }: Props) {
@@ -147,10 +144,11 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
             ))}
           </select>
         </div>
-        <button type="button" onClick={resetOptions} className="pb-2 text-xs text-fg-3 underline lg:ml-auto">
-          {t('optionReset', lang)}
-        </button>
       </div>
+      <Button variant="ghost" size="sm" onClick={resetOptions} className="self-start lg:ml-auto lg:self-end">
+        <RefreshCw size={12} aria-hidden />
+        {t('optionReset', lang)}
+      </Button>
     </Card>
   );
 
@@ -175,7 +173,7 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
   const otherWarnings = plan.warnings.filter((w) => w.code !== 'search-capped' && w.code !== 'parallel-requires-hard');
 
   const copy = async (): Promise<void> => {
-    await navigator.clipboard.writeText(planToText(plan, giftName, packName, lang));
+    await navigator.clipboard.writeText(planToText(plan, giftName, packName, (id) => keywordName(id, data.enums, lang), lang));
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
   };
@@ -260,13 +258,20 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
         <ul className="mt-2 flex flex-col gap-1.5 text-sm">
           {plan.conditions.map((report, i) => {
             const judgeable = report.have !== null && report.need !== null;
+            const icon = !judgeable ? (
+              <CircleHelp size={13} aria-label={t('giftUnjudgeable', lang)} className="mt-0.5 flex-none" />
+            ) : report.satisfied ? (
+              <Check size={13} aria-label={t('condMet', lang)} className="mt-0.5 flex-none" />
+            ) : (
+              <X size={13} aria-label={t('condUnmet', lang)} className="mt-0.5 flex-none" />
+            );
             return (
-              <li key={`${report.giftId}-${i}`} className={`flex items-center gap-2 ${report.satisfied ? '' : 'text-fg-3'}`}>
-                {report.satisfied ? <Check size={13} aria-hidden /> : <X size={13} aria-hidden />}
-                <span className="min-w-0 flex-1 truncate" title={conditionText(report, data.enums, lang)}>
-                  {giftName(report.giftId)} · {conditionText(report, data.enums, lang)}
+              <li key={`${report.giftId}-${i}`} className={`flex items-start gap-2 ${judgeable && !report.satisfied ? 'text-fg-3' : judgeable ? '' : 'text-fg-2'}`}>
+                {icon}
+                <span className="min-w-0 flex-1">
+                  <b className="font-medium">{giftName(report.giftId)}</b> · {conditionText(report, data.enums, lang)}
                 </span>
-                <span className="font-mono text-xs">{judgeable ? `${report.have}/${report.need}` : t('giftUnjudgeable', lang)}</span>
+                <span className="flex-none font-mono text-xs">{judgeable ? `${report.have}/${report.need}` : t('giftUnjudgeable', lang)}</span>
               </li>
             );
           })}
@@ -275,17 +280,39 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
     </Card>
   );
 
+  // Actions shared by several entries appear once in the header; entry-specific ones stay inline.
+  const unresolvedActions = plan.unresolved.map((entry) =>
+    actionsFor(entry, indexes.giftById.get(entry.giftId), indexes.packById, options).map((action) => ({
+      ...action,
+      label: actionLabel(action, lang),
+    })),
+  );
+  const sharedLabels = new Set(
+    unresolvedActions
+      .flat()
+      .map((a) => a.label)
+      .filter((label, _, all) => all.filter((l) => l === label).length > 1),
+  );
+  const headerActions = [...new Map(unresolvedActions.flat().filter((a) => sharedLabels.has(a.label)).map((a) => [a.label, a])).values()];
+  const actionButton = (action: UnresolvedAction & { label: string }) => (
+    <Button key={action.label} size="sm" onClick={() => setOptions(action.patch)}>
+      {action.label}
+      <ChevronRight size={12} aria-hidden />
+    </Button>
+  );
+
   const unresolved =
     plan.unresolved.length > 0 ? (
       <Card variant="strong" className="overflow-hidden" testId="unresolved">
-        <div className="flex h-9 items-center gap-1.5 border-b border-line px-3">
+        <div className="flex min-h-9 flex-wrap items-center gap-1.5 border-b border-line px-3 py-1.5">
           <TriangleAlert size={14} aria-hidden />
           <span className="text-sm font-semibold">
             {t('routeUnresolved', lang)} <span className="font-mono text-xs text-fg-3">{plan.unresolved.length}</span>
           </span>
+          {headerActions.length > 0 ? <span className="ml-auto flex gap-1.5">{headerActions.map(actionButton)}</span> : null}
         </div>
         <ul>
-          {plan.unresolved.map((entry) => (
+          {plan.unresolved.map((entry, i) => (
             <li key={`${entry.giftId}-${entry.reason}`} className="flex flex-col gap-1 border-b border-line px-3 py-2.5 last:border-b-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium">{giftName(entry.giftId)}</span>
@@ -293,14 +320,7 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
               </div>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs text-fg-2">{pick(entry.detail, lang)}</span>
-                <span className="flex gap-1.5">
-                  {actionsFor(entry, options, lang, setOptions).map((action) => (
-                    <Button key={action.label} size="sm" onClick={action.run}>
-                      {action.label}
-                      <ChevronRight size={12} aria-hidden />
-                    </Button>
-                  ))}
-                </span>
+                <span className="flex gap-1.5">{(unresolvedActions[i] ?? []).filter((a) => !sharedLabels.has(a.label)).map(actionButton)}</span>
               </div>
             </li>
           ))}
@@ -338,7 +358,7 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
       {autoHardNotice ? <div className="order-4 lg:order-none">{autoHardNotice}</div> : null}
       {observed ? <div className="order-5 lg:order-none">{observed}</div> : null}
       <div className="order-6 lg:order-none">
-        <Timetable plan={plan} lastFloor={options.lastFloor} hard={hard} packName={packName} giftName={giftName} lang={lang} />
+        <Timetable plan={plan} lastFloor={options.lastFloor} hard={hard} packName={packName} giftName={giftName} keywordLabel={(id) => keywordName(id, data.enums, lang)} lang={lang} />
       </div>
       {unresolved ? <div className="order-2 lg:order-none">{unresolved}</div> : null}
       <div className="order-7 grid grid-cols-1 gap-3 pb-4 lg:order-none lg:grid-cols-3">

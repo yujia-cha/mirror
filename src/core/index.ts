@@ -93,21 +93,44 @@ function windowFor(
   assignment: Map<number, number>,
   indexes: GameIndexes,
 ): { from: number; to: number } {
-  const free = (g: number): boolean => {
-    if (g === floor) return true;
-    if (!floors.includes(g)) return false;
-    if (modeForFloor(g, options) !== mode) return false;
-    if (!(indexes.packsByFloor[mode].get(g) ?? []).includes(packId)) return false;
-    const taken = assignment.get(g);
-    if (taken !== undefined && taken !== packId) return false;
-    const pinnedHere = options.pinnedPacks[g];
-    if (pinnedHere !== undefined && pinnedHere !== packId) return false;
-    return true;
+  // Floors a pack could be visited on, in this plan: same run mode as the assigned floor (so a
+  // Hard-only pack never wanders into Normal floors), offered there, and not pinned to another.
+  const candidates = (id: number, own: number): number[] =>
+    floors.filter((g) => {
+      if (modeForFloor(g, options) !== modeForFloor(own, options)) return false;
+      if (!(indexes.packsByFloor[modeForFloor(g, options)].get(g) ?? []).includes(id)) return false;
+      const pinnedHere = options.pinnedPacks[g];
+      return pinnedHere === undefined || pinnedHere === id;
+    });
+  const others = [...assignment.entries()].filter(([, id]) => id !== packId);
+  const otherCandidates = others.map(([own, id]) => candidates(id, own));
+
+  // Floor g is possible for this pack when every other required pack still fits somewhere else:
+  // a bipartite matching of the other packs onto the remaining floors (Kuhn's algorithm; the
+  // plan forces at most a handful of packs, so this is tiny and deterministic).
+  const fits = (g: number): boolean => {
+    const owner = new Map<number, number>();
+    const tryPlace = (i: number, seen: Set<number>): boolean => {
+      for (const candidate of otherCandidates[i]!) {
+        if (candidate === g || seen.has(candidate)) continue;
+        seen.add(candidate);
+        const current = owner.get(candidate);
+        if (current === undefined || tryPlace(current, seen)) {
+          owner.set(candidate, i);
+          return true;
+        }
+      }
+      return false;
+    };
+    return otherCandidates.every((_, i) => tryPlace(i, new Set()));
   };
+
+  const possible = new Set(candidates(packId, floor).filter((g) => g === floor || fits(g)));
   let from = floor;
-  while (free(from - 1)) from -= 1;
+  while (possible.has(from - 1)) from -= 1;
   let to = floor;
-  while (free(to + 1)) to += 1;
+  while (possible.has(to + 1)) to += 1;
+  void mode;
   return { from, to };
 }
 

@@ -127,12 +127,14 @@ export const useApp = create<AppState>()(
       setStep: (step) => set({ step }),
       setLang: (lang) => set({ lang }),
       toggleDark: () => set((state) => ({ dark: !state.dark })),
+      // A recipient lands on the furthest step the link can show: the route when gifts were chosen.
       applyShared: (shared) =>
         set({
           deck: shared.deck,
           deployed: shared.deployed.filter((id) => shared.deck.includes(id)),
           wanted: shared.wanted,
           options: { ...defaultOptions(), ...shared.options },
+          step: shared.deck.length === 0 ? 1 : shared.wanted.length === 0 ? 2 : 3,
         }),
     }),
     {

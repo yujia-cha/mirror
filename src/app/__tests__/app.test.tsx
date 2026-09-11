@@ -2,18 +2,28 @@
  * UI pieces with logic of their own: the store, share links, condition wording and the three
  * steps. Rendering uses the real generated data, like the planner tests.
  */
-import { beforeEach, describe, expect, it } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import lzString from 'lz-string';
 import userEvent from '@testing-library/user-event';
 import { loadGameDataFromDisk } from '../../core/data/node.ts';
 import { analyseDeck, buildIndexes, defaultOptions, evaluateConditions } from '../../core/index.ts';
-import { conditionText, reachedTierText } from '../condition-text.ts';
+import { conditionText, josa, reachedTierText } from '../condition-text.ts';
 import { decodeShared, encodeShared, sinnerOf, useApp } from '../store.ts';
 import { classifyGift, prioritiseGifts } from '../lib/gift-priority.ts';
 import { DeckStep } from '../steps/DeckStep.tsx';
 import { GiftsStep } from '../steps/GiftsStep.tsx';
 import { RouteStep } from '../steps/RouteStep.tsx';
+import { App } from '../App.tsx';
+import { planToText } from '../lib/plan-text.ts';
+import { actionsFor } from '../lib/unresolved-actions.ts';
+import { keywordName } from '../format.ts';
+import { planRoute } from '../../core/index.ts';
+
+vi.mock('../../core/data/load.ts', async () => {
+  const { loadGameDataFromDisk } = await import('../../core/data/node.ts');
+  return { loadGameData: async () => loadGameDataFromDisk() };
+});
 
 const data = loadGameDataFromDisk();
 const indexes = buildIndexes(data);
@@ -52,6 +62,23 @@ describe('share links', () => {
   it('ignores a hash that is not a share link', () => {
     expect(decodeShared('#other')).toBeNull();
     expect(decodeShared('#s=not-valid')).toBeNull();
+  });
+
+  it('lands a recipient on the furthest step the link can show', () => {
+    useApp.getState().applyShared({ deck: [10101], deployed: [10101], wanted: [9283], options: defaultOptions() });
+    expect(useApp.getState().step).toBe(3);
+    useApp.getState().applyShared({ deck: [10101], deployed: [10101], wanted: [], options: defaultOptions() });
+    expect(useApp.getState().step).toBe(2);
+    useApp.getState().applyShared({ deck: [], deployed: [], wanted: [], options: defaultOptions() });
+    expect(useApp.getState().step).toBe(1);
+  });
+
+  it('consumes the hash once so a reload keeps later edits', async () => {
+    window.location.hash = encodeShared({ deck: [10101], deployed: [10101], wanted: [9283], options: defaultOptions() });
+    render(<App />);
+    await waitFor(() => expect(useApp.getState().wanted).toEqual([9283]));
+    expect(window.location.hash).toBe('');
+    expect(useApp.getState().step).toBe(3);
   });
 });
 
@@ -132,6 +159,14 @@ describe('gift priority', () => {
 describe('condition wording', () => {
   const reportFor = (giftId: number, deck: number[]) => evaluateConditions([giftId], statsFor(deck), indexes)[0]!;
 
+  it('picks the object particle by the final consonant', () => {
+    expect(josa('화상', '을/를')).toBe('화상을');
+    expect(josa('연기', '을/를')).toBe('연기를');
+    expect(josa('Burn', '을/를')).toBe('Burn을(를)');
+    const report = reportFor(9088, BURN_DECK);
+    expect(conditionText(report, data.enums, 'ko')).toMatch(/^화상을 부여하는/);
+  });
+
   it('names the faction in Korean instead of showing the raw id', () => {
     const report = reportFor(9283, [10101]);
     const text = conditionText(report, data.enums, 'ko');
@@ -170,6 +205,19 @@ describe('DeckStep', () => {
     expect(useApp.getState().deck).toHaveLength(1);
   });
 
+  it('walks the search results with the keyboard and closes on Escape', async () => {
+    const user = userEvent.setup();
+    renderDeck();
+    const input = screen.getByRole('combobox', { name: /전체 인격 검색/ });
+    await user.type(input, '리우{ArrowDown}{Enter}');
+    expect(useApp.getState().deck).toHaveLength(1);
+    expect(screen.queryByRole('listbox')).toBeNull();
+    await user.type(input, '리우');
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
   it('refuses an eighth deployed identity', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
     renderDeck();
@@ -192,19 +240,32 @@ describe('DeckStep', () => {
 });
 
 describe('GiftsStep', () => {
-  it('folds 요리 비법 전서 under 진혼 and marks it included once 진혼 is chosen', async () => {
+  it('folds 요리 비법 전서 under 진혼, lets it be chosen alone, and marks it included once 진혼 is chosen', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
     const { deck, deployed } = useApp.getState();
     render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
     // 진혼 is active with this deck, so it sits in the first section with its child underneath.
-    const child = screen.getAllByTestId('gift-child').find((el) => el.textContent?.includes('요리 비법 전서'));
-    expect(child).toBeDefined();
-    expect(child).toHaveTextContent('진혼 재료');
-    expect(within(child!).queryByRole('checkbox')).toBeNull();
+    const findChild = () => screen.getAllByTestId('gift-child').find((el) => el.textContent?.includes('요리 비법 전서'))!;
+    expect(findChild()).toBeDefined();
+    // The child carries its own acquisition badge and can be wanted on its own.
+    expect(findChild()).toHaveTextContent('조합');
+    await user.click(within(findChild()).getByRole('checkbox', { name: '요리 비법 전서' }));
+    expect(useApp.getState().wanted).toEqual([9157]);
+    // Choosing the parent absorbs the child: it drops from the list and its box locks as "included".
     await user.click(screen.getByRole('checkbox', { name: '진혼' }));
     expect(useApp.getState().wanted).toEqual([9088]);
-    expect(screen.getAllByTestId('gift-child').find((el) => el.textContent?.includes('요리 비법 전서'))).toHaveTextContent('포함');
+    expect(findChild()).toHaveTextContent('포함');
+    expect(within(findChild()).getByRole('checkbox')).toBeDisabled();
+  });
+
+  it('counts rows, not the whole catalogue, in the virtual list label', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    const { deck, deployed } = useApp.getState();
+    render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
+    await user.click(screen.getByRole('button', { name: /기타/ }));
+    expect(screen.getByText(/행 중 1~/)).not.toHaveTextContent(String(data.gifts.length));
   });
 
   it('sends an empty deck back to step 1', () => {
@@ -262,14 +323,66 @@ describe('RouteStep', () => {
     expect(within(columns).queryAllByTestId('block-window')).toHaveLength(0);
   });
 
-  it('lets an unresolved entry change the options it needs', async () => {
+  it('lets an unresolved entry change the options it needs, once per shared action', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
     useApp.getState().toggleWanted(9215); // 붉은색 넥타이: Hard only
+    useApp.getState().toggleWanted(9423); // 깨진 안경: Hard only
     renderRoute();
     const card = screen.getByTestId('unresolved');
     expect(card).toHaveTextContent('Hard 전용');
+    expect(within(card).getAllByRole('button', { name: /Hard로 전환/ })).toHaveLength(1);
     await user.click(within(card).getByRole('button', { name: /Hard로 전환/ }));
     expect(useApp.getState().options.hardFromFloor).toBe(1);
+  });
+
+  it('extends the plan only as far as the missing pack needs', () => {
+    const options = { ...defaultOptions(), lastFloor: 3, hardFromFloor: 1 };
+    const entry = { giftId: 9423, reason: 'no-pack-in-range' as const, detail: { ko: '', en: '' } };
+    const actions = actionsFor(entry, indexes.giftById.get(9423), indexes.packById, options);
+    const extend = actions.find((a) => a.kind === 'extendFloors')!;
+    expect(extend.floor).toBe(5);
+    expect(extend.patch).toEqual({ lastFloor: 5 });
+  });
+
+  it('marks a condition it cannot judge as such, not as unmet', () => {
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().setOptions({ hardFromFloor: 1 });
+    useApp.getState().toggleWanted(9208); // 인연 얽힘: full-resonance condition
+    renderRoute();
+    expect(screen.getByLabelText('판정 불가')).toBeInTheDocument();
+    expect(screen.queryByLabelText('미충족')).toBeNull();
+  });
+
+  it('keeps a valid column template when the plan reaches floor 15', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9423);
+    renderRoute();
+    await user.click(screen.getByRole('radio', { name: '15' }));
+    const grids = screen.getByTestId('timetable-columns').querySelectorAll<HTMLElement>('.grid');
+    for (const grid of grids) expect(grid.style.gridTemplateColumns).not.toContain('repeat(0');
+    // Free floors 5-15 fold into one cell instead of eleven.
+    expect(within(screen.getByTestId('timetable-columns')).getByText('자유 · 6~15층')).toBeInTheDocument();
+  });
+
+  it('copies the plan with localized names instead of raw ids', () => {
+    useApp.getState().setDeck(BURN_DECK, 7);
+    const plan = planRoute(
+      { deck: BURN_DECK, wanted: [{ giftId: 9423, required: true }], options: { ...defaultOptions(), hardFromFloor: 1 } },
+      data,
+      indexes,
+    );
+    const text = planToText(
+      plan,
+      (id) => indexes.giftById.get(id)?.name.ko ?? '',
+      (id) => indexes.packById.get(id)?.name.ko ?? '',
+      (id) => keywordName(id, data.enums, 'ko'),
+      'ko',
+    );
+    expect(text).not.toContain('Combustion');
+    expect(text).not.toContain('(hard)');
+    expect(text).toContain('시작: 화상');
+    expect(text).toContain('(Hard)');
   });
 });
