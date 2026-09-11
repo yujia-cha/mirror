@@ -146,7 +146,7 @@ describe('fusion', () => {
     const expansion = expandRequirements(
       want(9088),
       indexes,
-      analyseDeck(MIXED_DECK, indexes),
+      analyseDeck(MIXED_DECK, indexes, data.rules.deployment),
       data.rules.fusion.maxShopSlots,
     );
     const top = expansion.fusions.find((f) => f.result === 9088)!;
@@ -176,7 +176,7 @@ describe('fusion', () => {
     const expansion = expandRequirements(
       want(9083),
       indexes,
-      analyseDeck(burnDeck, indexes),
+      analyseDeck(burnDeck, indexes, data.rules.deployment),
       data.rules.fusion.maxShopSlots,
     );
     const mixed = expansion.fusions.find((f) => f.result === 9083)!;
@@ -188,17 +188,49 @@ describe('fusion', () => {
 
 describe('deck conditions', () => {
   it('counts identities that inflict a keyword, not identities tagged with it', () => {
-    const stats = analyseDeck([10101, 10914], indexes);
+    const stats = analyseDeck([10101, 10914], indexes, data.rules.deployment);
     // 10101 inflicts Sinking; 10914 inflicts Sinking and Charge.
     expect(stats.keywordCounts.formation.Sinking).toBe(2);
     expect(stats.keywordCounts.formation.Charge).toBe(1);
   });
 
-  it('separates the deployed six from the whole formation', () => {
-    const stats = analyseDeck([10101, 10102, 10403, 10505, 10601, 10707, 10914], indexes);
-    expect(stats.deployed).toHaveLength(6);
-    expect(stats.reserve).toEqual([10914]);
+  it('deploys the first `deployment.default` identities when nobody is named', () => {
+    const eight = [10101, 10102, 10403, 10505, 10601, 10707, 10808, 10914];
+    const stats = analyseDeck(eight, indexes, data.rules.deployment);
+    expect(data.rules.deployment.default).toBe(6);
+    expect(stats.deployed).toEqual(eight.slice(0, 6));
+    expect(stats.reserve).toEqual([10808, 10914]);
     expect(stats.keywordCounts.reserve.Sinking).toBe(1);
+  });
+
+  it('deploys exactly who is named, in deck order, up to `deployment.max`', () => {
+    const eight = [10101, 10102, 10403, 10505, 10601, 10707, 10808, 10914];
+    expect(data.rules.deployment.max).toBe(7);
+    const seven = analyseDeck(eight, indexes, data.rules.deployment, [10914, 10101, 10102, 10403, 10505, 10601, 10707]);
+    expect(seven.deployed).toEqual([10101, 10102, 10403, 10505, 10601, 10707, 10914]);
+    expect(seven.reserve).toEqual([10808]);
+    // 10808 (피쿼드호 선장) inflicts no Sinking, so the reserve count is empty.
+    expect(seven.keywordCounts.reserve.Sinking).toBeUndefined();
+
+    const capped = analyseDeck(eight, indexes, data.rules.deployment, eight);
+    expect(capped.deployed).toEqual(eight.slice(0, 7));
+
+    const nobody = analyseDeck(eight, indexes, data.rules.deployment, []);
+    expect(nobody.deployed).toEqual([]);
+    expect(nobody.reserve).toEqual(eight);
+  });
+
+  it('normalises `options.deployed` inside planRoute: dedupes, drops strangers, caps at max', () => {
+    const eight = [10101, 10102, 10403, 10505, 10601, 10707, 10808, 10914];
+    const result = plan({
+      deck: eight,
+      wanted: want(9088),
+      options: options({ deployed: [10914, 10914, 99999, ...eight] }),
+    });
+    // Seven deployed (max), so the eighth (10914 is first in the override but last in deck order)
+    // is still reserve: order comes from the deck, not the override.
+    expect(result.conditions.length).toBeGreaterThan(0);
+    expect(result.warnings.map((w) => w.code)).not.toContain('search-capped');
   });
 
   it('reports an unmet faction condition with the real counts', () => {
@@ -233,7 +265,7 @@ describe('deck conditions', () => {
   });
 
   it('picks the deck dominant keyword when asked for an automatic start', () => {
-    const stats = analyseDeck(BLADE_LINEAGE_DECK, indexes);
+    const stats = analyseDeck(BLADE_LINEAGE_DECK, indexes, data.rules.deployment);
     const keyword = dominantKeyword(stats);
     expect(keyword).not.toBeNull();
     const result = plan({ deck: BLADE_LINEAGE_DECK, wanted: want(9003) });
@@ -369,5 +401,70 @@ describe('guarantees', () => {
     expect(result.unresolved).toEqual([
       expect.objectContaining({ giftId: 9999999, reason: 'not-obtainable' }),
     ]);
+  });
+});
+
+describe('floor windows', () => {
+  it('pins a pack that is offered on a single Hard floor', () => {
+    const result = plan({ wanted: want(9283), options: options({ hardFromFloor: 1 }) });
+    const floor5 = result.floors.find((f) => f.floor === 5)!;
+    expect(floor5.packId).toBe(1025);
+    expect(floor5.window).toEqual({ from: 5, to: 5 });
+    expect(result.floors.filter((f) => f.packId === null).every((f) => f.window === null)).toBe(true);
+  });
+
+  it('reports the whole 4-5 range for 변하지 않는 when nothing else competes', () => {
+    // 9423 깨진 안경 is exclusive to pack 1012, offered on Hard floors 4 and 5.
+    const result = plan({ wanted: want(9423), options: options({ hardFromFloor: 1 }) });
+    const used = result.floors.find((f) => f.packId === 1012)!;
+    expect(used.window).toEqual({ from: 4, to: 5 });
+  });
+
+  it('shrinks the window when another required pack takes one of its floors', () => {
+    // 9208 인연 얽힘 needs 해방된 분노 (1302), which only appears on Hard floor 5.
+    const result = plan({ wanted: want(9423, 9208), options: options({ hardFromFloor: 1 }) });
+    const unchanging = result.floors.find((f) => f.packId === 1012)!;
+    const wrath = result.floors.find((f) => f.packId === 1302)!;
+    expect(wrath.floor).toBe(5);
+    expect(wrath.window).toEqual({ from: 5, to: 5 });
+    expect(unchanging.floor).toBe(4);
+    expect(unchanging.window).toEqual({ from: 4, to: 4 });
+  });
+
+  it('spans all of 평행중첩 for a pack placed there', () => {
+    const result = plan({
+      wanted: want(9283, 9222),
+      options: options({ lastFloor: 10, giftObservationMax: 0 }),
+    });
+    const parallel = result.floors.find((f) => f.packId !== null && f.mode === 'parallel')!;
+    expect(parallel.window).toEqual({ from: 6, to: 10 });
+  });
+
+  it('collapses the window to the pinned floor', () => {
+    const result = plan({
+      wanted: want(9423),
+      options: options({ hardFromFloor: 1, pinnedPacks: { 5: 1012 } }),
+    });
+    const used = result.floors.find((f) => f.packId === 1012)!;
+    expect(used.reason).toBe('pinned');
+    expect(used.window).toEqual({ from: 5, to: 5 });
+  });
+
+  it('clamps lastFloor into 1-15', () => {
+    const result = plan({ wanted: want(9283), options: options({ lastFloor: 99 }) });
+    expect(result.floors.at(-1)!.floor).toBe(15);
+  });
+});
+
+describe('upgradeOf', () => {
+  it('folds 요리 비법 전서 under 진혼 and leaves shared ingredients alone', () => {
+    expect(indexes.giftById.get(9157)!.upgradeOf).toBe(9088);
+    expect(indexes.giftById.get(9088)!.upgradeOf).toBeNull();
+    const pairs = data.gifts.filter((g) => g.upgradeOf !== null);
+    expect(pairs.length).toBe(76);
+    for (const g of pairs) {
+      const parent = indexes.giftById.get(g.upgradeOf!)!;
+      expect(parent.keyword, `${g.id}`).toBe(g.keyword);
+    }
   });
 });

@@ -34,7 +34,7 @@ export function GiftPanel({ data, indexes, lang }: { data: GameData; indexes: Ga
   const [selectedOnly, setSelectedOnly] = useState(false);
 
   const conditionByGift = useMemo(() => {
-    const stats = analyseDeck(deck, indexes);
+    const stats = analyseDeck(deck, indexes, data.rules.deployment);
     const reports = evaluateConditions(
       data.gifts.filter((gift) => gift.conditions.length > 0).map((gift) => gift.id),
       stats,

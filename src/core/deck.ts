@@ -1,24 +1,29 @@
-import type { Condition, StatusKeyword } from './schema.ts';
+import type { Condition, Rules, StatusKeyword } from './schema.ts';
 import type { ConditionReport, DeckStats, GameIndexes } from './types.ts';
-
-const DEPLOYED_SLOTS = 6;
 
 type Scope = 'deployed' | 'formation' | 'reserve';
 
 /**
  * Count what the deck brings, per counting scope.
  *
- * Conditional gifts measure three different things: the deployed six (출격 인원), the whole
+ * Conditional gifts measure three different things: the deployed party (출격 인원), the whole
  * 12-slot formation (대기 인원 포함), and sometimes the reserves alone (대기 인원에).
+ *
+ * `deployedOverride` names who fights, in deck order, capped at `deployment.max`; an empty list
+ * means nobody is deployed. Without it the first `deployment.default` identities fight.
  */
-export function analyseDeck(deck: number[], indexes: GameIndexes, deployedOverride?: number[]): DeckStats {
+export function analyseDeck(
+  deck: number[],
+  indexes: GameIndexes,
+  deployment: Rules['deployment'],
+  deployedOverride?: number[],
+): DeckStats {
   const known = deck.filter((id) => indexes.identityById.has(id));
   const unknownIdentities = deck.filter((id) => !indexes.identityById.has(id));
 
-  const deployed =
-    deployedOverride && deployedOverride.length > 0
-      ? known.filter((id) => deployedOverride.includes(id))
-      : known.slice(0, DEPLOYED_SLOTS);
+  const deployed = deployedOverride
+    ? known.filter((id) => deployedOverride.includes(id)).slice(0, deployment.max)
+    : known.slice(0, deployment.default);
   const deployedSet = new Set(deployed);
   const reserve = known.filter((id) => !deployedSet.has(id));
 

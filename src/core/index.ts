@@ -4,7 +4,7 @@
  * Pure TypeScript: no React, no DOM, no network. It runs in the browser, in Vitest and in
  * scripts/route-cli.ts, and the same input always produces the same output.
  */
-import type { GameData } from './schema.ts';
+import type { Difficulty, GameData } from './schema.ts';
 import type {
   FloorPlan,
   FusionStep,
@@ -49,9 +49,20 @@ export function defaultOptions(): PlanOptions {
 function normaliseOptions(
   options: PlanOptions,
   data: GameData,
+  deck: number[],
 ): { options: PlanOptions; warnings: PlanWarning[] } {
   const warnings: PlanWarning[] = [];
   let next = { ...options };
+
+  const maxFloor = Math.max(...data.rules.floors.normal, ...data.rules.floors.parallel, ...data.rules.floors.extreme);
+  const lastFloor = Math.min(maxFloor, Math.max(1, Math.round(next.lastFloor)));
+  if (lastFloor !== next.lastFloor) next = { ...next, lastFloor };
+
+  if (next.deployed) {
+    const inDeck = new Set(deck);
+    const deployed = [...new Set(next.deployed)].filter((id) => inDeck.has(id)).slice(0, data.rules.deployment.max);
+    next = { ...next, deployed };
+  }
 
   if (next.lastFloor > 5 && data.rules.difficulty.parallelRequiresAllHard && next.hardFromFloor !== 1) {
     next = { ...next, hardFromFloor: 1 };
@@ -67,6 +78,39 @@ function normaliseOptions(
   return { options: next, warnings };
 }
 
+/**
+ * The contiguous run of floors around `floor` on which `packId` could equally have been placed:
+ * same mode, offered on that floor, and not already taken by another required or pinned pack.
+ * This is what lets the UI say "any one of floors 4-5" instead of pinning a floor the search
+ * merely happened to pick first.
+ */
+function windowFor(
+  packId: number,
+  floor: number,
+  mode: Difficulty,
+  floors: number[],
+  options: PlanOptions,
+  assignment: Map<number, number>,
+  indexes: GameIndexes,
+): { from: number; to: number } {
+  const free = (g: number): boolean => {
+    if (g === floor) return true;
+    if (!floors.includes(g)) return false;
+    if (modeForFloor(g, options) !== mode) return false;
+    if (!(indexes.packsByFloor[mode].get(g) ?? []).includes(packId)) return false;
+    const taken = assignment.get(g);
+    if (taken !== undefined && taken !== packId) return false;
+    const pinnedHere = options.pinnedPacks[g];
+    if (pinnedHere !== undefined && pinnedHere !== packId) return false;
+    return true;
+  };
+  let from = floor;
+  while (free(from - 1)) from -= 1;
+  let to = floor;
+  while (free(to + 1)) to += 1;
+  return { from, to };
+}
+
 function floorsFor(options: PlanOptions, data: GameData): number[] {
   const all = [...data.rules.floors.normal, ...data.rules.floors.parallel, ...data.rules.floors.extreme].sort(
     (a, b) => a - b,
@@ -76,10 +120,10 @@ function floorsFor(options: PlanOptions, data: GameData): number[] {
 
 export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes): RoutePlan {
   const startedAt = Date.now();
-  const { options, warnings } = normaliseOptions(input.options, data);
+  const { options, warnings } = normaliseOptions(input.options, data, input.deck);
   const floors = floorsFor(options, data);
 
-  const stats = analyseDeck(input.deck, indexes, options.deployed);
+  const stats = analyseDeck(input.deck, indexes, data.rules.deployment, options.deployed);
   const unresolved: Unresolved[] = [];
 
   // ---- 1. What do we actually have to obtain? -----------------------------
@@ -256,6 +300,13 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
             })
         : [];
 
+    const window =
+      packId === null
+        ? null
+        : pinned
+          ? { from: floor, to: floor }
+          : windowFor(packId, floor, mode, floors, options, search.assignment, indexes);
+
     return {
       floor,
       mode,
@@ -264,6 +315,7 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
       pickups,
       observation: { needed: needsObservation, possible: canObserve, starlight },
       alternatives,
+      window,
     };
   });
 

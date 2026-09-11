@@ -43,7 +43,7 @@ export function stripMarkup(text: string): string {
 
 /**
  * Which units the count applies to.
- * 출격 인원 = the 6 deployed; 대기 인원 포함 / 편성된 = all 12 in the formation.
+ * 출격 인원 = the deployed party (see rules.deployment); 대기 인원 포함 / 편성된 = all 12 in the formation.
  */
 function scopeFrom(sentence: string, tail: string): ConditionScope {
   const haystack = `${sentence} ${tail}`;

@@ -121,7 +121,13 @@ for (const floor of plan.floors) {
       ? ` [관측 +${floor.observation.starlight}]`
       : ' [관측 불가 — 우연히 등장해야 함]'
     : '';
-  console.log(`  ${String(floor.floor).padStart(2)}층 (${floor.mode}) ${pack}${obs}`);
+  const window =
+    floor.window && floor.window.from !== floor.window.to
+      ? ` [${floor.window.from}~${floor.window.to}층 중 한 층]`
+      : floor.reason === 'pinned'
+        ? ' [고정(핀)]'
+        : '';
+  console.log(`  ${String(floor.floor).padStart(2)}층 (${floor.mode}) ${pack}${window}${obs}`);
   for (const pickup of floor.pickups) {
     const tag = pickup.kind === 'exclusive' ? '전용' : '풀';
     const why = pickup.neededFor ? ` → ${giftName(pickup.neededFor)} 재료` : '';

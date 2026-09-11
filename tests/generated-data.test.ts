@@ -249,6 +249,10 @@ describe('rules', () => {
     });
   });
 
+  it('records the deployment limits the UI enforces', () => {
+    expect(rules.deployment).toEqual({ max: 7, default: 6, verified: false });
+  });
+
   it('reads theme pack observation costs from the game data', () => {
     expect(rules.themePacksOfferedPerFloor).toBe(3);
     expect(rules.themeObservation).toEqual({ base: 20, step: 10, unvisitedMultiplier: 1.5 });

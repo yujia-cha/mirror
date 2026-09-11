@@ -63,7 +63,7 @@ describe('deck store', () => {
 
 describe('condition wording', () => {
   const reportFor = (giftId: number, deck: number[]) =>
-    evaluateConditions([giftId], analyseDeck(deck, indexes), indexes)[0]!;
+    evaluateConditions([giftId], analyseDeck(deck, indexes, data.rules.deployment), indexes)[0]!;
 
   it('names the faction in Korean instead of showing the raw id', () => {
     const report = reportFor(9283, [10101]);

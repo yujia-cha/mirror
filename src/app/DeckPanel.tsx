@@ -32,7 +32,7 @@ export function DeckPanel({ data, indexes, lang }: Props) {
     return map;
   }, [deck, indexes]);
 
-  const stats = useMemo(() => analyseDeck(deck, indexes), [deck, indexes]);
+  const stats = useMemo(() => analyseDeck(deck, indexes, data.rules.deployment), [deck, indexes, data.rules.deployment]);
 
   return (
     <Section

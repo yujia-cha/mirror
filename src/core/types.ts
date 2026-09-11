@@ -11,15 +11,18 @@ export interface WantedGift {
 }
 
 export interface PlanOptions {
-  /** How far the run is planned: 5 = one clear, 10 = 평행중첩, 15 = EXTREME. */
-  lastFloor: 5 | 10 | 15;
+  /** Last floor planned for (1-15): 1-5 = one clear, 6-10 = 평행중첩, 11-15 = EXTREME. */
+  lastFloor: number;
   /**
    * Floor from which packs are entered on Hard. 1 = the whole run is Hard, `null` = all Normal.
    * Hard is sticky in game, so this is a single switch point rather than a per-floor flag.
    * Planning past floor 5 forces 1, because 평행중첩 needs floors 1-5 cleared on Hard.
    */
   hardFromFloor: number | null;
-  /** Identity ids deployed (the front 6). Defaults to the first six of the deck. */
+  /**
+   * Identity ids that fight, in deck order, at most `rules.deployment.max`. Omitted = the first
+   * `rules.deployment.default` of the deck. Ids not in the deck are ignored.
+   */
   deployed?: number[];
   /** Keyword whose starting-gift pool is used. 'auto' picks the deck's dominant keyword. */
   startKeyword: Keyword | 'auto';
@@ -124,6 +127,11 @@ export interface FloorPlan {
   observation: { needed: boolean; possible: boolean; starlight: number };
   /** Other packs that could have supplied the same pickups on this floor. */
   alternatives: number[];
+  /**
+   * The contiguous floors this same pack could sit on with every other assignment held fixed.
+   * `from === to` means the pack is pinned to this floor; null when no pack is required here.
+   */
+  window: { from: number; to: number } | null;
 }
 
 export type UnresolvedReason =

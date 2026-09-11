@@ -182,6 +182,11 @@ export const giftSchema = z.object({
     })
     .nullable(),
   conditions: z.array(conditionSchema),
+  /**
+   * The one fusion result this gift is a lower-tier, same-keyword ingredient of (조합 계승).
+   * `요리 비법 전서 → 진혼`. Null when the gift feeds several results or none.
+   */
+  upgradeOf: z.number().int().nullable(),
   notes: localizedSchema.optional(),
 });
 
@@ -278,6 +283,12 @@ export const rulesSchema = z.object({
     hardIsSticky: z.boolean(),
     parallelRequiresAllHard: z.boolean(),
     extremeAllowsObservation: z.boolean(),
+  }),
+  /** How many of the 12 formation slots fight. `max` is what the UI lets the user deploy. */
+  deployment: z.object({
+    max: z.number().int().positive(),
+    default: z.number().int().positive(),
+    verified: z.boolean(),
   }),
   themePacksOfferedPerFloor: z.number().int().positive(),
   themePackRefreshCount: z.number().int().nonnegative(),
