@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-림버스 컴퍼니 **거울 던전** 루트 플래너. 사용자가 덱(인격 12인)과 원하는 E.G.O 기프트를 고르면, 그 기프트를 모으기 위한 층별 테마팩 루트를 계산해 보여주는 정적 웹앱이다. 백엔드는 없고 GitHub Pages로 배포한다.
+림버스 컴퍼니 **거울 던전** 루트 플래너. 사용자가 덱(인격 12인)과 원하는 E.G.O 기프트를 고르면, 그 기프트를 모으기 위한 층별 테마팩 루트를 계산해 보여주는 정적 웹앱이다. 백엔드는 없고 Cloudflare Pages로 배포한다(GitHub Pages는 수동 예비).
 
 비상업 팬 프로젝트다. 게임 데이터와 텍스트의 권리는 Project Moon에 있다.
 
@@ -44,14 +44,15 @@ npm run route -- --deck 10101,... --want 9088,... --floors 1-5 --difficulty hard
 - 게임 상수는 코드에 박지 않고 `data/curated/rules.json`에 둔다.
 - 스키마는 `src/core/schema.ts`(Zod) 한 곳에서 정의하고 파이프라인·앱·테스트가 공유한다.
 - UI 문자열은 `src/app/i18n/`에 두고 **한국어 우선**, 영어는 보조로 병기한다.
-- 정적 파일 참조는 항상 `import.meta.env.BASE_URL`을 붙인다(Pages의 하위 경로 때문).
+- 정적 파일 참조는 항상 `import.meta.env.BASE_URL`을 붙인다(GitHub Pages 예비 경로가 하위 경로라서).
+- 게임 이미지는 저장소에 두지 않는다. 아이콘·팩 이미지는 플레이스홀더이고 `VITE_ASSET_BASE`가 있을 때만 외부에서 불러온다.
 - 계획이 불가능한 요구는 조용히 버리지 않고 `unresolved`에 이유와 함께 남긴다.
 
 ## 에이전트와 스킬
 
 작업 성격에 맞는 서브에이전트를 쓴다: `game-data-researcher`(규칙·데이터 출처 조사), `data-pipeline-engineer`(scripts·data), `route-algorithm-engineer`(src/core), `frontend-engineer`(src/app), `qa-reviewer`(푸시 전 리뷰).
 
-게임 데이터나 루트 로직을 건드리기 전에 `md-domain` 스킬을 읽는다. 데이터 갱신은 `update-game-data`, 검증 실패는 `validate-data`, 보정 추가는 `add-curated-override`, 루트가 이상할 때는 `route-debug`, 배포는 `deploy-pages`.
+게임 데이터나 루트 로직을 건드리기 전에 `md-domain` 스킬을 읽는다. 데이터 갱신은 `update-game-data`, 검증 실패는 `validate-data`, 보정 추가는 `add-curated-override`, 루트가 이상할 때는 `route-debug`, 배포는 `deploy`.
 
 ## 커밋
 

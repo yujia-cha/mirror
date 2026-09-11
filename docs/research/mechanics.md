@@ -114,6 +114,29 @@
 
 전용 기프트 중 53종은 여러 팩이 공유한다(복각 팩이 원본 팩의 전용 기프트를 물려받는 경우).
 
+### 클리어 보상과 히든 전투 (MD7, `battle-mirrordungeon/*.json`)
+
+드롭풀의 `globalExcludeEgoGifts` 24종은 어느 팩 풀에도 없는데, 그중 14종은 **전투 스테이지의 `rewardList`**(`type: "EGO_GIFT"`, `prob: 1`)로 얻는다. 팩과 스테이지는 `mapGenOption.bossPool[0]`로 이어진다.
+
+| 팩 | 보스 스테이지 | 클리어 보상 |
+|---|---|---|
+| 1511 K사 일반 던전 | 2070901 | 9250 보급형 K사 앰플 |
+| 1512 패턴 환상체 | 2071001 | 9251 불타는 운명 |
+| 1513 1호선 복각 종착역 | 2071101 | 9252 못과 망치 |
+| 1514 라만차 혈귀 | 2071201 | 9253 회전 목마 모형 |
+| 1515 요정 환상체 | 2071301 | 9254 한 잔 더! |
+| 1516 단수어 | 2071401 | 9255 박수 짝짝! |
+| 1517 리카르도 | 9000003 | 9829 중지의 규율 |
+| 1518 찐돈 | 9000001 | 9827 가족의 원망 |
+| 1519 뇌횡 | 9000002 | 9828 카포를 위하여 |
+| 1520 꼬미와 베르길리우스 | 9000004 | 9830 꼬미의 작은 선물 |
+| 1501~1510 N사 보스 러시 등 | 2068401~2069801 | 993005 (로컬라이즈 없음 — 아래 §6) |
+
+- 파이프라인은 이 10종을 `acquisition.kind: "clearReward"`, `clearRewardOf: <팩 id>`, `packs: [<팩 id>]`로 낸다. 플래너는 이를 그 EXTREME 팩(11~15층)의 전용 픽업처럼 다룬다. `packs.json`은 건드리지 않는다(EXTREME 풀 == 범용 집합 불변식 유지).
+- **히든 전투**: `mirror-dungeon-common-data-md7.json` `hiddenBattleInfo { minFloorCondition: 11, pool: [9000005~9000008], probInfo: 11~15층 각 0.1 }`. 스테이지 보상은 9257 남겨진 신탁(9000005), 9259 마에스트로 링(9000006), **9256 불완전한 예지안**(9000007), 9258 앙갚음 장부(9000008). 팩과 무관한 층당 10% 확률 이벤트라 `kind: "hiddenBattle"`이고 플래너는 `chance-only` 미해결로 남긴다.
+- 나머지 10종(9207, 9227/9228, 9229/9230, 9231/9232, 9241, 9799, 9800)만 진짜 선택지 이벤트·저주 해제(`event`).
+- `data:validate`가 `event ∪ clearReward ∪ hiddenBattle == globalExcludeEgoGifts`를 검사한다.
+
 ### 조합
 
 `mirror-dungeon-common-data-md7.json` → `egoGiftCombineFixedTable`:
@@ -145,7 +168,11 @@
 
 `startEgoGiftPoolCreatedMaxCount: 2`(생성 가능한 시작 풀 수), `selectNewStartEgoGiftCategoryChip: 12`(새 키워드 열기), `startBuffEgoGiftRefreshDefaultPoint: 10`(새로고침).
 
-**미확인**: 별빛을 쓰는 「E.G.O 기프트 관측」의 비용표. UI 문자열(`mirror_observation_ego_gift_title`, `별빛 {0}개를 소모하여 E.G.O 기프트 관측을 진행하시겠습니까?`)은 존재하지만 MD7 정적 데이터에서 비용표를 찾지 못했다. 나무위키의 70/160/270은 거울 던전 3 시절 값일 가능성이 있어 `data/curated/rules.json`에 `verified: false`로 기록했다.
+### E.G.O 기프트 관측 (`mirror-dungeon-egogift-observation-data-md7.json`)
+
+- 비용표 `observationEgoGiftCostDataList`: 1개 70, 2개 160, 3개 270 별빛. 최대 3개. 파이프라인이 `rules.giftObservation`으로 내며 `verified: true`.
+- **관측 가능한 기프트 목록** `observationEgoGiftDataList`(키워드별 `egogiftIdList`, 합집합 **312종**: 범용 162 + 테마팩 한정 150). 조합 결과물·클리어 보상·히든 전투·이벤트 기프트는 없고, 테마팩 한정 21종(9283 상납된 시가 등)도 빠져 있다. 파이프라인이 `gifts[].observable`로 낸다.
+- 플래너는 관측을 옵션으로 묻지 않는다. 사용자가 지정한 기프트(≤3)를 먼저 넣고, 남은 자리는 루트로 못 얻는 기프트(관측 불가면 그 층을 점유한 관측 가능 기프트를 대신) → 팩 하나를 안 가도 되게 만드는 기프트 순으로 추천한다.
 
 ## 4. 조건부 기프트
 
@@ -208,7 +235,9 @@ KR `desc`에서 두 가지 문형이 반복된다.
 
 | 항목 | 상태 |
 |---|---|
-| E.G.O 기프트 관측 비용표 | 정적 데이터에 없음. `rules.json`에 `verified: false` |
+| E.G.O 기프트 관측 비용표 | **확인됨** — `mirror-dungeon-egogift-observation-data-md7.json`(70/160/270, 관측 가능 목록 312종) |
+| 993005 | N사 보스 러시 팩(1501~1510)과 철도 팩 일부의 보스 `rewardList`에 있으나 로컬라이즈가 없다. 플레이어에게 보이는 기프트인지 미확인이라 파이프라인이 무시한다 |
+| 히든 전투(11~15층 10%)가 팩 선택과 무관한지 | 정적 데이터의 `hiddenBattleInfo`는 층 조건만 있다. 인게임 확인 필요 |
 | 히든 팩 3001 「뽕.황」의 층·확률 | 정적 파일 미배포. 커뮤니티 추정(Hard 3층~10층, 0.02%)을 `rules.json`에 기록 |
 | 특수 키워드 변형(특수 화상 등) 판정 | 스킬 스크립트명 기반 1차 추정 + 큐레이션 보정 |
 | E.G.O 스킬 제외 규칙 | 1차 구현은 기본 공격 스킬만 집계 |
