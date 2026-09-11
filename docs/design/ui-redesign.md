@@ -240,3 +240,15 @@
 - 아이콘 플레이스홀더: `bg-surface-3` 정사각, lucide `Gem` 40%, 우하단 `T{n}`(32 이상). 이미지는 `{VITE_ASSET_BASE}/gifts/{icon}.png`, 실패 시 플레이스홀더로 복귀. 팩은 `packs/{sprite}.png`.
 - 판정 테두리: 충족 `border-2 border-ok`, 미충족 `border-2 border-bad`, 판정 불가 `border-2 border-dashed border-line-strong`, 조건 없음 `border border-line`. 접근성 이름은 「충족 · {이름}」 꼴.
 - 문구 키(M9 추가): `acqClear` 클리어 보상 · `acqChance` 확률 보상 · `unresolvedChance` · `actionObserveGift` · `actionReleaseObservations` · `routeObservedPinned/Recommended/Frees/Rescue/Toggle` · `routeVariants` · `routeVariantAll/Without/Confirm/See` · `giftsObserve` · `giftsObserveHint` · `giftsObserveNotAllowed` · `giftsObserveFull`. 삭제: `optionObservation`, `routeStarlight`, `routeUnverified`, `routeFuse*`, `routeFusions`, `routeFusion*`, `routeGeneral*`, `legendSure/Maybe/Eye/Hatch`, `acqMaybeLong`, `actionObserveMore`, `routeObservationImpossible`.
+
+## M10 추가 규칙 (15층 고정 · 우선순위 · 고정 격자)
+
+- **옵션 바**: 시작 키워드 select + 「항상 1~15층 · Hard로 계획합니다」 + 「옵션 초기화」뿐. 층 밴드 선택기·Hard 스위치·자동 잠금 배너는 없다. 옛 링크·저장값의 층 범위는 `sanitizeOptions`가 15층·Hard로 덮어쓴다.
+- **우선순위 3단계**: 보통(기본) / 반드시(`Star` 채움, 칩 `border-ink`, 아이콘 좌상단 별 배지 `data-must`) / 포기(`Ban`, 칩 `opacity-60 line-through`). 2단계 트레이 칩의 눈 토글 옆 버튼이 보통 → 반드시 → 포기 → 보통으로 순환한다(`aria-label` 「{이름} 우선순위: {값}」). 포기는 선택을 유지한 채 계획에서만 빠진다.
+- **미해결 카드**: 헤더 = 제목·건수 + 공유 조치 버튼 + 「대안 루트 보기」 1개. 행 = 아이콘 32 · 이름 · 이유 칩 · (반드시 배지) · 사유 1줄 · 우측 아이콘 버튼 `Star`(반드시, `aria-pressed`) `Ban`(포기) `Eye`(관측 지정, 적격일 때만). 카드 아래 `<details>` 「포기한 기프트 n」 — 아이콘 20 + 취소선 이름 + 「되돌리기」. 요약에 「포기 n」. 대안 탭의 확정 버튼은 「이 기프트 포기」.
+- **시간표 격자**: 데스크톱 열 `84px repeat(15, minmax(0, 1fr))`, 레인 행 132px 고정. 모바일 열 `56px repeat(n, minmax(0, 1fr))`, 층 행 64px, 자유 병합 행 40px, 시작 행 auto. 층 라벨과 배경 밴드는 본문 그리드 안의 셀이다(오버레이 없음). 호버해도 격자는 움직이지 않는다.
+- **블록**: `role=button` `aria-haspopup=dialog`, `overflow-hidden`. 데스크톱 = 팩 이미지 24 + 이름 1줄 / 「고정」·「4~5 · 추천 4」 / 아이콘 32 랩. 모바일 = 팩 이미지 32 + (이름·구간) + 아이콘 우측 정렬. 레인 ≥ 4면 compact = 이미지 24 위, 아이콘 세로 1열 아래, 문장 없음. 아이콘 상한 `iconCap` = 층 수 × (데스크톱 2 / 모바일 4 / compact 1), 초과분은 마지막 자리 「+n」 칩.
+- **상세**: 데스크톱 팝오버(`role=dialog`, 300px, `shadow-pop`, 호버 150ms·포커스 즉시, 아래 공간 부족하면 위, 우측 넘치면 우측 정렬) / 모바일 바텀 시트(`role=dialog aria-modal`, 70vh, 닫기 버튼·바깥 탭·Escape). 내용 = 팩 이미지 40 + 이름 + 「{k}층 고정」/「{a}~{b}층 중 한 층 · 추천 k」 + 「다른 후보 팩: …」(3개) + 픽업 행(아이콘 44 + 이름 + 반드시 배지 + 조건 문장 + 관측 적격이면 「관측」 버튼). 관측 타일의 시트는 아이콘 44 + 사유 + 지정/해제 버튼.
+- **시작 칸**: 타일은 가로 랩(아이콘 32 + 눈 배지 + 「지정/추천」 태그, 이름 없음 — 툴팁 「{이름} · 관측 · {사유}」). 데스크톱 84px 열에서 2열로 감긴다.
+- 문구 키(M10 추가): `priorityMust/Normal/Skip`, `priorityOf`, `prioritySetMust/Normal/Skip`, `priorityRestore`, `routeSkipped`, `routeSkippedList`, `routeAllPlanned`, `unresolvedMissing`, `routeWindowCompact`, `routePick`, `routeFixedFloor`, `routeGiftCount`, `routeDetail`, `routeMore`, `routeCandidates`, `routeClose`. 삭제: `optionFloorRange`, `optionBandNormal`, `optionDifficulty`, `optionHardSwitch`, `optionHardLocked`, `optionHardAuto`, `actionExtendFloors`, `actionSwitchHard`, `routeOutOfRange`.
+

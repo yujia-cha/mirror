@@ -35,6 +35,7 @@ npm run route -- --deck 10101,... --want 9088,... --floors 1-5 --difficulty hard
 - 현재 시즌은 거울 던전 7 「이름과 거미의 거울」.
 - 층: Normal/Hard 1~5, 평행중첩 6~10(1~5층 전부 Hard 필요), EXTREME 11~15(관측 불가).
 - **Hard는 sticky** — 한 번 고르면 Normal로 못 돌아간다.
+- **앱은 항상 1~15층·Hard로 계획한다**(`store.ts`의 `sanitizeOptions`가 고정). core의 `PlanOptions`·CLI는 층 범위·난이도를 그대로 받는다.
 - 팩의 층 제한은 `exceptionConditions[].selectableFloors`이고 **0-기준**이다. `dungeonIdx`는 0=Normal, 1=Hard, 2=평행중첩, 3=EXTREME.
 - 기프트 획득은 범용 / 테마팩 한정 / 조합 전용 / 시작으로 나뉜다. **범용은 "나올 수 있음"이고 확정이 아니다** — UI와 결과 문구가 이 차이를 분명히 해야 한다.
 - 조건부 기프트의 키워드 조건은 인격 태그가 아니라 **해당 키워드를 부여하는 공격 스킬 보유 수**로 센다. 소속 조건은 `associationList`로 센다.
