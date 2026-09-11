@@ -21,6 +21,7 @@ export function App() {
   const deck = useApp((s) => s.deck);
   const deployed = useApp((s) => s.deployed);
   const wanted = useApp((s) => s.wanted);
+  const priority = useApp((s) => s.priority);
   const setLang = useApp((s) => s.setLang);
   const toggleDark = useApp((s) => s.toggleDark);
   const setStep = useApp((s) => s.setStep);
@@ -71,7 +72,7 @@ export function App() {
 
   const share = async (): Promise<void> => {
     const state = useApp.getState();
-    const hash = encodeShared({ deck: state.deck, deployed: state.deployed, wanted: state.wanted, options: state.options });
+    const hash = encodeShared({ deck: state.deck, deployed: state.deployed, wanted: state.wanted, priority: state.priority, options: state.options });
     const url = `${window.location.origin}${window.location.pathname}${hash}`;
     await navigator.clipboard.writeText(url);
     setSharedCopied(true);
@@ -99,9 +100,13 @@ export function App() {
     if (effectiveStep === 2) return deckItems;
     const kinds = wanted.map((id) => badgeFor(indexes!.giftById.get(id)?.acquisition.kind ?? 'unknown').badge);
     const count = (badge: string) => kinds.filter((k) => k === badge).length;
+    const must = wanted.filter((id) => priority[id] === 'must').length;
+    const skipped = wanted.filter((id) => priority[id] === 'skip').length;
     return [
       ...deckItems,
       { label: t('giftsSelected', lang, { n: wanted.length }) },
+      ...(must ? [{ label: `${t('priorityMust', lang)} ${must}` }] : []),
+      ...(skipped ? [{ label: `${t('prioritySkip', lang)} ${skipped}` }] : []),
       ...(count('sure') ? [{ label: `${t('acqSure', lang)} ${count('sure')}` }] : []),
       ...(count('maybe') ? [{ label: `${t('acqMaybe', lang)} ${count('maybe')}` }] : []),
       ...(count('fuse') ? [{ label: `${t('acqFuse', lang)} ${count('fuse')}` }] : []),

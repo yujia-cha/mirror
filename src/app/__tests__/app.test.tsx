@@ -9,7 +9,7 @@ import userEvent from '@testing-library/user-event';
 import { loadGameDataFromDisk } from '../../core/data/node.ts';
 import { analyseDeck, buildIndexes, defaultOptions, evaluateConditions } from '../../core/index.ts';
 import { conditionText, josa, reachedTierText } from '../condition-text.ts';
-import { decodeShared, encodeShared, sinnerOf, useApp } from '../store.ts';
+import { appDefaultOptions, decodeShared, encodeShared, sinnerOf, useApp } from '../store.ts';
 import { classifyGift, prioritiseGifts } from '../lib/gift-priority.ts';
 import { DeckStep } from '../steps/DeckStep.tsx';
 import { GiftsStep } from '../steps/GiftsStep.tsx';
@@ -30,22 +30,35 @@ const indexes = buildIndexes(data);
 const statsFor = (deck: number[], deployed?: number[]) => analyseDeck(deck, indexes, data.rules.deployment, deployed);
 
 /** A combustion-heavy formation, one identity per sinner. */
+/** The six EXTREME clear rewards: five floors cannot hold them all, and none can be observed. */
+const CLEAR_REWARDS = [9250, 9251, 9252, 9253, 9254, 9255];
+
 const BURN_DECK = [10112, 10216, 10311, 10415, 10512, 10604, 10715, 10808, 10916, 11009, 11115, 11216];
 
 beforeEach(() => {
-  useApp.setState({ deck: [], deployed: [], wanted: [], options: defaultOptions(), lang: 'ko', dark: true, step: 1 });
+  useApp.setState({ deck: [], deployed: [], wanted: [], priority: {}, options: appDefaultOptions(), lang: 'ko', dark: true, step: 1 });
 });
 
 describe('share links', () => {
-  it('round-trips a deck, who is deployed, a gift list and the options', () => {
+  it('round-trips a deck, who is deployed, a gift list with priorities and the options', () => {
     const state = {
       deck: [10101, 10403],
       deployed: [10403],
       wanted: [9283, 9088],
-      options: { ...defaultOptions(), lastFloor: 10, hardFromFloor: 1 },
+      priority: { 9283: 'must' as const, 9088: 'skip' as const },
+      options: { ...appDefaultOptions(), startKeyword: 'auto' as const },
     };
     const decoded = decodeShared(encodeShared(state));
     expect(decoded).toEqual(state);
+  });
+
+  it('plans every link for floors 1-15 on Hard and keeps priorities only for wanted gifts', () => {
+    const old = lzString.compressToEncodedURIComponent(
+      JSON.stringify({ v: 2, deck: [10101], deployed: [10101], wanted: [9283], priority: { 9283: 'must', 9088: 'skip', 9222: 'other' }, options: { ...defaultOptions(), lastFloor: 5, hardFromFloor: 3 } }),
+    );
+    const decoded = decodeShared(`#s=${old}`)!;
+    expect(decoded.options).toMatchObject({ lastFloor: 15, hardFromFloor: 1 });
+    expect(decoded.priority).toEqual({ 9283: 'must' });
   });
 
   it('reads a v1 link without a deployed list as "the first six fight"', () => {
@@ -74,16 +87,16 @@ describe('share links', () => {
   });
 
   it('lands a recipient on the furthest step the link can show', () => {
-    useApp.getState().applyShared({ deck: [10101], deployed: [10101], wanted: [9283], options: defaultOptions() });
+    useApp.getState().applyShared({ deck: [10101], deployed: [10101], wanted: [9283], priority: {}, options: defaultOptions() });
     expect(useApp.getState().step).toBe(3);
-    useApp.getState().applyShared({ deck: [10101], deployed: [10101], wanted: [], options: defaultOptions() });
+    useApp.getState().applyShared({ deck: [10101], deployed: [10101], wanted: [], priority: {}, options: defaultOptions() });
     expect(useApp.getState().step).toBe(2);
-    useApp.getState().applyShared({ deck: [], deployed: [], wanted: [], options: defaultOptions() });
+    useApp.getState().applyShared({ deck: [], deployed: [], wanted: [], priority: {}, options: defaultOptions() });
     expect(useApp.getState().step).toBe(1);
   });
 
   it('consumes the hash once so a reload keeps later edits', async () => {
-    window.location.hash = encodeShared({ deck: [10101], deployed: [10101], wanted: [9283], options: defaultOptions() });
+    window.location.hash = encodeShared({ deck: [10101], deployed: [10101], wanted: [9283], priority: {}, options: defaultOptions() });
     render(<App />);
     await waitFor(() => expect(useApp.getState().wanted).toEqual([9283]));
     expect(window.location.hash).toBe('');
@@ -310,37 +323,49 @@ describe('RouteStep', () => {
     return render(<RouteStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
   };
 
-  it('offers a one-way Hard switch that locks once used', async () => {
-    const user = userEvent.setup();
+  it('shows only the start keyword and a reset in the options bar, and always fifteen floor columns', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
-    useApp.getState().toggleWanted(9283);
+    useApp.getState().toggleWanted(9267);
     renderRoute();
-    await user.click(screen.getByRole('button', { name: 'Hard로 전환' }));
-    expect(useApp.getState().options.hardFromFloor).toBe(1);
-    expect(screen.getByTestId('hard-locked')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Hard로 전환' })).toBeNull();
+    expect(screen.getByRole('combobox', { name: '시작 키워드' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '옵션 초기화' })).toBeInTheDocument();
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Hard로 전환/ })).toBeNull();
+    expect(screen.getByText('항상 1~15층 · Hard로 계획합니다')).toBeInTheDocument();
+    const columns = screen.getByTestId('timetable-columns');
+    const header = within(columns).getByText('15').parentElement!;
+    expect(header.style.gridTemplateColumns).toBe('84px repeat(15, minmax(0, 1fr))');
+    // Free floors after the last needed pack fold into one cell.
+    expect(within(columns).getByText('자유 · 6~15층')).toBeInTheDocument();
   });
 
-  it('locks Hard automatically when the plan reaches 평행중첩', async () => {
-    const user = userEvent.setup();
-    useApp.getState().setDeck(BURN_DECK, 7);
-    useApp.getState().toggleWanted(9283);
-    renderRoute();
-    await user.click(screen.getByRole('radio', { name: '10' }));
-    expect(useApp.getState().options).toMatchObject({ lastFloor: 10, hardFromFloor: 1 });
-    expect(screen.getByTestId('hard-locked')).toBeInTheDocument();
+  it('keeps a stale saved floor range out of the plan', () => {
+    useApp.getState().setOptions({ lastFloor: 5, hardFromFloor: 3 });
+    useApp.getState().applyShared({ ...useApp.getState(), priority: {} });
+    expect(useApp.getState().options).toMatchObject({ lastFloor: 15, hardFromFloor: 1 });
   });
 
-  it('draws a pack that may sit on several floors as a window block', () => {
+  it('draws a pack that may sit on several floors as a window block whose length is its floor span', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
-    useApp.getState().setOptions({ hardFromFloor: 1 });
     // 달궈진 놋쇠 → 화왕지절 (1402), Hard 4-5. Not in the observation pool, so it must be routed.
     useApp.getState().toggleWanted(9267);
     renderRoute();
     const columns = screen.getByTestId('timetable-columns');
     expect(within(columns).queryAllByTestId('block-fixed')).toHaveLength(0);
-    expect(within(columns).getAllByTestId('block-window')).toHaveLength(1);
-    expect(within(columns).getByText('4~5층 중 한 층 · 추천 4')).toBeInTheDocument();
+    const block = within(columns).getByTestId('block-window');
+    expect(block).toHaveTextContent('4~5 · 추천 4');
+    // Start column + floors 4 and 5.
+    expect(block.parentElement!.style.gridColumn).toBe('5 / span 2');
+    expect(block.parentElement!.parentElement!.style.gridTemplateRows).toBe('repeat(1, 132px)');
+    // The phone layout spans the same two floor rows, each a fixed 64px, with the labels in the grid.
+    const rows = screen.getByTestId('timetable-rows');
+    const grid = rows.firstElementChild as HTMLElement;
+    expect(grid.style.gridTemplateRows).toBe('auto 40px 64px 64px 40px');
+    expect(grid.querySelector(':scope > .absolute')).toBeNull();
+    const label4 = within(rows).getAllByTestId('row-label').find((el) => el.textContent === '4')!;
+    expect(label4.style.gridRow).toBe('3');
+    expect(label4.style.gridColumn).toBe('1');
+    expect(within(rows).getByTestId('block-window').parentElement!.style.gridRow).toBe('3 / span 2');
   });
 
   it('collapses that window to a fixed block when another required pack takes floor 5', () => {
@@ -354,26 +379,17 @@ describe('RouteStep', () => {
     expect(within(columns).queryAllByTestId('block-window')).toHaveLength(0);
   });
 
-  it('lets an unresolved entry change the options it needs, once per shared action', async () => {
-    const user = userEvent.setup();
-    useApp.getState().setDeck(BURN_DECK, 7);
-    useApp.getState().toggleWanted(9215); // 붉은색 넥타이: Hard only
-    useApp.getState().toggleWanted(9423); // 깨진 안경: Hard only
-    renderRoute();
-    const card = screen.getByTestId('unresolved');
-    expect(card).toHaveTextContent('Hard 전용');
-    expect(within(card).getAllByRole('button', { name: /Hard로 전환/ })).toHaveLength(1);
-    await user.click(within(card).getByRole('button', { name: /Hard로 전환/ }));
-    expect(useApp.getState().options.hardFromFloor).toBe(1);
-  });
-
-  it('extends the plan only as far as the missing pack needs', () => {
-    const options = { ...defaultOptions(), lastFloor: 3, hardFromFloor: 1 };
-    const entry = { giftId: 9423, reason: 'no-pack-in-range' as const, detail: { ko: '', en: '' } };
-    const actions = actionsFor(entry, indexes.giftById.get(9423), indexes.packById, options, data.rules);
-    const extend = actions.find((a) => a.kind === 'extendFloors')!;
-    expect(extend.floor).toBe(5);
-    expect(extend.patch).toEqual({ lastFloor: 5 });
+  it('offers an observation for an unresolved gift only while it is observable and a slot is free', () => {
+    const conflict = (giftId: number) => ({ giftId, reason: 'pack-conflict' as const, detail: { ko: '', en: '' } });
+    const free = appDefaultOptions();
+    expect(actionsFor(conflict(9423), indexes.giftById.get(9423), free, data.rules)).toEqual([
+      { kind: 'observeGift', giftId: 9423, patch: { observedGifts: [9423] } },
+    ]);
+    // EXTREME clear rewards cannot be observed.
+    expect(actionsFor(conflict(9255), indexes.giftById.get(9255), free, data.rules)).toEqual([]);
+    const full = { ...free, observedGifts: [9283, 9222, 9217] };
+    expect(actionsFor(conflict(9423), indexes.giftById.get(9423), full, data.rules)).toEqual([{ kind: 'releaseObservations', patch: { observedGifts: [] } }]);
+    expect(actionsFor(conflict(9283), indexes.giftById.get(9283), full, data.rules)).toEqual([]);
   });
 
   it('marks a condition it cannot judge as such, not as unmet', () => {
@@ -414,27 +430,76 @@ describe('RouteStep', () => {
     for (const text of ['별빛', '합성', '범용 드랍', '나올 수 있음', '관측 최대']) expect(screen.queryByText(new RegExp(text))).toBeNull();
   });
 
-  it('widens the hovered block\'s floors so its contents are not cut off', () => {
+  it('keeps the grid still on hover and opens the block\'s details in a popover', async () => {
     useApp.getState().setDeck(BURN_DECK, 7);
-    useApp.getState().setOptions({ hardFromFloor: 1 });
     useApp.getState().toggleWanted(9267); // 화왕지절, Hard 4-5
     renderRoute();
     const columns = screen.getByTestId('timetable-columns');
-    const block = within(columns).getByTestId('block-window').parentElement!;
+    const block = within(columns).getByRole('button', { name: /화왕지절 · 4~5층 중 · 기프트 1개 · 자세히/ });
     const body = block.parentElement!;
-    expect(body.style.gridTemplateColumns).not.toContain('2.2fr');
+    const before = body.style.gridTemplateColumns;
+    expect(before).toBe('84px repeat(15, minmax(0, 1fr))');
     fireEvent.pointerEnter(block);
-    const tracks = body.style.gridTemplateColumns.match(/\d+px|minmax\([^)]*\)/g)!;
-    // start + 5 floors + the folded out-of-range column
-    expect(tracks).toHaveLength(7);
-    expect(tracks[4]).toBe('minmax(0, 2.2fr)');
-    expect(tracks[5]).toBe('minmax(0, 2.2fr)');
-    expect(tracks[1]).toBe('minmax(0, 1fr)');
+    const popover = await within(columns).findByRole('dialog', { name: '화왕지절' });
+    expect(body.style.gridTemplateColumns).toBe(before);
+    expect(popover).toHaveTextContent('4~5층 중 한 층 · 추천 4');
+    expect(popover).toHaveTextContent('달궈진 놋쇠');
     fireEvent.pointerLeave(block);
-    expect(body.style.gridTemplateColumns).not.toContain('2.2fr');
-    // Each pickup is an icon tile with the gift name under it.
-    expect(within(block).getByLabelText(/달궈진 놋쇠/)).toBeInTheDocument();
+    await waitFor(() => expect(within(columns).queryByRole('dialog')).toBeNull());
+    // Keyboard focus opens it at once and Escape closes it.
+    fireEvent.focus(block);
+    expect(within(columns).getByRole('dialog')).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(within(columns).queryByRole('dialog')).toBeNull();
+    // Pickups are icon tiles without names; the name is in the popover.
+    expect(within(block).getByTestId('gift-icon')).toHaveAttribute('aria-label', expect.stringContaining('달궈진 놋쇠'));
     expect(within(block).getByTestId('pack-image')).toBeInTheDocument();
+  });
+
+  it('folds pickups past the cell\'s capacity into a +n chip', () => {
+    useApp.getState().setDeck(BURN_DECK, 7);
+    for (const id of [9712, 9713, 9714, 9715, 9716]) useApp.getState().toggleWanted(id); // 육참골단, one block on 3~4
+    renderRoute();
+    const block = within(screen.getByTestId('timetable-columns')).getByTestId('block-window');
+    expect(within(block).getAllByTestId('gift-icon')).toHaveLength(3);
+    expect(within(block).getByTestId('block-more')).toHaveTextContent('+2');
+    // A phone row is wider, so the same block shows every icon.
+    const row = within(screen.getByTestId('timetable-rows')).getByTestId('block-window');
+    expect(within(row).getAllByTestId('gift-icon')).toHaveLength(5);
+    expect(within(row).queryByTestId('block-more')).toBeNull();
+  });
+
+  it('opens a bottom sheet from a phone block and from an observed tile', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267);
+    useApp.getState().toggleWanted(9423); // observable; the planner recommends observing it
+    renderRoute();
+    const rows = screen.getByTestId('timetable-rows');
+    await user.click(within(rows).getByRole('button', { name: /기프트 1개 · 자세히/ }));
+    const sheet = screen.getByTestId('block-sheet');
+    expect(sheet).toHaveAttribute('role', 'dialog');
+    expect(sheet).toHaveTextContent('5층 고정');
+    expect(sheet).toHaveTextContent('달궈진 놋쇠');
+    await user.click(within(sheet).getByRole('button', { name: '닫기' }));
+    expect(screen.queryByTestId('block-sheet')).toBeNull();
+    // The start cell's tile explains the observation and pins it from the sheet.
+    const tile = within(within(rows).getByTestId('start-cell')).getByTestId('observed-tile');
+    await user.click(tile);
+    const observed = screen.getByTestId('block-sheet');
+    expect(observed).toHaveTextContent('변하지 않는 안 가도 됨');
+    await user.click(within(observed).getByRole('button', { name: '깨진 안경 관측 지정 전환' }));
+    expect(useApp.getState().options.observedGifts).toEqual([9423]);
+  });
+
+  it('marks a must-have gift with a star badge on its tile', () => {
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267);
+    useApp.getState().setPriority(9267, 'must');
+    renderRoute();
+    const icon = within(within(screen.getByTestId('timetable-columns')).getByTestId('block-window')).getByTestId('gift-icon');
+    expect(icon).toHaveAttribute('data-must', 'true');
+    expect(icon).toHaveAttribute('aria-label', expect.stringMatching(/^반드시 · /));
   });
 
   it('shows recommended observations in the start cell and lets one be pinned', async () => {
@@ -446,42 +511,83 @@ describe('RouteStep', () => {
     const cell = within(screen.getByTestId('timetable-columns')).getByTestId('start-cell');
     const tile = within(cell).getByTestId('observed-tile');
     expect(tile).toHaveTextContent('추천');
-    expect(tile).toHaveAttribute('title', expect.stringContaining('변하지 않는 안 가도 됨'));
+    expect(tile).toHaveAttribute('title', '깨진 안경 · 관측 · 변하지 않는 안 가도 됨');
+    expect(tile.className).not.toContain('w-full');
     await user.click(tile);
     expect(useApp.getState().options.observedGifts).toEqual([9423]);
     expect(within(screen.getByTestId('timetable-columns')).getByTestId('observed-tile')).toHaveTextContent('지정');
   });
 
-  it('offers alternative routes as tabs when the wanted gifts cannot all fit', async () => {
+  it('offers alternative routes as tabs when the wanted gifts cannot all fit, and confirming one gives that gift up', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
-    useApp.getState().setOptions({ hardFromFloor: 1 });
-    for (const id of [9283, 9222, 9217, 9435, 9751]) useApp.getState().toggleWanted(id);
+    // Six EXTREME clear rewards for five EXTREME floors; none can be observed.
+    for (const id of CLEAR_REWARDS) useApp.getState().toggleWanted(id);
     renderRoute();
     expect(screen.getByTestId('unresolved')).toHaveTextContent('팩 충돌');
+    expect(screen.getAllByTestId('unresolved-row')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: '대안 루트 보기' })).toBeInTheDocument();
     const tabs = within(screen.getByRole('tablist', { name: '대안 루트' })).getAllByRole('tab');
-    expect(tabs).toHaveLength(3);
+    expect(tabs).toHaveLength(5);
     expect(tabs[0]).toHaveTextContent('전부');
-    expect(tabs[1]).toHaveTextContent('상납된 시가 제외');
+    expect(tabs[1]).toHaveTextContent('제외');
     await user.click(tabs[1]!);
     expect(tabs[1]).toHaveAttribute('aria-selected', 'true');
     expect(screen.queryByTestId('unresolved')).toBeNull();
-    expect(screen.getByText(/^확보/).parentElement).toHaveTextContent('4/4');
-    // Confirming drops the gift from the wanted list for good.
-    await user.click(screen.getByRole('button', { name: '이 기프트 빼고 확정' }));
-    expect(useApp.getState().wanted).toEqual([9217, 9222, 9435, 9751]);
+    expect(screen.getByText(/^확보/).parentElement).toHaveTextContent('5/5');
+    // Confirming keeps the gift selected but gives it up in the plan.
+    await user.click(screen.getByRole('button', { name: '이 기프트 포기' }));
+    expect(useApp.getState().wanted).toEqual(CLEAR_REWARDS);
+    expect(Object.values(useApp.getState().priority)).toEqual(['skip']);
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.getByTestId('skipped')).toHaveTextContent('포기한 기프트 1');
   });
 
-  it('keeps a valid column template when the plan reaches floor 15', async () => {
+  it('lets a must-have win the conflict and a given-up gift leave the plan until restored', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
-    useApp.getState().toggleWanted(9267);
+    for (const id of CLEAR_REWARDS) useApp.getState().toggleWanted(id);
     renderRoute();
-    await user.click(screen.getByRole('radio', { name: '15' }));
-    const grids = screen.getByTestId('timetable-columns').querySelectorAll<HTMLElement>('.grid');
-    for (const grid of grids) expect(grid.style.gridTemplateColumns).not.toContain('repeat(0');
-    // Free floors 5-15 fold into one cell instead of eleven.
-    expect(within(screen.getByTestId('timetable-columns')).getByText('자유 · 6~15층')).toBeInTheDocument();
+    const row = () => screen.getByTestId('unresolved-row');
+    expect(row()).toHaveTextContent('박수 짝짝!');
+    await user.click(within(row()).getByRole('button', { name: '박수 짝짝! 반드시 획득' }));
+    expect(useApp.getState().priority).toEqual({ 9255: 'must' });
+    // The must-have is now routed and another clear reward is the one left over.
+    expect(row()).not.toHaveTextContent('박수 짝짝!');
+    expect(row()).toHaveTextContent('한 잔 더!');
+    expect(screen.getByText(/^확보/).parentElement).toHaveTextContent('5/6');
+    expect(screen.queryByText('포기 1')).toBeNull();
+    await user.click(within(row()).getByRole('button', { name: '한 잔 더! 포기' }));
+    expect(useApp.getState().priority).toEqual({ 9255: 'must', 9254: 'skip' });
+    expect(screen.queryByTestId('unresolved-row')).toBeNull();
+    expect(screen.getByText(/^확보/).parentElement).toHaveTextContent('5/5');
+    expect(screen.getByText('포기 1')).toBeInTheDocument();
+    const skipped = screen.getByTestId('skipped');
+    expect(skipped).toHaveTextContent('포기한 기프트 1');
+    await user.click(within(skipped).getByRole('button', { name: '한 잔 더! 되돌리기' }));
+    expect(useApp.getState().priority).toEqual({ 9255: 'must' });
+    expect(row()).toHaveTextContent('한 잔 더!');
+  });
+
+  it('cycles a tray chip through 보통 → 반드시 → 포기 → 보통', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9283);
+    useApp.getState().toggleObserved(9283, 3);
+    const { deck, deployed } = useApp.getState();
+    render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
+    await user.click(screen.getByRole('button', { name: '상납된 시가 우선순위: 보통' }));
+    expect(useApp.getState().priority).toEqual({ 9283: 'must' });
+    await user.click(screen.getByRole('button', { name: '상납된 시가 우선순위: 반드시' }));
+    expect(useApp.getState().priority).toEqual({ 9283: 'skip' });
+    // Giving a gift up releases its pinned observation.
+    expect(useApp.getState().options.observedGifts).toEqual([]);
+    await user.click(screen.getByRole('button', { name: '상납된 시가 우선순위: 포기' }));
+    expect(useApp.getState().priority).toEqual({});
+    // Deselecting a gift forgets its priority.
+    useApp.getState().setPriority(9283, 'must');
+    useApp.getState().toggleWanted(9283);
+    expect(useApp.getState().priority).toEqual({});
   });
 
   it('copies the plan with localized names instead of raw ids', () => {
@@ -506,5 +612,8 @@ describe('RouteStep', () => {
     for (const word of ['별빛', '조합', '범용']) expect(text).not.toContain(word);
     const without = planToText(plan, (id) => indexes.giftById.get(id)?.name.ko ?? '', () => '', () => '', 'ko', [9283]);
     expect(without.split('\n')[0]).toBe('상납된 시가 제외');
+    const marked = planToText(plan, (id) => indexes.giftById.get(id)?.name.ko ?? '', () => '', () => '', 'ko', [], { must: [9423], skipped: [9283] });
+    expect(marked).toContain('깨진 안경 (반드시)');
+    expect(marked.trim().split('\n').at(-1)).toBe('포기: 상납된 시가');
   });
 });

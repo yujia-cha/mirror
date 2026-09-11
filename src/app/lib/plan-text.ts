@@ -15,14 +15,17 @@ export function planToText(
   keywordLabel: (id: Keyword) => string,
   lang: Lang,
   dropped: number[] = [],
+  marks: { must?: number[]; skipped?: number[] } = {},
 ): string {
   const lines: string[] = [];
+  const must = new Set(marks.must ?? []);
+  const name = (id: number): string => (must.has(id) ? `${giftName(id)} (${t('priorityMust', lang)})` : giftName(id));
   if (dropped.length > 0) lines.push(t('routeVariantWithout', lang, { name: dropped.map(giftName).join(', ') }));
   lines.push(`${t('routeStart', lang)}: ${plan.start.keyword ? keywordLabel(plan.start.keyword) : '—'}`);
   if (plan.start.startGift) lines.push(`  ${t('routeStartGift', lang)}: ${giftName(plan.start.startGift)}`);
   if (plan.start.observed.length > 0) {
     const observed = plan.start.observed.map(
-      (o) => `${giftName(o.giftId)} (${o.pinned ? t('routeObservedPinned', lang) : t('routeObservedRecommended', lang)})`,
+      (o) => `${name(o.giftId)} (${o.pinned ? t('routeObservedPinned', lang) : t('routeObservedRecommended', lang)})`,
     );
     lines.push(`  ${t('routeObserved', lang)}: ${observed.join(', ')}`);
   }
@@ -36,13 +39,17 @@ export function planToText(
     lines.push(`${floor.floor}F (${t(MODE_LABEL[floor.mode], lang)}) ${pack}${window}`);
     for (const pickup of floor.pickups.filter((p) => p.kind === 'exclusive')) {
       const why = pickup.neededFor ? ` -> ${giftName(pickup.neededFor)}` : '';
-      lines.push(`  - ${giftName(pickup.giftId)}${why}`);
+      lines.push(`  - ${name(pickup.giftId)}${why}`);
     }
   }
   if (plan.unresolved.length > 0) {
     lines.push('');
     lines.push(t('routeUnresolved', lang));
-    for (const entry of plan.unresolved) lines.push(`  ${giftName(entry.giftId)}: ${pick(entry.detail, lang)}`);
+    for (const entry of plan.unresolved) lines.push(`  ${name(entry.giftId)}: ${pick(entry.detail, lang)}`);
+  }
+  if (marks.skipped && marks.skipped.length > 0) {
+    lines.push('');
+    lines.push(`${t('prioritySkip', lang)}: ${marks.skipped.map(giftName).join(', ')}`);
   }
   return lines.join('\n');
 }

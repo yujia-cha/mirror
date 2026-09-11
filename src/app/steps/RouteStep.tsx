@@ -1,20 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, ChevronLeft, ChevronRight, Copy, Hourglass, Info, Lock, RefreshCw, Star, TriangleAlert } from 'lucide-react';
+import { Ban, ChevronLeft, ChevronRight, Copy, Eye, Hourglass, RefreshCw, RotateCcw, Star, TriangleAlert } from 'lucide-react';
 import type { GameData, Keyword } from '../../core/schema.ts';
-import { planAlternatives, planRoute } from '../../core/index.ts';
+import { observable, planAlternatives, planRoute } from '../../core/index.ts';
 import type { DeckStats, GameIndexes } from '../../core/types.ts';
 import { pick, t, type Lang } from '../i18n.ts';
 import { useApp } from '../store.ts';
 import { keywordName } from '../format.ts';
 import { conditionText } from '../condition-text.ts';
-import { UNRESOLVED_LABEL, bandOf } from '../lib/labels.ts';
+import { UNRESOLVED_LABEL } from '../lib/labels.ts';
 import { planToText } from '../lib/plan-text.ts';
 import { actionsFor, type UnresolvedAction } from '../lib/unresolved-actions.ts';
 import { judgementsByGift } from '../lib/judgement.ts';
+import { planInputFor, priorityOf, skippedGifts } from '../lib/plan-input.ts';
 import { Badge, Button, Card, Chip, Notice, SectionTitle, Toast } from '../components/ui.tsx';
 import { Timetable } from '../components/Timetable.tsx';
 import { GiftIcon } from '../components/GiftIcon.tsx';
-import { MAX_FLOOR } from '../lib/timetable.ts';
 
 interface Props {
   data: GameData;
@@ -23,49 +23,8 @@ interface Props {
   lang: Lang;
 }
 
-function FloorBandPicker({ lastFloor, onChange, lang }: { lastFloor: number; onChange: (floor: number) => void; lang: Lang }) {
-  const bands = [t('optionBandHard', lang), t('optionBandParallel', lang), t('optionBandExtreme', lang)];
-  return (
-    <div className="flex min-w-0 flex-1 flex-col gap-1">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 text-xs text-fg-3">
-        <span>{t('optionFloorRange', lang)}</span>
-        <span className="flex gap-3">
-          {bands.map((b) => (
-            <span key={b}>{b}</span>
-          ))}
-        </span>
-      </div>
-      <div role="radiogroup" aria-label={t('optionFloorRange', lang)} className="flex overflow-hidden rounded-sm border border-line-strong">
-        {Array.from({ length: MAX_FLOOR }, (_, i) => i + 1).map((f) => {
-          const sel = f <= lastFloor;
-          const band = bandOf(f);
-          return (
-            <button
-              key={f}
-              type="button"
-              role="radio"
-              aria-checked={f === lastFloor}
-              aria-label={`${f}`}
-              onClick={() => onChange(f)}
-              className={`flex h-7 min-w-0 flex-1 items-center justify-center border-r border-line font-mono text-xs last:border-r-0 ${
-                sel ? 'bg-ink text-ink-fg' : band === 2 ? 'bg-hatch text-fg-3' : band === 1 ? 'bg-surface-2 text-fg-3' : 'text-fg-3'
-              }`}
-            >
-              {f}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function actionLabel(action: UnresolvedAction, lang: Lang, giftName: (id: number) => string): string {
   switch (action.kind) {
-    case 'switchHard':
-      return t('actionSwitchHard', lang);
-    case 'extendFloors':
-      return t('actionExtendFloors', lang, { n: action.floor ?? 0 });
     case 'observeGift':
       return t('actionObserveGift', lang, { name: action.giftId !== undefined ? giftName(action.giftId) : '' });
     case 'releaseObservations':
@@ -77,89 +36,52 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
   const deck = useApp((s) => s.deck);
   const deployed = useApp((s) => s.deployed);
   const wanted = useApp((s) => s.wanted);
+  const priority = useApp((s) => s.priority);
   const options = useApp((s) => s.options);
   const setOptions = useApp((s) => s.setOptions);
   const resetOptions = useApp((s) => s.resetOptions);
-  const removeWanted = useApp((s) => s.removeWanted);
+  const setPriority = useApp((s) => s.setPriority);
   const toggleObserved = useApp((s) => s.toggleObserved);
   const setStep = useApp((s) => s.setStep);
   const [copied, setCopied] = useState(false);
   const [variantIndex, setVariantIndex] = useState(0);
   const tabsRef = useRef<HTMLDivElement | null>(null);
 
-  const hard = options.hardFromFloor !== null || options.lastFloor > 5;
-  const autoHard = options.hardFromFloor === null && options.lastFloor > 5;
-
-  const plan = useMemo(
-    () =>
-      wanted.length === 0
-        ? null
-        : planRoute(
-            { deck, wanted: wanted.map((giftId) => ({ giftId, required: true })), options: { ...options, deployed } },
-            data,
-            indexes,
-          ),
-    [deck, deployed, wanted, options, data, indexes],
-  );
+  // Given-up gifts stay selected but leave the plan; must-have ones are what the search keeps first.
+  const input = useMemo(() => planInputFor({ deck, deployed, wanted, priority, options }), [deck, deployed, wanted, priority, options]);
+  const skipped = skippedGifts(wanted, priority);
+  const plan = useMemo(() => (input.wanted.length === 0 ? null : planRoute(input, data, indexes)), [input, data, indexes]);
   // Alternatives only exist when packs collide, so this is free on the common path.
   const variants = useMemo(
-    () =>
-      plan && plan.unresolved.some((u) => u.reason === 'pack-conflict')
-        ? planAlternatives(
-            { deck, wanted: wanted.map((giftId) => ({ giftId, required: true })), options: { ...options, deployed } },
-            data,
-            indexes,
-            plan,
-          )
-        : [],
-    [plan, deck, deployed, wanted, options, data, indexes],
+    () => (plan && plan.unresolved.some((u) => u.reason === 'pack-conflict') ? planAlternatives(input, data, indexes, plan) : []),
+    [plan, input, data, indexes],
   );
-  useEffect(() => setVariantIndex(0), [wanted, options]);
+  useEffect(() => setVariantIndex(0), [input]);
   const variant = variantIndex > 0 ? variants[variantIndex - 1] : undefined;
 
   const giftName = (id: number): string => pick(indexes.giftById.get(id)?.name, lang);
   const packName = (id: number): string => pick(indexes.packById.get(id)?.name, lang);
 
-  const setLastFloor = (floor: number): void => {
-    setOptions(floor > 5 ? { lastFloor: floor, hardFromFloor: 1 } : { lastFloor: floor });
-  };
-
   const optionsBar = (
-    <Card className="flex flex-col gap-3 px-3.5 py-3 lg:flex-row lg:items-end lg:gap-4">
-      <FloorBandPicker lastFloor={options.lastFloor} onChange={setLastFloor} lang={lang} />
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1">
-          <span className="text-xs text-fg-3">{t('optionDifficulty', lang)}</span>
-          {hard ? (
-            <span className="inline-flex h-8 items-center gap-1.5 rounded-sm bg-ink px-2.5 text-sm font-medium text-ink-fg" data-testid="hard-locked">
-              <Lock size={13} aria-hidden />
-              {t('optionHardLocked', lang)}
-            </span>
-          ) : (
-            <Button onClick={() => setOptions({ hardFromFloor: 1 })}>
-              <ArrowRight size={13} aria-hidden />
-              {t('optionHardSwitch', lang)}
-            </Button>
-          )}
-        </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-xs text-fg-3">{t('optionStartKeyword', lang)}</span>
-          <select
-            aria-label={t('optionStartKeyword', lang)}
-            value={options.startKeyword}
-            onChange={(event) => setOptions({ startKeyword: event.target.value as Keyword | 'auto' })}
-            className="h-[30px] rounded-full border border-line bg-surface-2 px-2.5 text-xs text-fg-2"
-          >
-            <option value="auto">{t('optionAuto', lang)}</option>
-            {data.enums.keywords.map((k) => (
-              <option key={k.id} value={k.id}>
-                {pick(k.name, lang)}
-              </option>
-            ))}
-          </select>
-        </div>
+    <Card className="flex flex-wrap items-end gap-3 px-3.5 py-3">
+      <div className="flex flex-col gap-1">
+        <span className="text-xs text-fg-3">{t('optionStartKeyword', lang)}</span>
+        <select
+          aria-label={t('optionStartKeyword', lang)}
+          value={options.startKeyword}
+          onChange={(event) => setOptions({ startKeyword: event.target.value as Keyword | 'auto' })}
+          className="h-[30px] rounded-full border border-line bg-surface-2 px-2.5 text-xs text-fg-2"
+        >
+          <option value="auto">{t('optionAuto', lang)}</option>
+          {data.enums.keywords.map((k) => (
+            <option key={k.id} value={k.id}>
+              {pick(k.name, lang)}
+            </option>
+          ))}
+        </select>
       </div>
-      <Button variant="ghost" size="sm" onClick={resetOptions} className="self-start lg:ml-auto lg:self-end">
+      <span className="text-xs text-fg-3">{t('routeAllPlanned', lang)}</span>
+      <Button variant="ghost" size="sm" onClick={resetOptions} className="ml-auto">
         <RefreshCw size={12} aria-hidden />
         {t('optionReset', lang)}
       </Button>
@@ -197,7 +119,10 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
 
   const copy = async (): Promise<void> => {
     await navigator.clipboard.writeText(
-      planToText(shown, giftName, packName, (id) => keywordName(id, data.enums, lang), lang, variant?.dropped ?? []),
+      planToText(shown, giftName, packName, (id) => keywordName(id, data.enums, lang), lang, variant?.dropped ?? [], {
+        must: wanted.filter((id) => priorityOf(priority, id) === 'must'),
+        skipped,
+      }),
     );
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
@@ -216,6 +141,7 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
           <span className="font-mono text-lg font-bold text-fg lg:text-xl">{value}</span>
         </span>
       ))}
+      {skipped.length > 0 ? <span className="text-xs text-fg-3">{t('routeSkipped', lang, { n: skipped.length })}</span> : null}
       {capped ? <Badge tone="approx">{t('routeApprox', lang)}</Badge> : null}
       <Button variant="ghost" size="sm" className="ml-auto" onClick={copy} ariaLabel={t('routeCopy', lang)}>
         <Copy size={13} aria-hidden />
@@ -253,7 +179,8 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
           );
         })}
         {variant ? (
-          <Button size="sm" variant="ghost" onClick={() => removeWanted(variant.dropped[0]!)}>
+          <Button size="sm" variant="ghost" onClick={() => setPriority(variant.dropped[0]!, 'skip')}>
+            <Ban size={12} aria-hidden />
             {t('routeVariantConfirm', lang)}
           </Button>
         ) : null}
@@ -265,7 +192,6 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
       <b>{t('routeApprox', lang)}.</b> {pick(shown.warnings.find((w) => w.code === 'search-capped')?.detail, lang)}
     </Notice>
   ) : null;
-  const autoHardNotice = autoHard ? <Notice icon={<Info size={14} aria-hidden />}>{t('optionHardAuto', lang)}</Notice> : null;
 
   // Judgement lives on the icon border; the sentence stays as hover text.
   const conditionGifts = [...new Set(shown.conditions.map((c) => c.giftId))];
@@ -298,9 +224,10 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
     </Card>
   );
 
-  // Actions shared by several entries appear once in the header; entry-specific ones stay inline.
+  // Actions shared by several entries appear once in the header; entry-specific ones become the
+  // eye button on the row. The must / give-up buttons change the wanted list, not the options.
   const unresolvedActions = shown.unresolved.map((entry) =>
-    actionsFor(entry, indexes.giftById.get(entry.giftId), indexes.packById, options, data.rules).map((action) => ({
+    actionsFor(entry, indexes.giftById.get(entry.giftId), options, data.rules).map((action) => ({
       ...action,
       label: actionLabel(action, lang, giftName),
     })),
@@ -322,45 +249,94 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
     tabsRef.current?.scrollIntoView?.({ block: 'center' });
     tabsRef.current?.querySelectorAll<HTMLButtonElement>('[role=tab]')[1]?.focus();
   };
+  const detailText = (entry: (typeof shown.unresolved)[number]): string =>
+    entry.reason === 'fusion-ingredient-unresolved' && entry.missing && entry.missing.length > 0
+      ? t('unresolvedMissing', lang, { names: entry.missing.map(giftName).join(', ') })
+      : pick(entry.detail, lang);
+  const iconButton = (label: string, onClick: () => void, icon: React.ReactNode, pressed?: boolean, disabled?: boolean) => (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      aria-pressed={pressed}
+      disabled={disabled}
+      className={`inline-flex h-7 w-7 items-center justify-center rounded-full border ${
+        pressed ? 'border-ink bg-ink text-ink-fg' : 'border-line bg-surface text-fg-2 hover:bg-surface-2'
+      } disabled:opacity-30`}
+    >
+      {icon}
+    </button>
+  );
 
   const unresolved =
-    shown.unresolved.length > 0 ? (
+    shown.unresolved.length > 0 || skipped.length > 0 ? (
       <Card variant="strong" className="overflow-hidden" testId="unresolved">
         <div className="flex min-h-9 flex-wrap items-center gap-1.5 border-b border-line px-3 py-1.5">
           <TriangleAlert size={14} aria-hidden />
           <span className="text-sm font-semibold">
             {t('routeUnresolved', lang)} <span className="font-mono text-xs text-fg-3">{shown.unresolved.length}</span>
           </span>
-          {headerActions.length > 0 ? <span className="ml-auto flex gap-1.5">{headerActions.map(actionButton)}</span> : null}
+          <span className="ml-auto flex flex-wrap gap-1.5">
+            {headerActions.map(actionButton)}
+            {variants.length > 0 && !variant ? (
+              <Button size="sm" variant="ghost" onClick={seeVariants}>
+                {t('routeVariantSee', lang)}
+                <ChevronRight size={12} aria-hidden />
+              </Button>
+            ) : null}
+          </span>
         </div>
         <ul>
           {shown.unresolved.map((entry, i) => {
             const gift = indexes.giftById.get(entry.giftId);
+            const level = priorityOf(priority, entry.giftId);
+            const observe = (unresolvedActions[i] ?? []).find((a) => a.kind === 'observeGift' && !sharedLabels.has(a.label));
             return (
-              <li key={`${entry.giftId}-${entry.reason}`} className="flex items-start gap-2.5 border-b border-line px-3 py-2.5 last:border-b-0">
+              <li key={`${entry.giftId}-${entry.reason}`} className="flex items-start gap-2.5 border-b border-line px-3 py-2 last:border-b-0" data-testid="unresolved-row">
                 {gift ? <GiftIcon gift={gift} size={32} judgement={judgements.get(entry.giftId) ?? null} lang={lang} /> : null}
-                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium">{giftName(entry.giftId)}</span>
                     <Chip>{t(UNRESOLVED_LABEL[entry.reason], lang)}</Chip>
+                    {level === 'must' ? <Badge tone="sure">{t('priorityMust', lang)}</Badge> : null}
                   </div>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-xs text-fg-2">{pick(entry.detail, lang)}</span>
-                    <span className="flex gap-1.5">
-                      {(unresolvedActions[i] ?? []).filter((a) => !sharedLabels.has(a.label)).map(actionButton)}
-                      {entry.reason === 'pack-conflict' && variants.length > 0 && !variant ? (
-                        <Button size="sm" variant="ghost" onClick={seeVariants}>
-                          {t('routeVariantSee', lang)}
-                          <ChevronRight size={12} aria-hidden />
-                        </Button>
-                      ) : null}
-                    </span>
-                  </div>
+                  <span className="text-xs text-fg-2">{detailText(entry)}</span>
                 </div>
+                <span className="flex flex-none gap-1">
+                  {iconButton(
+                    level === 'must' ? t('prioritySetNormal', lang, { name: giftName(entry.giftId) }) : t('prioritySetMust', lang, { name: giftName(entry.giftId) }),
+                    () => setPriority(entry.giftId, level === 'must' ? 'normal' : 'must'),
+                    <Star size={13} fill={level === 'must' ? 'currentColor' : 'none'} />,
+                    level === 'must',
+                  )}
+                  {iconButton(t('prioritySetSkip', lang, { name: giftName(entry.giftId) }), () => setPriority(entry.giftId, 'skip'), <Ban size={13} />)}
+                  {observe ? iconButton(observe.label, () => setOptions(observe.patch), <Eye size={13} />) : null}
+                </span>
               </li>
             );
           })}
         </ul>
+        {skipped.length > 0 ? (
+          <details className="border-t border-line px-3 py-2" data-testid="skipped">
+            <summary className="cursor-pointer text-xs font-medium text-fg-2">{t('routeSkippedList', lang, { n: skipped.length })}</summary>
+            <ul className="mt-1.5 flex flex-col gap-1">
+              {skipped.map((id) => {
+                const gift = indexes.giftById.get(id);
+                return (
+                  <li key={id} className="flex items-center gap-2 text-xs text-fg-2">
+                    {gift ? <GiftIcon gift={gift} size={20} lang={lang} /> : null}
+                    <span className="line-through">{giftName(id)}</span>
+                    <button type="button" onClick={() => setPriority(id, 'normal')} className="ml-auto inline-flex items-center gap-1 text-fg underline" aria-label={`${giftName(id)} ${t('priorityRestore', lang)}`}>
+                      <RotateCcw size={11} aria-hidden />
+                      {t('priorityRestore', lang)}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </details>
+        ) : null}
       </Card>
     ) : null;
 
@@ -383,13 +359,15 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
       <div className="order-1 lg:order-none">{summary}</div>
       {variantTabs ? <div className="order-2 lg:order-none">{variantTabs}</div> : null}
       {cappedBanner ? <div className="order-2 lg:order-none">{cappedBanner}</div> : null}
-      {autoHardNotice ? <div className="order-4 lg:order-none">{autoHardNotice}</div> : null}
       <div className="order-6 lg:order-none">
         <Timetable
           plan={shown}
-          lastFloor={options.lastFloor}
-          hard={hard}
           indexes={indexes}
+          isMust={(id) => priorityOf(priority, id) === 'must'}
+          observable={(id) => {
+            const gift = indexes.giftById.get(id);
+            return gift ? observable(gift, data.rules) : false;
+          }}
           judgements={judgements}
           giftTitle={giftTitle}
           packName={packName}

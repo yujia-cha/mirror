@@ -152,6 +152,8 @@ export interface Unresolved {
   giftId: number;
   reason: UnresolvedReason;
   detail: { ko: string; en: string };
+  /** For `fusion-ingredient-unresolved`: the ingredient ids the plan could not obtain. */
+  missing?: number[];
 }
 
 export type WarningCode =

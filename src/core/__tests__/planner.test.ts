@@ -542,6 +542,13 @@ describe('gift observation', () => {
     expect(result.unresolved.map((u) => u.reason)).toEqual(['pack-conflict']);
   });
 
+  it('rescues a must-have before the others when observations run short', () => {
+    const wanted = [9283, 9222, 9217, 9435, 9751].map((giftId) => ({ giftId, required: giftId === 9751 }));
+    const result = plan({ wanted, options: options({ hardFromFloor: 1 }) });
+    expect(result.unresolved.map((u) => u.giftId)).not.toContain(9751);
+    expect(result.stats.coveredWanted).toBe(4);
+  });
+
   it('drops pinned gifts that cannot be observed and says so', () => {
     const result = plan({ wanted: want(9283), options: options({ hardFromFloor: 1, observedGifts: [9283, 9283, 999999] }) });
     expect(result.start.observed).toEqual([]);
@@ -612,6 +619,16 @@ describe('alternative routes', () => {
     const variants = planAlternatives(input, data, indexes);
     expect(variants.map((v) => v.dropped)).toEqual([[9283], [9751]]);
     expect(variants.every((v) => v.plan.unresolved.length === 0 && v.plan.stats.coveredWanted === 4)).toBe(true);
+  });
+
+  it('never leaves out a gift the user must have', () => {
+    const wanted = [9250, 9251, 9252, 9253, 9254, 9255].map((giftId) => ({ giftId, required: giftId === 9255 }));
+    const input = { deck: BLADE_LINEAGE_DECK, wanted, options: options({ lastFloor: 15 }) };
+    const main = planRoute(input, data, indexes);
+    expect(main.unresolved.map((u) => u.giftId)).not.toContain(9255);
+    const variants = planAlternatives(input, data, indexes, main);
+    expect(variants.length).toBeGreaterThan(0);
+    expect(variants.every((v) => !v.dropped.includes(9255))).toBe(true);
   });
 
   it('caps the list and stays deterministic', () => {

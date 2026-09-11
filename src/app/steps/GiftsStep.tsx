@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, ChevronDown, ChevronLeft, ChevronRight, Eye, RefreshCw, Search, User, X } from 'lucide-react';
+import { ArrowRight, Ban, ChevronDown, ChevronLeft, ChevronRight, Eye, RefreshCw, Search, Star, User, X } from 'lucide-react';
 import type { AcquisitionKind, GameData, Gift, Keyword, Sin } from '../../core/schema.ts';
 import { evaluateConditions, observable } from '../../core/index.ts';
 import type { ConditionReport, DeckStats, GameIndexes } from '../../core/types.ts';
@@ -11,6 +11,7 @@ import { SIN_LABEL, badgeFor } from '../lib/labels.ts';
 import { prioritiseGifts, type GiftEntry, type GiftGroup } from '../lib/gift-priority.ts';
 import { useVirtualRows } from '../lib/useVirtualRows.ts';
 import { judgementOf } from '../lib/judgement.ts';
+import { priorityOf, type Priority } from '../lib/plan-input.ts';
 import { Badge, Button, Card, FilterSelect } from '../components/ui.tsx';
 import { GiftIcon } from '../components/GiftIcon.tsx';
 
@@ -64,6 +65,8 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
   const clearWanted = useApp((s) => s.clearWanted);
   const observedGifts = useApp((s) => s.options.observedGifts);
   const toggleObserved = useApp((s) => s.toggleObserved);
+  const priority = useApp((s) => s.priority);
+  const setPriority = useApp((s) => s.setPriority);
   const setStep = useApp((s) => s.setStep);
   const observeMax = data.rules.giftObservation.max;
 
@@ -358,11 +361,29 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
             const canObserve = gift ? observable(gift, data.rules) : false;
             const full = !pinned && observedGifts.length >= observeMax;
             const why = !canObserve ? t('giftsObserveNotAllowed', lang) : full ? t('giftsObserveFull', lang, { max: observeMax }) : t('giftsObserve', lang, { name: giftName(id) });
+            const level = priorityOf(priority, id);
+            const nextLevel: Priority = level === 'normal' ? 'must' : level === 'must' ? 'skip' : 'normal';
+            const levelLabel = t(level === 'must' ? 'priorityMust' : level === 'skip' ? 'prioritySkip' : 'priorityNormal', lang);
             return (
-              <span key={id} className="inline-flex h-7 items-center gap-1 rounded-full border border-line-strong bg-surface pl-1 pr-1 text-xs text-fg">
+              <span
+                key={id}
+                data-priority={level}
+                className={`inline-flex h-7 items-center gap-1 rounded-full border bg-surface pl-1 pr-1 text-xs text-fg ${
+                  level === 'must' ? 'border-ink' : level === 'skip' ? 'border-line opacity-60' : 'border-line-strong'
+                }`}
+              >
                 {gift ? <GiftIcon gift={gift} size={20} judgement={judgementOf(conditionByGift.get(id))} lang={lang} /> : null}
-                <button type="button" onClick={() => jumpTo(id)} aria-label={t('giftGoTo', lang, { name: giftName(id) })} className="hover:underline">
+                <button type="button" onClick={() => jumpTo(id)} aria-label={t('giftGoTo', lang, { name: giftName(id) })} className={`hover:underline ${level === 'skip' ? 'line-through' : ''}`}>
                   {giftName(id)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPriority(id, nextLevel)}
+                  aria-label={t('priorityOf', lang, { name: giftName(id), value: levelLabel })}
+                  title={t('priorityOf', lang, { name: giftName(id), value: levelLabel })}
+                  className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${level === 'must' ? 'bg-ink text-ink-fg' : level === 'skip' ? 'text-fg' : 'text-fg-3'}`}
+                >
+                  {level === 'skip' ? <Ban size={11} /> : <Star size={11} fill={level === 'must' ? 'currentColor' : 'none'} />}
                 </button>
                 <button
                   type="button"

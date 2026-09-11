@@ -83,16 +83,6 @@ body {
   outline-offset: 2px;
 }
 
-/* The timetable widens the hovered floor; the transition is skipped when motion is reduced. */
-.grid-animate {
-  transition: grid-template-columns 160ms ease;
-}
-@media (prefers-reduced-motion: reduce) {
-  .grid-animate {
-    transition: none;
-  }
-}
-
 /* Filter rows may scroll sideways; the page itself never does. */
 .scroll-x {
   overflow-x: auto;
