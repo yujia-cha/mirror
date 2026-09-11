@@ -1,0 +1,29 @@
+# Dependabot 버전 업데이트. Settings → Code security의 "Dependabot alerts/security updates"
+# 토글과는 별개로, 이 파일만으로 동작한다.
+version: 2
+updates:
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 5
+    # data-update.yml과 이름이 겹치지 않도록, 그리고 리뷰에서 출처가 바로 보이도록 접두어를 둔다.
+    commit-message:
+      prefix: 'deps'
+    groups:
+      # 부 버전·패치는 묶어서 한 PR로 — 매주 5개씩 따로 열리는 걸 막는다. 메이저는 항상 개별 PR.
+      dev-dependencies:
+        dependency-type: 'development'
+        update-types: ['minor', 'patch']
+      production-dependencies:
+        dependency-type: 'production'
+        update-types: ['minor', 'patch']
+
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'monthly'
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'ci'

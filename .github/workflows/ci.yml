@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm run test
+      - name: Validate generated game data
+        run: npm run data:validate
+      - name: Data build is reproducible
+        run: |
+          npm run data:build
+          if ! git diff --quiet -- public/data; then
+            echo "::error::public/data differs after a fresh data:build. Commit the regenerated files."
+            git --no-pager diff --stat -- public/data
+            exit 1
+          fi
+      - name: Build
+        run: npm run build

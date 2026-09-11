@@ -1,0 +1,33 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-kw-combustion: #e06c4f;
+  --color-kw-laceration: #c2405a;
+  --color-kw-vibration: #c9952e;
+  --color-kw-burst: #5ba35b;
+  --color-kw-sinking: #4f74c0;
+  --color-kw-breath: #6fb3c4;
+  --color-kw-charge: #8a6fc4;
+  --color-kw-slash: #a8a29e;
+  --color-kw-penetrate: #a8a29e;
+  --color-kw-hit: #a8a29e;
+  --color-kw-none: #78716c;
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  @apply bg-stone-50 text-stone-900 antialiased dark:bg-stone-950 dark:text-stone-100;
+  font-family:
+    'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic',
+    system-ui, sans-serif;
+}
+
+:focus-visible {
+  @apply outline-2 outline-offset-2 outline-amber-500;
+}
