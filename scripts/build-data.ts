@@ -37,6 +37,7 @@ import {
   groupForPackId,
   sinnerIdFromIdentityId,
   tierFromTags,
+  deriveUpgradeOf,
 } from './lib/derive.ts';
 import { parseConditions } from './lib/parse-conditions.ts';
 import {
@@ -75,6 +76,7 @@ function sortNums(xs: Iterable<number>): number[] {
 // ---------------------------------------------------------------------------
 
 interface CuratedRules {
+  deployment?: Rules['deployment'];
   giftObservation?: Rules['giftObservation'];
   generalGiftPackShare?: number;
   hiddenPack?: Rules['hiddenPack'];
@@ -392,9 +394,17 @@ const gifts: Gift[] = [...giftIds]
             }
           : null,
       conditions,
+      upgradeOf: null,
       ...(notes ? { notes } : {}),
     };
   });
+
+// 조합 계승: a lower-tier ingredient that feeds exactly one same-keyword result points at it.
+const upgradeOfById = deriveUpgradeOf(
+  recipesByResult,
+  new Map(gifts.map((g) => [g.id, { keyword: g.keyword, tier: g.tier }])),
+);
+for (const gift of gifts) gift.upgradeOf = upgradeOfById.get(gift.id) ?? null;
 
 // ---------------------------------------------------------------------------
 // Identities
@@ -510,6 +520,7 @@ const rules: Rules = {
     extreme: [11, 12, 13, 14, 15],
   },
   difficulty: { hardIsSticky: true, parallelRequiresAllHard: true, extremeAllowsObservation: false },
+  deployment: curated.rules.deployment ?? { max: 6, default: 6, verified: false },
   themePacksOfferedPerFloor: common?.data.themePoolNum ?? 3,
   themePackRefreshCount: common?.data.themePoolRecreateCount ?? 1,
   themeObservation: {

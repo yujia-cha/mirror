@@ -169,3 +169,46 @@ export function cleanFactionName(raw: string): { name: string; deprecated: boole
   const name = raw.replace(/<[^>]*>/g, '').trim();
   return { name, deprecated };
 }
+
+/** Tier order for 조합 계승: 'EX' sits above 5. */
+function tierRank(tier: 1 | 2 | 3 | 4 | 5 | 'EX' | null): number | null {
+  if (tier === null) return null;
+  return tier === 'EX' ? 6 : tier;
+}
+
+/**
+ * 조합 계승 (`upgradeOf`): ingredient → the one result it upgrades into.
+ *
+ * An ingredient qualifies when, across every fixed recipe, it feeds exactly one result gift, the
+ * two share a status keyword (never `None`), and the result's tier is strictly higher. Such a gift
+ * is only ever wanted as a step towards its result, so the UI folds it under the result.
+ */
+export function deriveUpgradeOf(
+  recipesByResult: Map<number, number[][]>,
+  giftById: Map<number, { keyword: string; tier: 1 | 2 | 3 | 4 | 5 | 'EX' | null }>,
+): Map<number, number> {
+  const resultsByIngredient = new Map<number, Set<number>>();
+  for (const [result, recipes] of recipesByResult) {
+    for (const ingredients of recipes) {
+      for (const ingredient of ingredients) {
+        const set = resultsByIngredient.get(ingredient) ?? new Set<number>();
+        set.add(result);
+        resultsByIngredient.set(ingredient, set);
+      }
+    }
+  }
+  const out = new Map<number, number>();
+  for (const [ingredient, results] of resultsByIngredient) {
+    if (results.size !== 1) continue;
+    const result = [...results][0]!;
+    const lower = giftById.get(ingredient);
+    const higher = giftById.get(result);
+    if (!lower || !higher) continue;
+    if (lower.keyword === 'None' || lower.keyword !== higher.keyword) continue;
+    const lo = tierRank(lower.tier);
+    const hi = tierRank(higher.tier);
+    if (lo === null || hi === null || lo >= hi) continue;
+    out.set(ingredient, result);
+  }
+  return out;
+}

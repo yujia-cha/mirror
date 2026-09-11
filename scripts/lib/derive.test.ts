@@ -4,6 +4,7 @@ import {
   availabilityFor,
   cleanFactionName,
   deriveIdentityKeywords,
+  deriveUpgradeOf,
   groupForPackId,
   sinnerIdFromIdentityId,
   tierFromTags,
@@ -194,5 +195,55 @@ describe('cleanFactionName', () => {
       deprecated: true,
     });
     expect(cleanFactionName('검계')).toEqual({ name: '검계', deprecated: false });
+  });
+});
+
+describe('deriveUpgradeOf', () => {
+  const gifts = new Map<number, { keyword: string; tier: 1 | 2 | 3 | 4 | 5 | 'EX' | null }>([
+    [9088, { keyword: 'Combustion', tier: 4 }],
+    [9157, { keyword: 'Combustion', tier: 3 }],
+    [9003, { keyword: 'Combustion', tier: 1 }],
+    [9101, { keyword: 'Combustion', tier: 1 }],
+    [9155, { keyword: 'Combustion', tier: 2 }],
+    [9090, { keyword: 'Laceration', tier: 4 }],
+    [9089, { keyword: 'Laceration', tier: 1 }],
+    [9999, { keyword: 'None', tier: 1 }],
+    [9998, { keyword: 'Combustion', tier: 'EX' }],
+  ]);
+
+  it('points a same-keyword, lower-tier ingredient at its single result', () => {
+    const recipes = new Map([
+      [9088, [[9003, 9157], [9003, 9101, 9155]]],
+      [9157, [[9101, 9155]]],
+    ]);
+    const out = deriveUpgradeOf(recipes, gifts);
+    expect(out.get(9157)).toBe(9088);
+    expect(out.get(9003)).toBe(9088);
+  });
+
+  it('leaves out an ingredient that feeds more than one result', () => {
+    const recipes = new Map([
+      [9088, [[9003, 9157]]],
+      [9157, [[9101, 9155]]],
+      [9090, [[9089, 9101]]],
+    ]);
+    const out = deriveUpgradeOf(recipes, gifts);
+    // 9101 is in both 9157's and 9090's recipes.
+    expect(out.has(9101)).toBe(false);
+    expect(out.get(9155)).toBe(9157);
+    expect(out.get(9089)).toBe(9090);
+  });
+
+  it('ignores keyword mismatches, the None keyword and equal or higher tiers', () => {
+    const recipes = new Map([
+      [9088, [[9999, 9089, 9998]]],
+    ]);
+    const out = deriveUpgradeOf(recipes, gifts);
+    expect(out.size).toBe(0);
+  });
+
+  it('ranks EX above tier 5', () => {
+    const recipes = new Map([[9998, [[9088]]]]);
+    expect(deriveUpgradeOf(recipes, gifts).get(9088)).toBe(9998);
   });
 });

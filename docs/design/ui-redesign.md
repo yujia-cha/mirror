@@ -3,7 +3,7 @@
 디자인 캔버스: https://claude.ai/code/artifact/661ce48e-49f0-479a-b3b0-b286320c2736
 (페이지: 「화면」 12장 · 「상태」 8장 · 「토큰 · 컴포넌트」 2장 · 「1단계 스케치」 3장)
 
-이 문서는 캔버스를 코드(`src/app`)로 옮기는 세션을 위한 명세다. `src/core`·`public/data`는 이 디자인과 무관하게 유지하되, 아래 「구현 전제」에 적힌 몇 가지는 디자인이 요구하는 코어·데이터 변경이다.
+이 문서는 캔버스를 코드(`src/app`)로 옮기는 세션을 위한 명세다. **M7에서 구현됨**(`docs/review/M7.md`). 구현과 다른 점: E.G.O 슬롯 보류, `upgradeOf`는 기프트 최상위 필드, 서체는 시스템 한글 폰트만(외부 폰트 없음). `src/core`·`public/data`는 이 디자인과 무관하게 유지하되, 아래 「구현 전제」에 적힌 몇 가지는 디자인이 요구하는 코어·데이터 변경이다.
 
 ## 결정 사항
 
@@ -29,7 +29,7 @@
 
 - 툴바: **전체 인격 검색**(183명 대상, 이름·소속·키워드) · `출격 7/7` 카운터 · 「코드 가져오기」.
 - 전체 검색 드롭다운: 수감자별 한 줄(수감자 · 인격명 · 키워드 · 소속 칩). 고르면 그 수감자 칸에 들어간다.
-- 카드 12장(데스크톱 4열, 모바일 1열, 높이 124px): 수감자명(11px) · **출격/대기 토글**(체크박스) · 인격명 + `n성` · 키워드 카운트 칩 · **E.G.O 슬롯**.
+- 카드 12장(데스크톱 4열, 모바일 1열, 높이 124px): 수감자명(11px) · **출격/대기 토글**(체크박스) · 인격명 + `n성` · 키워드 카운트 칩 · **E.G.O 슬롯**(보류 — M7에서는 그리지 않음).
   - 출격 카드: surface + line-strong + shadow. 대기 카드: surface-2 + line.
   - 출격이 7명이면 나머지 카드의 토글 비활성(툴팁 「최대 7명」).
   - E.G.O 슬롯: 비어 있으면 점선 「E.G.O ▾」, 고르면 「E.G.O · 이름」. 키워드 판정이 바뀌면 옆에 델타 텍스트(`+특수 화상`).
@@ -51,15 +51,15 @@
 
 - 옵션 바(카드 1줄): **층 밴드 선택기** · **Hard 단방향 스위치** · 관측 최대(세그먼트 0~3) · 시작 키워드 칩 · 「옵션 초기화」.
   - 층 밴드 선택기: 1~15 셀 스트립. 1~5 / 6~10(surface-2) / 11~15(빗금 = 관측 불가) 밴드 배경, 위에 밴드 라벨. 선택 범위는 ink 채움.
-  - Hard 스위치: 전환 전 「→ Hard로 전환」 secondary 버튼. 전환 후 ink 채움 「🔒 Hard · 되돌릴 수 없음」, **되돌림 버튼 없음**(옵션 초기화로만). 6층 이상 선택 시 자동으로 잠금 상태가 되고 info 배너 1줄.
+  - Hard 스위치: 전환 전 「→ Hard로 전환」 secondary 버튼. 전환 후 ink 채움 「lock Hard · 되돌릴 수 없음」, **되돌림 버튼 없음**(옵션 초기화로만). 6층 이상 선택 시 자동으로 잠금 상태가 되고 info 배너 1줄.
 - 요약: `필요 팩 2 · 별빛 20 · 확보 4/5`(mono 22px) + 근사 결과 배지(해당 시) + 「텍스트 복사」.
 - **시간표**(데스크톱): 열 = 시작 + 1~15층(계획 범위 안은 넓게, 밖은 44px 좁게 「계획 범위 밖」), 행 = 팩 레인 2줄 + 합성 레인.
-  - **고정 블록**: ink 채움. `팩명 · 👁 별빛 / 고정 / ✓ 픽업`.
+  - **고정 블록**: ink 채움. `팩명 · eye 별빛 / 고정 / check 픽업`.
   - **유동 구간 블록**: 점선 테두리, 가능한 층 전체에 걸침. 추천 층 구간은 surface-2 배경 + 굵은 밑줄. `4~5층 중 한 층 · 추천 4`.
-  - 자유 층은 「자유」 텍스트만. 시작 열엔 시작 기프트 작은 블록. 합성 레인은 점선 회색 블록(`🛍 합성 → 진혼`).
+  - 자유 층은 「자유」 텍스트만. 시작 열엔 시작 기프트 작은 블록. 합성 레인은 점선 회색 블록(`shop 합성 → 진혼`).
   - 범례 한 줄.
 - 시간표(모바일 400px): 행 = 층, 열 = 레인 2개. 유동 구간은 세로로 걸치고 추천 층은 좌측 굵은 선. 가로 스크롤 없음.
-- 아래 카드: 조합(순서대로, 재료·가능 층) · 범용 드랍(점선 카드, 「확정 아님」 고정 문구) · 조건 판정(✓/✕ + `7/5`) · **미해결**(fg 1.5px 테두리 + ⚠, 항목마다 이유 칩 + 사유 1줄 + 조치 버튼). 모바일은 미해결을 요약 바로 아래에 둔다.
+- 아래 카드: 조합(순서대로, 재료·가능 층) · 범용 드랍(점선 카드, 「확정 아님」 고정 문구) · 조건 판정(check/x + `7/5`) · **미해결**(fg 1.5px 테두리 + alert 아이콘, 항목마다 이유 칩 + 사유 1줄 + 조치 버튼). 모바일은 미해결을 요약 바로 아래에 둔다.
 
 ### 상태
 
@@ -83,7 +83,7 @@
 | Hard는 sticky | 단방향 스위치. 잠금 상태에 되돌림 컨트롤 없음 |
 | 층 구간 | 밴드 선택기와 시간표 머리글이 같은 밴드 배경(1~5 / 6~10 surface-2 / 11~15 빗금) |
 | 고정 층 vs 유동 구간 | ink 채움 블록 vs 점선 다중 열 블록 + 추천 층 강조 |
-| 조합 계승 | 하위 기프트는 상위의 서브행. 상위 선택 시 「포함」 |
+| 조합 계승 | 하위 기프트(`upgradeOf`가 있는 것)는 상위의 서브행. 상위 선택 시 「포함」 |
 | 조건 판정 기준 | 진행 막대 `have/need`, 섹션 자체가 우선순위 |
 
 ## 토큰 (Tailwind 4 `@theme`)
@@ -120,10 +120,10 @@
 }
 ```
 
-- 대비(측정): 라이트 fg-3/surface-2 4.68:1, 다크 fg-3/surface-2 4.82:1 — 모든 텍스트가 4.5:1 이상.
+- 대비(측정): 라이트 fg-3/surface-2 4.68:1, 다크 fg-3/surface-2 4.82:1. fg-3/surface-3는 4.3:1이므로 **surface-3 위에는 텍스트를 두지 않는다**(스켈레톤·진행 막대 트랙 전용).
 - 빗금(EXTREME · 관측 불가): `repeating-linear-gradient(135deg, transparent 0 6px, var(--color-line) 6px 7px)`.
 - spacing 4/8/12/16/24/32, 포커스 링 `outline: 2px solid var(--color-fg-2); outline-offset: 2px`.
-- 웹폰트: Pretendard를 실제로 로드하거나(`@font-face` 또는 CDN) 선언을 지운다. 현재는 선언만 있고 로드되지 않는다.
+- 웹폰트: M7에서 Pretendard 선언을 지우고 시스템 한글 폰트(Apple SD Gothic Neo / Malgun Gothic)만 쓴다. 외부 폰트 요청 없음.
 
 ## 컴포넌트
 
@@ -146,7 +146,7 @@
 | `UnresolvedCard` | 이유 칩 6종 + 조치 버튼 | `UnresolvedReason` 라벨 키 신설 |
 | `Toast` | 성공 | `shared`, `routeCopied` |
 | `DeckCard` | deployed · reserve · empty · 토글 disabled | `deckDeployed` `deckReserve` `deckEmptySlot` |
-| `EgoSlot` | empty · selected · +delta | 새 키 `deckEgo`, `deckEgoDelta` |
+| `EgoSlot` | empty · selected · +delta | **이번 라운드 보류**(E.G.O 데이터 없음). 새 키 `deckEgo`, `deckEgoDelta` |
 | `ConditionProgress` | met · unmet · n/a | `conditionMet` `conditionUnmet` |
 | `GiftRow` | 기본 · 펼침 · 서브행(계승) · 선택 | 새 키 `giftIncluded`(포함), `giftSubOf` |
 | `Skeleton` | 카드 · 줄 | `loading` |
@@ -160,9 +160,9 @@
 | `deckSearchAll` | 전체 인격 검색 · 이름 · 소속 · 키워드 | Search all identities · name · faction · keyword |
 | `deckDeployedCount` | 출격 {n}/7 | Deployed {n}/7 |
 | `deckDeployedFull` | 출격은 최대 7명입니다 | Up to 7 can be deployed |
-| `deckEgo` | E.G.O | E.G.O |
-| `deckEgoNone` | E.G.O 선택 | Choose E.G.O |
-| `deckEgoDelta` | +특수 {keyword} | +special {keyword} |
+| `deckEgo` (보류) | E.G.O | E.G.O |
+| `deckEgoNone` (보류) | E.G.O 선택 | Choose E.G.O |
+| `deckEgoDelta` (보류) | +특수 {keyword} | +special {keyword} |
 | `deckEmptyHint` | 인격을 고르면 키워드 합계가 여기에 나옵니다 | Pick identities to see keyword totals |
 | `giftsActive` | 지금 덱으로 활성 | Active with this deck |
 | `giftsNear` | 거의 활성 | Almost active |
@@ -202,9 +202,9 @@
 이 디자인이 그대로 동작하려면 UI 밖에서도 다음이 필요하다. 각 항목은 별도 작업으로 나눌 수 있다.
 
 1. **출격 인원 최대 7, 순서 유지** — `src/core/deck.ts` `DEPLOYED_SLOTS = 6` 고정과 `store.ts`의 수감자 순 정렬(앞 6명 출격)을 `options.deployed`(id 목록, 최대 7) 기반으로 바꾼다. 검증: 7명 초과 시 거부, `deployed`가 덱에 없는 id를 포함하면 무시.
-2. **E.G.O 데이터** — 저장소에 E.G.O 데이터가 없다. E.G.O 목록(인격별 장착 가능 E.G.O 이름)과 「E.G.O가 바꾸는 키워드 판정」 보정표를 `data/curated/ego-keywords.json`(`_source` 필수)에 두고, `deck.ts` `conditionCount`가 `identity.keywords[kw].special`과 조건의 `includesSpecial`을 실제로 반영하게 한다. 캔버스의 E.G.O 이름·「+특수 화상」은 **샘플**이다.
+2. **E.G.O 데이터**(**보류** — 사용자 결정으로 M7 범위에서 제외) — 저장소에 E.G.O 데이터가 없다. E.G.O 목록(인격별 장착 가능 E.G.O 이름)과 「E.G.O가 바꾸는 키워드 판정」 보정표를 `data/curated/ego-keywords.json`(`_source` 필수)에 두고, `deck.ts` `conditionCount`가 `identity.keywords[kw].special`과 조건의 `includesSpecial`을 실제로 반영하게 한다. 캔버스의 E.G.O 이름·「+특수 화상」은 **샘플**이다.
 3. **유동 구간(`window`)** — `search.ts`의 `Candidate.slots`는 결과에서 버려진다. `FloorPlan`에 `window: {from, to} | null`을 추가해 같은 팩이 놓일 수 있었던 연속 층 범위를 남긴다(Hard 팩 45개는 인접 2층, 평행중첩 팩 45개는 6~10 전체). 고정 블록은 `window == null` 또는 `from == to`.
-4. **조합 계승 파생** — 빌드 시 `gifts.json`에 `fusion.upgradeOf: number | null`을 추가: 어떤 결과 기프트의 유일한 재료이면서 같은 키워드·낮은 등급이면 그 결과의 id(현재 76쌍, 3/4재료 이중 레시피 8쌍 포함). UI는 `upgradeOf`가 있는 기프트를 상위 행의 서브행으로 그린다.
+4. **조합 계승 파생** — 빌드 시 `gifts.json`에 기프트 최상위 필드 `upgradeOf: number | null`을 추가(범용 재료도 대상이라 `fusion` 안이 아님): 어떤 결과 기프트의 유일한 재료이면서 같은 키워드·낮은 등급이면 그 결과의 id(현재 76쌍, 3/4재료 이중 레시피 8쌍 포함). UI는 `upgradeOf`가 있는 기프트를 상위 행의 서브행으로 그린다.
 5. **조건 정렬** — `evaluateConditions` 결과로 `satisfied` → `have/need` 비율 순 정렬 헬퍼를 `src/app`에 둔다(코어 변경 없음). `fullResonance`·`unparsed`는 「판정 불가」로 표시.
 6. **전체 인격 검색** — `DeckPanel` 검색을 수감자 한정과 전체 두 경로로. 결과는 수감자별 그룹.
 7. **가상화** — 기프트 목록 상위 200개 슬라이스 대신 고정 높이 44px 가상 목록.

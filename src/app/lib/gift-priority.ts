@@ -1,0 +1,61 @@
+/**
+ * Group and order gifts by how close the current deck is to activating them.
+ *
+ * The planner reports one `ConditionReport` per condition; a gift is "active" when every one is
+ * satisfied, "near" when the worst condition is at least 60% there, and "other" otherwise or when
+ * it has no condition at all. Full-resonance and unparsed conditions cannot be judged from a deck,
+ * so their gifts stay in "other" and read as 판정 불가.
+ */
+import type { Gift } from '../../core/schema.ts';
+import type { ConditionReport } from '../../core/types.ts';
+
+export type GiftGroup = 'active' | 'near' | 'other';
+
+export interface GiftEntry {
+  gift: Gift;
+  reports: ConditionReport[];
+  group: GiftGroup;
+  /** Progress of the worst condition, 0-1; null when the gift has no judgeable condition. */
+  ratio: number | null;
+  /** The condition still short of its threshold, for the "+n" hint. */
+  lack: ConditionReport | null;
+  /** True when some condition cannot be judged from a deck list. */
+  unjudgeable: boolean;
+}
+
+export const NEAR_THRESHOLD = 0.6;
+
+export function classifyGift(gift: Gift, reports: ConditionReport[]): GiftEntry {
+  if (reports.length === 0) return { gift, reports, group: 'other', ratio: null, lack: null, unjudgeable: false };
+  const unjudgeable = reports.some((r) => r.have === null || r.need === null);
+  const judgeable = reports.filter((r) => r.have !== null && r.need !== null && r.need > 0);
+  const ratio =
+    judgeable.length > 0 ? Math.min(...judgeable.map((r) => Math.min(1, r.have! / r.need!))) : null;
+  const lack = judgeable.filter((r) => !r.satisfied).sort((a, b) => b.have! / b.need! - a.have! / a.need!)[0] ?? null;
+  const group: GiftGroup = unjudgeable
+    ? 'other'
+    : reports.every((r) => r.satisfied)
+      ? 'active'
+      : ratio !== null && ratio >= NEAR_THRESHOLD
+        ? 'near'
+        : 'other';
+  return { gift, reports, group, ratio, lack, unjudgeable };
+}
+
+/** Stable order inside a group: closer first, then by id. */
+export function compareEntries(a: GiftEntry, b: GiftEntry): number {
+  return (b.ratio ?? -1) - (a.ratio ?? -1) || a.gift.id - b.gift.id;
+}
+
+export function prioritiseGifts(
+  gifts: Gift[],
+  conditionByGift: Map<number, ConditionReport[]>,
+): Record<GiftGroup, GiftEntry[]> {
+  const groups: Record<GiftGroup, GiftEntry[]> = { active: [], near: [], other: [] };
+  for (const gift of gifts) {
+    const entry = classifyGift(gift, conditionByGift.get(gift.id) ?? []);
+    groups[entry.group].push(entry);
+  }
+  for (const list of Object.values(groups)) list.sort(compareEntries);
+  return groups;
+}

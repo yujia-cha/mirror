@@ -79,6 +79,7 @@ if (meta && enums && rules && gifts && packs && identities) {
 
 function checkReferences(gifts: Gift[], packs: ThemePack[], identities: Identity[], enums: Enums): void {
   const giftIds = new Set(gifts.map((g) => g.id));
+  const giftById = new Map(gifts.map((g) => [g.id, g]));
   const packIds = new Set(packs.map((p) => p.id));
   const factionIds = new Set(enums.factions.map((f) => f.id));
 
@@ -112,6 +113,20 @@ function checkReferences(gifts: Gift[], packs: ThemePack[], identities: Identity
     }
     for (const id of [...(gift.fusion?.mixed?.aPool ?? []), ...(gift.fusion?.mixed?.bPool ?? [])]) {
       if (!giftIds.has(id)) err('ref', `gift ${gift.id} mixed recipe references unknown gift ${id}`);
+    }
+    if (gift.upgradeOf !== null) {
+      const parent = giftById.get(gift.upgradeOf);
+      if (!parent) err('ref', `gift ${gift.id} upgradeOf references unknown gift ${gift.upgradeOf}`);
+      else {
+        if (parent.id === gift.id) err('invariant', `gift ${gift.id} upgradeOf points at itself`);
+        if (!(parent.fusion?.recipes ?? []).some((r) => r.ingredients.includes(gift.id)))
+          err('invariant', `gift ${gift.id} upgradeOf ${parent.id} but no recipe of ${parent.id} uses it`);
+        if (parent.keyword !== gift.keyword || gift.keyword === 'None')
+          err('invariant', `gift ${gift.id} upgradeOf ${parent.id} crosses keywords (${gift.keyword} → ${parent.keyword})`);
+        const rank = (t: Gift['tier']): number => (t === null ? -1 : t === 'EX' ? 6 : t);
+        if (rank(gift.tier) >= rank(parent.tier))
+          err('invariant', `gift ${gift.id} (T${gift.tier}) upgradeOf ${parent.id} (T${parent.tier}) is not a lower tier`);
+      }
     }
     for (const condition of gift.conditions) {
       if (condition.type === 'factionCount') {
@@ -152,6 +167,12 @@ function checkInvariants(
     strict('invariant', `only ${selectable.length} selectable packs (expected 100+)`);
   if (gifts.length < 400) strict('invariant', `only ${gifts.length} gifts (expected 400+)`);
   if (identities.length < 175) strict('invariant', `only ${identities.length} identities (expected 175+)`);
+  // 조합 계승 pairs: 76 in MD7. A drift far outside that means the derivation or the recipes changed.
+  const upgradePairs = gifts.filter((g) => g.upgradeOf !== null).length;
+  if (upgradePairs < 60 || upgradePairs > 100)
+    strict('invariant', `${upgradePairs} upgradeOf pairs (expected roughly 76)`);
+  if (rules.deployment.max < rules.deployment.default || rules.deployment.max > 12)
+    err('invariant', `deployment.max ${rules.deployment.max} must be within default..12`);
 
   // Every floor a player can reach must have enough packs to fill the selection screen.
   for (const mode of ['normal', 'hard', 'parallel', 'extreme'] as const) {
