@@ -15,7 +15,13 @@ export interface UiState {
   leftTab: LeftTab;
   rightOpen: boolean;
   rightTab: RightTab;
+  /** Desktop panel widths in px, dragged by the divider between panel and stage. */
+  leftWidth: number;
+  rightWidth: number;
 }
+
+/** How wide a side panel may be dragged: narrow enough to read, never eating the whole stage. */
+export const PANEL_WIDTH = { min: 260, max: 560, default: 336 } as const;
 
 export interface SharedState {
   /** Identity ids in formation order (at most 12, one per sinner). */
@@ -148,7 +154,13 @@ export function emptyRun(): RunState {
 }
 
 export function defaultUi(): UiState {
-  return { leftOpen: true, leftTab: 'gifts', rightOpen: true, rightTab: 'plan' };
+  return { leftOpen: true, leftTab: 'gifts', rightOpen: true, rightTab: 'plan', leftWidth: PANEL_WIDTH.default, rightWidth: PANEL_WIDTH.default };
+}
+
+/** A stored or dragged width, rounded and held inside the allowed band. */
+export function clampPanelWidth(raw: unknown): number {
+  const value = typeof raw === 'number' && Number.isFinite(raw) ? Math.round(raw) : PANEL_WIDTH.default;
+  return Math.min(PANEL_WIDTH.max, Math.max(PANEL_WIDTH.min, value));
 }
 
 export function sanitizeUi(raw: unknown): UiState {
@@ -159,6 +171,8 @@ export function sanitizeUi(raw: unknown): UiState {
   if (typeof source.rightOpen === 'boolean') out.rightOpen = source.rightOpen;
   if (source.leftTab === 'deck' || source.leftTab === 'gifts' || source.leftTab === 'settings') out.leftTab = source.leftTab;
   if (source.rightTab === 'plan' || source.rightTab === 'tracker') out.rightTab = source.rightTab;
+  out.leftWidth = clampPanelWidth(source.leftWidth);
+  out.rightWidth = clampPanelWidth(source.rightWidth);
   return out;
 }
 

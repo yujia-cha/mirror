@@ -18,8 +18,12 @@ interface Props {
   lang: Lang;
 }
 
-function matches(identity: Identity, needle: string, data: GameData): boolean {
-  if (needle.length === 0) return true;
+/**
+ * Several words search as OR: 「화상 침잠」 finds every identity carrying either keyword, so a
+ * party can be assembled from one query. A single word behaves as it always did.
+ */
+function matches(identity: Identity, needles: string[], data: GameData): boolean {
+  if (needles.length === 0) return true;
   const haystack = [
     identity.title.ko,
     identity.title.en,
@@ -30,7 +34,7 @@ function matches(identity: Identity, needle: string, data: GameData): boolean {
   ]
     .join(' ')
     .toLowerCase();
-  return haystack.includes(needle);
+  return needles.some((needle) => haystack.includes(needle));
 }
 
 function KeywordChips({ identity, data, lang }: { identity: Identity; data: GameData; lang: Lang }) {
@@ -71,13 +75,14 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
 
   const bySinner = useMemo(() => new Map(deck.map((id) => [sinnerOf(id), id])), [deck]);
   const needle = query.trim().toLowerCase();
+  const needles = useMemo(() => needle.split(/\s+/).filter(Boolean), [needle]);
   const globalResults = useMemo(() => {
-    if (needle.length === 0) return [];
+    if (needles.length === 0) return [];
     return data.identities
-      .filter((identity) => matches(identity, needle, data))
+      .filter((identity) => matches(identity, needles, data))
       .sort((a, b) => a.sinnerId - b.sinnerId || b.rank - a.rank || a.id - b.id)
       .slice(0, 40);
-  }, [data, needle]);
+  }, [data, needles]);
   // The list stays up while picking, so several identities can be taken from one search; Escape and
   // an outside press close it without wiping the query, and the ✕ inside the field clears the text.
   const [listOpen, setListOpen] = useState(false);
@@ -309,8 +314,9 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
       ) : (
         <div className="flex flex-wrap items-center gap-1.5">
           {chips.map((chip) => (
-            <Chip key={chip.label} title={t('deckFormationCount', lang, { n: chip.formation })}>
+            <Chip key={chip.label} title={t('deckChipBasis', lang, { n: chip.count, total: chip.formation })}>
               {chip.label} <b className="font-semibold text-fg">{chip.count}</b>
+              <span className="text-fg-3">/{chip.formation}</span>
             </Chip>
           ))}
           <span className="text-xs text-fg-3">{t('deckSummaryBasis', lang)}</span>
@@ -346,7 +352,7 @@ function SinnerPicker({
   const needle = query.trim().toLowerCase();
   const all = data.identities.filter((identity) => identity.sinnerId === sinner);
   const identities = all
-    .filter((identity) => matches(identity, needle, data))
+    .filter((identity) => matches(identity, needle.split(/\s+/).filter(Boolean), data))
     .sort((a, b) => b.rank - a.rank || a.id - b.id);
   useDismiss(ref, onClose, true);
   useEffect(() => setActiveIndex(0), [needle]);

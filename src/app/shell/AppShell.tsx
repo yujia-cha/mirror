@@ -18,6 +18,7 @@ import { Tracker } from '../tracker/Tracker.tsx';
 import { PlanProvider } from './PlanContext.tsx';
 import { RoutePlanPanel } from './RoutePlanPanel.tsx';
 import { RouteSettings } from './RouteSettings.tsx';
+import { PanelResizer } from './PanelResizer.tsx';
 import { SidePanel } from './SidePanel.tsx';
 
 export function AppShell({
@@ -106,11 +107,14 @@ export function AppShell({
             tab={ui.leftTab}
             onTab={(leftTab) => setUi({ leftTab })}
             lang={lang}
+            width={ui.leftWidth}
           >
             {ui.leftTab === 'deck' ? <DeckStep data={data} indexes={indexes} stats={stats} lang={lang} /> : null}
             {ui.leftTab === 'gifts' ? <GiftsStep data={data} indexes={indexes} stats={stats} lang={lang} onGoDeck={() => setUi({ leftTab: 'deck' })} /> : null}
             {ui.leftTab === 'settings' ? <RouteSettings /> : null}
           </SidePanel>
+
+          {desktop && leftOpen ? <PanelResizer side="left" width={ui.leftWidth} onWidth={(leftWidth) => setUi({ leftWidth })} lang={lang} /> : null}
 
           <main className="flex min-w-0 flex-1 flex-col gap-3 px-4 pb-8 pt-3 lg:px-6 lg:pt-4">
             <RunStage onOpenGifts={openGifts} />
@@ -121,6 +125,8 @@ export function AppShell({
               <p className="mt-1">{t('aboutData', lang)}</p>
             </footer>
           </main>
+
+          {desktop && rightOpen ? <PanelResizer side="right" width={ui.rightWidth} onWidth={(rightWidth) => setUi({ rightWidth })} lang={lang} /> : null}
 
           <SidePanel<RightTab>
             id="panel-right"
@@ -133,6 +139,7 @@ export function AppShell({
             tab={ui.rightTab}
             onTab={(rightTab) => setUi({ rightTab })}
             lang={lang}
+            width={ui.rightWidth}
           >
             {ui.rightTab === 'plan' ? <RoutePlanPanel onOpenGifts={openGifts} /> : <Tracker />}
           </SidePanel>

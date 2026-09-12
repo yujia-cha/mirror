@@ -27,7 +27,7 @@ export const STRINGS = {
   toDeck: { ko: '덱 탭으로', en: 'To the deck tab' },
 
   // Step 1 — deck
-  deckSearchAll: { ko: '전체 인격 검색 · 이름 · 소속 · 키워드', en: 'Search all identities · name · faction · keyword' },
+  deckSearchAll: { ko: '전체 인격 검색 · 이름 · 소속 · 키워드(여러 개 가능)', en: 'Search all identities · name · faction · keywords (several allowed)' },
   deckSearchHint: { ko: '{n}명 일치 · 눌러서 넣고 빼기', en: '{n} match · press to take in or out' },
   deckSearchPicked: { ko: '덱에 {n}명', en: '{n} in the deck' },
   deckDefault: { ko: '기본 덱', en: 'Default deck' },
@@ -45,7 +45,8 @@ export const STRINGS = {
   deckImportFailed: { ko: '편성 코드를 읽을 수 없습니다', en: 'Could not read that formation code' },
   deckImportPartial: { ko: '일부 인격을 찾을 수 없어 건너뛰었습니다', en: 'Some identities were not found and were skipped' },
   deckEmptyHint: { ko: '인격을 고르면 키워드 합계가 여기에 나옵니다', en: 'Pick identities to see keyword totals here' },
-  deckSummaryBasis: { ko: '출격 기준', en: 'deployed only' },
+  deckSummaryBasis: { ko: '출격 / 편성 12인', en: 'deployed / all 12' },
+  deckChipBasis: { ko: '출격 {n}명 · 편성 전체 {total}명', en: '{n} deployed · {total} in the formation' },
   deckFormationCount: { ko: '대기 포함 {n}', en: '{n} incl. reserves' },
   deckRank: { ko: '{n}성', en: '{n}★' },
   deckKeywordSkills: { ko: '{keyword} 부여 공격 스킬 {n}개', en: '{n} attack skills inflict {keyword}' },
@@ -223,6 +224,8 @@ export const STRINGS = {
 
   panelLeft: { ko: '설정 패널', en: 'Setup panel' },
   panelRight: { ko: '루트 패널', en: 'Route panel' },
+  panelResize: { ko: '패널 너비', en: 'Panel width' },
+  panelResizeHint: { ko: '끌어서 너비 조절 · 두 번 눌러 기본값 · 화살표 키로 조금씩', en: 'Drag to resize · double-click to reset · arrow keys nudge' },
   panelClose: { ko: '패널 닫기', en: 'Close panel' },
   tabDeck: { ko: '덱', en: 'Deck' },
   tabGifts: { ko: '아이템', en: 'Items' },

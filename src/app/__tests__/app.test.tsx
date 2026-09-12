@@ -11,7 +11,7 @@ import userEvent from '@testing-library/user-event';
 import { loadGameDataFromDisk } from '../../core/data/node.ts';
 import { analyseDeck, buildIndexes, defaultOptions, evaluateConditions } from '../../core/index.ts';
 import { conditionText, josa, reachedTierText } from '../condition-text.ts';
-import { appDefaultOptions, decodeShared, defaultUi, emptyRun, encodeShared, sanitizeOptions, sanitizeRun, sinnerOf, useApp } from '../store.ts';
+import { appDefaultOptions, decodeShared, defaultUi, emptyRun, encodeShared, sanitizeOptions, sanitizeRun, sanitizeUi, sinnerOf, useApp } from '../store.ts';
 import { planInputFor } from '../lib/plan-input.ts';
 import { classifyGift, prioritiseGifts } from '../lib/gift-priority.ts';
 import { defaultDeck } from '../lib/default-deck.ts';
@@ -206,6 +206,13 @@ describe('run store', () => {
     expect(run()).toMatchObject({ currentFloor: 1, stageFloor: 1, visits: {}, giftStatus: {} });
   });
 
+  it('keeps panel widths inside the band they may be dragged to', () => {
+    expect(sanitizeUi({}).leftWidth).toBe(336);
+    expect(sanitizeUi({ leftWidth: 900, rightWidth: 40 })).toMatchObject({ leftWidth: 560, rightWidth: 260 });
+    expect(sanitizeUi({ leftWidth: 412.6 }).leftWidth).toBe(413);
+    expect(sanitizeUi({ leftWidth: 'wide' }).leftWidth).toBe(336);
+  });
+
   it('keeps a saved run only where it still makes sense', () => {
     expect(sanitizeRun({ visits: { 2: 1102, 5: 1102, 99: 1016, x: 1 }, giftStatus: { 9431: 'failed', 9706: 'odd' }, currentFloor: 1, stageFloor: 7 })).toEqual({
       currentFloor: 3,
@@ -387,6 +394,29 @@ describe('DeckStep', () => {
     await user.click(options()[0]!);
     expect(useApp.getState().deck).toHaveLength(2);
     expect(options()[0]).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('finds identities matching any one of several keywords, and sums keywords over the formation', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    renderDeck();
+    const input = screen.getByLabelText(/전체 인격 검색/);
+    await user.type(input, '화상');
+    const burn = within(screen.getByRole('listbox')).getAllByRole('option').length;
+    await user.clear(input);
+    await user.type(input, '침잠');
+    const sink = within(screen.getByRole('listbox')).getAllByRole('option').length;
+    await user.clear(input);
+    // Two words are an OR: neither list shrinks the other.
+    await user.type(input, '화상 침잠');
+    const both = within(screen.getByRole('listbox')).getAllByRole('option').length;
+    expect(both).toBeGreaterThan(Math.max(burn, sink));
+    expect(both).toBeLessThanOrEqual(burn + sink);
+    await user.keyboard('{Escape}');
+    // The keyword chips count the deployed seven and the whole formation of twelve.
+    const chip = screen.getAllByTitle(/출격 \d+명 · 편성 전체 \d+명/)[0]!;
+    expect(chip.textContent).toMatch(/\d+\/\d+$/);
+    expect(screen.getByText('출격 / 편성 12인')).toBeInTheDocument();
   });
 
   it('refuses an eighth deployed identity', () => {
@@ -941,6 +971,39 @@ describe('AppShell', () => {
     expect(useApp.getState().ui.leftOpen).toBe(false);
     await user.click(left);
     expect(screen.getByTestId('panel-left')).toBeInTheDocument();
+  });
+
+  it('resizes a desktop panel by dragging the divider, by the keyboard, and back to the default', async () => {
+    stubMatchMedia(true);
+    const user = userEvent.setup();
+    renderShell();
+    const panel = () => screen.getByTestId('panel-left');
+    expect(panel()).toHaveStyle({ width: '336px' });
+    const divider = screen.getByTestId('panel-resizer-left');
+    expect(divider).toHaveAttribute('role', 'separator');
+    expect(divider).toHaveAttribute('aria-valuenow', '336');
+    // Dragging right widens the left panel; the width is remembered.
+    fireEvent.pointerDown(divider, { pointerId: 1, button: 0, clientX: 336 });
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 436 });
+    expect(useApp.getState().ui.leftWidth).toBe(436);
+    expect(panel()).toHaveStyle({ width: '436px' });
+    // It never gets wider than the band allows, and the drag ends with the pointer.
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 2000 });
+    expect(useApp.getState().ui.leftWidth).toBe(560);
+    fireEvent.pointerUp(window, { pointerId: 1, clientX: 2000 });
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 300 });
+    expect(useApp.getState().ui.leftWidth).toBe(560);
+    // The keyboard nudges it, and a double press puts it back.
+    divider.focus();
+    await user.keyboard('{ArrowLeft}');
+    expect(useApp.getState().ui.leftWidth).toBe(544);
+    await user.dblClick(divider);
+    expect(useApp.getState().ui.leftWidth).toBe(336);
+    // The right panel mirrors the direction: dragging left widens it.
+    fireEvent.pointerDown(screen.getByTestId('panel-resizer-right'), { pointerId: 2, button: 0, clientX: 900 });
+    fireEvent.pointerMove(window, { pointerId: 2, clientX: 850 });
+    expect(useApp.getState().ui.rightWidth).toBe(386);
+    fireEvent.pointerUp(window, { pointerId: 2, clientX: 850 });
   });
 });
 
