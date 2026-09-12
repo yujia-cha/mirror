@@ -54,6 +54,7 @@ export const UNRESOLVED_LABEL: Record<UnresolvedReason, StringKey> = {
   'chance-only': 'unresolvedChance',
   'observation-budget': 'unresolvedObservation',
   'pack-banned': 'unresolvedBanned',
+  failed: 'unresolvedFailed',
 };
 
 /** Which band a floor belongs to: 0 = 1-5, 1 = 평행중첩, 2 = EXTREME. */

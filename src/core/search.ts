@@ -23,6 +23,11 @@ export interface SearchInput {
   indexes: GameIndexes;
   /** Hard node cap; when it trips the best greedy result so far is returned. */
   nodeCap?: number;
+  /**
+   * Floors already played, with the pack taken there. They are fixed like pins, their packs cannot
+   * be visited again, and the gifts those packs supply count as picked up there.
+   */
+  passed?: Map<number, number>;
 }
 
 export interface SearchResult {
@@ -65,11 +70,13 @@ export function assignPacks(input: SearchInput): SearchResult {
   const nodeCap = input.nodeCap ?? DEFAULT_NODE_CAP;
   const banned = new Set(options.bannedPacks);
 
-  const pinned = new Map<number, number>();
+  const passed = input.passed ?? new Map<number, number>();
+  const pinned = new Map<number, number>(passed);
   for (const [floorText, packId] of Object.entries(options.pinnedPacks)) {
     const floor = Number(floorText);
     if (floors.includes(floor) && !banned.has(packId)) pinned.set(floor, packId);
   }
+  const visitedPacks = new Set(passed.values());
 
   // Slots per requirement, skipping gifts that need no routing at all.
   const candidates: Candidate[] = [];
@@ -78,7 +85,7 @@ export function assignPacks(input: SearchInput): SearchResult {
 
   // A preferred pack is a requirement of its own: some floor that offers it, no gift attached.
   for (const packId of options.preferredPacks ?? []) {
-    if (banned.has(packId)) continue;
+    if (banned.has(packId) || visitedPacks.has(packId)) continue;
     const slots: Slot[] = [];
     for (const floor of floors) {
       const mode = modeForFloor(floor, options);
@@ -95,6 +102,10 @@ export function assignPacks(input: SearchInput): SearchResult {
     if (requirement.via !== 'route') continue;
     const packIds = indexes.packsByGift.get(requirement.giftId) ?? [];
     const slots: Slot[] = [];
+    // A played floor supplies the gift only through the pack that was taken there.
+    for (const [floor, packId] of passed) {
+      if (packIds.includes(packId)) slots.push({ floor, mode: modeForFloor(floor, options), packId });
+    }
     for (const floor of floors) {
       const mode = modeForFloor(floor, options);
       const available = indexes.packsByFloor[mode].get(floor) ?? [];

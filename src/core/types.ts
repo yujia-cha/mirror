@@ -8,6 +8,12 @@ export interface WantedGift {
   giftId: number;
   /** Optional gifts are planned for only when they cost nothing extra. */
   required: boolean;
+  /**
+   * For a fusion result: whether its ingredients stay goals of their own once the fusion can no
+   * longer happen (an ingredient failed or its floor has passed). Default true. When false, floors
+   * that would be visited for the remaining ingredients alone are given back to the planner.
+   */
+  ingredientsAsGoals?: boolean;
 }
 
 export interface PlanOptions {
@@ -43,6 +49,15 @@ export interface PlanOptions {
    * so the pack keeps its window. A pack that is also banned is dropped with a warning.
    */
   preferredPacks: number[];
+  /**
+   * Run progress. `currentFloor` is the floor the player is about to enter (1 = a fresh run):
+   * floors below it are played and only their `pinnedPacks` entry says which pack was taken there.
+   * `ownedGifts` are already in hand and need no routing; `unobtainableGifts` were missed and are
+   * reported as failed rather than planned for again.
+   */
+  currentFloor?: number;
+  ownedGifts?: number[];
+  unobtainableGifts?: number[];
 }
 
 export interface PlanInput {
@@ -91,7 +106,17 @@ export interface ConditionReport {
 // Requirements
 // ---------------------------------------------------------------------------
 
-export type RequirementRoute = 'route' | 'startGift' | 'observation' | 'generalDrop' | 'fusion' | 'unresolved';
+export type RequirementRoute =
+  | 'route'
+  | 'startGift'
+  | 'observation'
+  | 'generalDrop'
+  | 'fusion'
+  /** Already in hand (run progress). */
+  | 'owned'
+  /** An ingredient the plan stopped routing for because its fusion can no longer happen. */
+  | 'dropped'
+  | 'unresolved';
 
 export interface Requirement {
   giftId: number;
@@ -125,6 +150,8 @@ export interface FloorPlan {
   /** Null means no pack is required here; take whatever the game offers. */
   packId: number | null;
   reason: 'required' | 'pinned' | 'free';
+  /** Already played (below `currentFloor`): nothing left to decide here. */
+  passed: boolean;
   /** Gifts to pick up on this floor, with why this floor supplies them. */
   pickups: {
     giftId: number;
@@ -153,7 +180,9 @@ export type UnresolvedReason =
   | 'chance-only'
   | 'observation-budget'
   /** Every pack that supplies it is one the user gave up. */
-  | 'pack-banned';
+  | 'pack-banned'
+  /** Marked as missed during the run. */
+  | 'failed';
 
 export interface Unresolved {
   giftId: number;
@@ -161,6 +190,11 @@ export interface Unresolved {
   detail: { ko: string; en: string };
   /** For `fusion-ingredient-unresolved`: the ingredient ids the plan could not obtain. */
   missing?: number[];
+  /**
+   * For `fusion-ingredient-unresolved` on a result whose ingredients are not goals of their own:
+   * the remaining ingredients the plan stopped routing for.
+   */
+  droppedIngredients?: number[];
 }
 
 export type WarningCode =

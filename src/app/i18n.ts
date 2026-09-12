@@ -199,6 +199,7 @@ export const STRINGS = {
   unresolvedObservation: { ko: '관측 예산', en: 'Observation budget' },
   unresolvedChance: { ko: '확률 보상', en: 'Chance only' },
   unresolvedBanned: { ko: '포기한 팩', en: 'Pack given up' },
+  unresolvedFailed: { ko: '수집 실패', en: 'Missed' },
   unresolvedMissing: { ko: '재료 {names}을(를) 구할 수 없어 조합할 수 없습니다.', en: 'Cannot be fused: {names} cannot be obtained in this plan.' },
   actionObserveGift: { ko: '{name} 관측 지정', en: 'Observe {name}' },
   actionReleaseObservations: { ko: '관측 지정 해제', en: 'Release pinned observations' },
