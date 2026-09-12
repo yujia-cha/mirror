@@ -1,12 +1,12 @@
 import type { Keyword } from '../../core/schema.ts';
 import type { RoutePlan } from '../../core/types.ts';
 import { pick, t, type Lang } from '../i18n.ts';
-import { MODE_LABEL } from './labels.ts';
+import { segmentsFor, suggestedOrder } from './metro.ts';
 
 /**
- * A Discord-friendly plain-text rendering of the plan. Ids are localized by the callbacks. Only
- * what the route decides is written: packs per floor and their guaranteed pickups, the start,
- * observations and what stays unresolved. Recipes and general drops are left to the game.
+ * A Discord-friendly plain-text rendering of the plan, one line per metro segment: packs that
+ * share a window are listed together in any order, partly overlapping windows carry the
+ * suggested floors. Ids are localized by the callbacks. Only what the route decides is written.
  */
 export function planToText(
   plan: RoutePlan,
@@ -15,7 +15,7 @@ export function planToText(
   keywordLabel: (id: Keyword) => string,
   lang: Lang,
   dropped: number[] = [],
-  marks: { must?: number[]; skipped?: number[] } = {},
+  marks: { must?: number[]; skipped?: number[]; bannedPacks?: number[] } = {},
 ): string {
   const lines: string[] = [];
   const must = new Set(marks.must ?? []);
@@ -30,22 +30,37 @@ export function planToText(
     lines.push(`  ${t('routeObserved', lang)}: ${observed.join(', ')}`);
   }
   lines.push('');
-  for (const floor of plan.floors) {
-    const pack = floor.packId === null ? t('routeFree', lang) : packName(floor.packId);
-    const window =
-      floor.window && floor.window.from !== floor.window.to
-        ? ` [${t('routeWindowShort', lang, { from: floor.window.from, to: floor.window.to })}]`
-        : '';
-    lines.push(`${floor.floor}F (${t(MODE_LABEL[floor.mode], lang)}) ${pack}${window}`);
-    for (const pickup of floor.pickups.filter((p) => p.kind === 'exclusive')) {
-      const why = pickup.neededFor ? ` -> ${giftName(pickup.neededFor)}` : '';
-      lines.push(`  - ${name(pickup.giftId)}${why}`);
-    }
+  const metro = segmentsFor(plan);
+  const rows: { at: number; text: string[] }[] = [];
+  for (const run of metro.freeRuns) {
+    rows.push({ at: run.from, text: [run.from === run.to ? `${run.from}F: ${t('routeFree', lang)}` : `${run.from}~${run.to}F: ${t('routeFree', lang)}`] });
   }
+  for (const segment of metro.segments) {
+    const head = segment.fixed
+      ? `${segment.from}F`
+      : segment.partial
+        ? `${segment.from}~${segment.to}F (${t('routeSuggestOrder', lang, { from: segment.from, to: segment.to, order: suggestedOrder(segment).join(' → ') })})`
+        : `${segment.from}~${segment.to}F (${t('routeAnyFloor', lang)})`;
+    const text = [`${head}: ${segment.packs.map((p) => packName(p.packId)).join(' · ')}`];
+    for (const pack of segment.packs) {
+      for (const giftId of pack.gifts) {
+        const pickup = plan.floors.find((f) => f.floor === pack.floor)?.pickups.find((p) => p.giftId === giftId);
+        const why = pickup?.neededFor ? ` -> ${giftName(pickup.neededFor)}` : '';
+        text.push(`  - ${name(giftId)}${segment.packs.length > 1 ? ` (${packName(pack.packId)})` : ''}${why}`);
+      }
+    }
+    rows.push({ at: segment.from, text });
+  }
+  rows.sort((a, b) => a.at - b.at);
+  for (const row of rows) lines.push(...row.text);
   if (plan.unresolved.length > 0) {
     lines.push('');
     lines.push(t('routeUnresolved', lang));
     for (const entry of plan.unresolved) lines.push(`  ${name(entry.giftId)}: ${pick(entry.detail, lang)}`);
+  }
+  if (marks.bannedPacks && marks.bannedPacks.length > 0) {
+    lines.push('');
+    lines.push(`${t('packBanned', lang)}: ${marks.bannedPacks.map(packName).join(', ')}`);
   }
   if (marks.skipped && marks.skipped.length > 0) {
     lines.push('');
