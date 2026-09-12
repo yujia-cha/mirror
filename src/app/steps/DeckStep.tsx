@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, Plus, Search, X } from 'lucide-react';
+import { Check, Copy, Plus, Search, Users, X } from 'lucide-react';
 import type { GameData, Identity } from '../../core/schema.ts';
 import type { DeckStats, GameIndexes } from '../../core/types.ts';
 import { pick, t, type Lang } from '../i18n.ts';
 import { sinnerOf, useApp } from '../store.ts';
 import { factionName, keywordName } from '../format.ts';
 import { identitiesFromFormationCode } from '../lib/formation-code.ts';
+import { defaultDeck } from '../lib/default-deck.ts';
 import { deckSummaryChips } from '../lib/deck-summary.ts';
 import { stepIndex, useDismiss } from '../lib/useDismiss.ts';
 import { Button, Chip, Notice } from '../components/ui.tsx';
@@ -17,8 +18,12 @@ interface Props {
   lang: Lang;
 }
 
-function matches(identity: Identity, needle: string, data: GameData): boolean {
-  if (needle.length === 0) return true;
+/**
+ * Several words search as OR: 「화상 침잠」 finds every identity carrying either keyword, so a
+ * party can be assembled from one query. A single word behaves as it always did.
+ */
+function matches(identity: Identity, needles: string[], data: GameData): boolean {
+  if (needles.length === 0) return true;
   const haystack = [
     identity.title.ko,
     identity.title.en,
@@ -29,7 +34,7 @@ function matches(identity: Identity, needle: string, data: GameData): boolean {
   ]
     .join(' ')
     .toLowerCase();
-  return haystack.includes(needle);
+  return needles.some((needle) => haystack.includes(needle));
 }
 
 function KeywordChips({ identity, data, lang }: { identity: Identity; data: GameData; lang: Lang }) {
@@ -70,31 +75,40 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
 
   const bySinner = useMemo(() => new Map(deck.map((id) => [sinnerOf(id), id])), [deck]);
   const needle = query.trim().toLowerCase();
+  const needles = useMemo(() => needle.split(/\s+/).filter(Boolean), [needle]);
   const globalResults = useMemo(() => {
-    if (needle.length === 0) return [];
+    if (needles.length === 0) return [];
     return data.identities
-      .filter((identity) => matches(identity, needle, data))
+      .filter((identity) => matches(identity, needles, data))
       .sort((a, b) => a.sinnerId - b.sinnerId || b.rank - a.rank || a.id - b.id)
       .slice(0, 40);
-  }, [data, needle]);
-  const listOpen = needle.length > 0;
-  const closeSearch = useCallback(() => setQuery(''), []);
-  useDismiss(searchRef, closeSearch, listOpen);
+  }, [data, needles]);
+  // The list stays up while picking, so several identities can be taken from one search; Escape and
+  // an outside press close it without wiping the query, and the ✕ inside the field clears the text.
+  const [listOpen, setListOpen] = useState(false);
+  const open = listOpen && needle.length > 0;
+  const closeSearch = useCallback(() => setListOpen(false), []);
+  useDismiss(searchRef, closeSearch, open);
   useEffect(() => setActiveIndex(0), [needle]);
   const onSearchKey = (event: React.KeyboardEvent<HTMLInputElement>): void => {
     const next = stepIndex(event.key, activeIndex, globalResults.length);
     if (next !== null) {
       event.preventDefault();
       setActiveIndex(next);
-    } else if (event.key === 'Enter' && listOpen && globalResults[activeIndex]) {
+    } else if (event.key === 'Enter' && open && globalResults[activeIndex]) {
       event.preventDefault();
       pickIdentity(globalResults[activeIndex]);
+    } else if (event.key === 'Escape' && open) {
+      // Only the result list closes; on a phone the panel is a drawer that Escape would close too.
+      event.stopPropagation();
+      setListOpen(false);
     }
   };
 
+  /** Take an identity into its sinner's slot, or out of it when that slot already holds it. */
   const pickIdentity = (identity: Identity): void => {
-    setDeckSlot(identity.sinnerId, identity.id, data.rules.deployment.default);
-    setQuery('');
+    const held = bySinner.get(identity.sinnerId) === identity.id;
+    setDeckSlot(identity.sinnerId, held ? null : identity.id, data.rules.deployment.default);
     setOpenSinner(null);
   };
 
@@ -118,15 +132,19 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
           <Search size={14} aria-hidden className="flex-none text-fg-3" />
           <input
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setListOpen(true);
+            }}
+            onFocus={() => setListOpen(true)}
             onKeyDown={onSearchKey}
             placeholder={t('deckSearchAll', lang)}
             aria-label={t('deckSearchAll', lang)}
             role="combobox"
-            aria-expanded={listOpen}
+            aria-expanded={open}
             aria-controls="deck-search-listbox"
             aria-autocomplete="list"
-            aria-activedescendant={listOpen && globalResults[activeIndex] ? `deck-option-${globalResults[activeIndex].id}` : undefined}
+            aria-activedescendant={open && globalResults[activeIndex] ? `deck-option-${globalResults[activeIndex].id}` : undefined}
             className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-fg-3"
           />
           {query ? (
@@ -141,31 +159,43 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
         >
           {t('deckDeployed', lang)} <span className="font-mono">{deployed.length}/{max}</span>
         </span>
+        <Button onClick={() => setDeck(defaultDeck(data), data.rules.deployment.default)} ariaLabel={t('deckDefault', lang)} className="h-9">
+          <Users size={14} aria-hidden />
+          <span className="hidden @sm:inline">{t('deckDefault', lang)}</span>
+        </Button>
         <Button onClick={() => setImportOpen((v) => !v)} ariaLabel={t('deckImport', lang)} className="h-9">
           <Copy size={14} aria-hidden />
           <span className="hidden @sm:inline">{t('deckImport', lang)}</span>
         </Button>
-        {listOpen ? (
+        {open ? (
           <div
             id="deck-search-listbox"
             role="listbox"
             aria-label={t('deckSearchAll', lang)}
             className="absolute left-0 top-10 z-20 flex max-h-[420px] w-full max-w-[560px] flex-col overflow-y-auto rounded-md border border-line-strong bg-surface shadow-pop"
           >
-            <div className="border-b border-line px-3 py-2 text-xs text-fg-3">
-              {globalResults.length > 0 ? t('deckSearchHint', lang, { n: globalResults.length }) : t('deckSearchNone', lang)}
+            <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2 text-xs text-fg-3">
+              <span>{globalResults.length > 0 ? t('deckSearchHint', lang, { n: globalResults.length }) : t('deckSearchNone', lang)}</span>
+              {globalResults.length > 0 ? <span>{t('deckSearchPicked', lang, { n: globalResults.filter((identity) => bySinner.get(identity.sinnerId) === identity.id).length })}</span> : null}
             </div>
-            {globalResults.map((identity, i) => (
+            {globalResults.map((identity, i) => {
+              const held = bySinner.get(identity.sinnerId) === identity.id;
+              return (
               <button
                 key={identity.id}
                 id={`deck-option-${identity.id}`}
                 type="button"
                 role="option"
                 aria-selected={i === activeIndex}
+                aria-pressed={held}
+                data-picked={held || undefined}
                 onClick={() => pickIdentity(identity)}
                 onPointerMove={() => setActiveIndex(i)}
                 className={`flex h-11 items-center gap-3 border-b border-line px-3 text-left hover:bg-surface-2 ${i === activeIndex ? 'bg-surface-2' : ''}`}
               >
+                <span className={`inline-flex h-4 w-4 flex-none items-center justify-center rounded-[4px] border ${held ? 'border-ink bg-ink text-ink-fg' : 'border-line-strong'}`} aria-hidden>
+                  {held ? <Check size={11} strokeWidth={3} /> : null}
+                </span>
                 <span className="w-16 flex-none text-xs font-medium text-fg-2">{pick(identity.sinner, lang)}</span>
                 <span className="min-w-0 flex-1 truncate text-sm text-fg">
                   {pick(identity.title, lang)}
@@ -175,7 +205,8 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
                   <KeywordChips identity={identity} data={data} lang={lang} />
                 </span>
               </button>
-            ))}
+              );
+            })}
           </div>
         ) : null}
       </div>
@@ -287,8 +318,9 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
       ) : (
         <div className="flex flex-wrap items-center gap-1.5">
           {chips.map((chip) => (
-            <Chip key={chip.label} title={t('deckFormationCount', lang, { n: chip.formation })}>
+            <Chip key={chip.label} title={t('deckChipBasis', lang, { n: chip.count, total: chip.formation })}>
               {chip.label} <b className="font-semibold text-fg">{chip.count}</b>
+              <span className="text-fg-3">/{chip.formation}</span>
             </Chip>
           ))}
           <span className="text-xs text-fg-3">{t('deckSummaryBasis', lang)}</span>
@@ -324,7 +356,7 @@ function SinnerPicker({
   const needle = query.trim().toLowerCase();
   const all = data.identities.filter((identity) => identity.sinnerId === sinner);
   const identities = all
-    .filter((identity) => matches(identity, needle, data))
+    .filter((identity) => matches(identity, needle.split(/\s+/).filter(Boolean), data))
     .sort((a, b) => b.rank - a.rank || a.id - b.id);
   useDismiss(ref, onClose, true);
   useEffect(() => setActiveIndex(0), [needle]);

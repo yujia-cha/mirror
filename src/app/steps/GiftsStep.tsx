@@ -1,19 +1,24 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, Ban, ChevronDown, ChevronLeft, ChevronRight, Eye, RefreshCw, Search, Star, User, X } from 'lucide-react';
+/**
+ * Pick the gifts to chase. They are grouped by how close the current deck is to activating them
+ * and drawn as a grid of tiles; the detail sheet behind each name carries the wording the tiles
+ * leave out (effect text, every condition, how it is obtained, the recipe).
+ */
+import { useEffect, useMemo, useState } from 'react';
+import { Ban, ChevronDown, ChevronLeft, ChevronRight, Eye, Link2, RefreshCw, Search, Star, User, X } from 'lucide-react';
 import type { AcquisitionKind, GameData, Gift, Keyword, Sin } from '../../core/schema.ts';
 import { evaluateConditions, observable } from '../../core/index.ts';
 import type { ConditionReport, DeckStats, GameIndexes } from '../../core/types.ts';
 import { pick, t, type Lang } from '../i18n.ts';
 import { useApp } from '../store.ts';
-import { keywordName, renderEffect } from '../format.ts';
-import { conditionText } from '../condition-text.ts';
 import { SIN_LABEL, badgeFor } from '../lib/labels.ts';
 import { prioritiseGifts, type GiftEntry, type GiftGroup } from '../lib/gift-priority.ts';
-import { useVirtualRows } from '../lib/useVirtualRows.ts';
+import { entanglements } from '../lib/entangle.ts';
 import { judgementOf } from '../lib/judgement.ts';
 import { priorityOf, type Priority } from '../lib/plan-input.ts';
 import { Badge, Button, Card, FilterSelect } from '../components/ui.tsx';
 import { GiftIcon } from '../components/GiftIcon.tsx';
+import { GiftTileGrid, type GiftTileData } from '../components/GiftGrid.tsx';
+import { GiftDetailSheet } from '../components/GiftDetailSheet.tsx';
 
 interface Props {
   data: GameData;
@@ -28,36 +33,11 @@ type TierFilter = '1' | '2' | '3' | '4' | '5' | 'EX';
 type PriceFilter = 'p1' | 'p2' | 'p3' | 'p4';
 const PRICE_BANDS: Record<PriceFilter, [number, number]> = { p1: [0, 150], p2: [151, 250], p3: [251, 400], p4: [401, Infinity] };
 
-const ROW = 44;
-const SUB_ROW = 36;
-const DETAIL = 80;
-
-interface Row {
-  kind: 'parent' | 'child';
-  entry: GiftEntry;
-  parent?: Gift;
-  height: number;
-}
-
-function Progress({ report, lang, enums }: { report: ConditionReport; lang: Lang; enums: GameData['enums'] }) {
-  if (report.have === null || report.need === null) return <span className="font-mono text-xs text-fg-3">{t('giftUnjudgeable', lang)}</span>;
-  const ok = report.have >= report.need;
-  const pct = Math.min(100, Math.round((report.have / report.need) * 100));
-  return (
-    <span className="flex w-[104px] flex-none items-center gap-1.5" title={conditionText(report, enums, lang)}>
-      <span className="h-1 flex-1 overflow-hidden rounded-full bg-surface-3">
-        <span className={`block h-full ${ok ? 'bg-ink' : 'bg-line-strong'}`} style={{ width: `${pct}%` }} />
-      </span>
-      <span className={`font-mono text-xs ${ok ? 'text-fg' : 'text-fg-3'}`}>
-        {report.have}/{report.need}
-      </span>
-    </span>
-  );
-}
-
-function progressNumber(report: ConditionReport): string {
-  return report.have === null || report.need === null ? '?' : `${report.have}/${report.need}`;
-}
+const GROUPS: { group: GiftGroup; title: 'giftsActive' | 'giftsNear' | 'giftsOther' }[] = [
+  { group: 'active', title: 'giftsActive' },
+  { group: 'near', title: 'giftsNear' },
+  { group: 'other', title: 'giftsOther' },
+];
 
 export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
   const deck = useApp((s) => s.deck);
@@ -69,8 +49,6 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
   const toggleObserved = useApp((s) => s.toggleObserved);
   const priority = useApp((s) => s.priority);
   const setPriority = useApp((s) => s.setPriority);
-  const fusionGoal = useApp((s) => s.fusionGoal);
-  const setFusionGoal = useApp((s) => s.setFusionGoal);
   const observeMax = data.rules.giftObservation.max;
 
   const [query, setQuery] = useState('');
@@ -79,8 +57,9 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
   const [acquisition, setAcquisition] = useState<AcquisitionKind | 'all'>('all');
   const [sin, setSin] = useState<Sin | 'all'>('all');
   const [price, setPrice] = useState<PriceFilter | 'all'>('all');
-  const [expanded, setExpanded] = useState<number | null>(null);
-  const [otherOpen, setOtherOpen] = useState(false);
+  const [detail, setDetail] = useState<number | null>(null);
+  // 「기타」 is the long tail, so it starts folded; the other two open with the panel.
+  const [collapsed, setCollapsed] = useState<Record<GiftGroup, boolean>>({ active: false, near: false, other: true });
   const [jump, setJump] = useState<{ id: number; nonce: number } | null>(null);
   const filtersOn = keyword !== 'all' || tier !== 'all' || acquisition !== 'all' || sin !== 'all' || price !== 'all' || query.trim() !== '';
   const resetFilters = (): void => {
@@ -113,6 +92,10 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
     return map;
   }, [data]);
 
+  // Two fusion goals can eat the same ingredient; both stay pickable but say so.
+  const entangled = useMemo(() => entanglements(wanted, indexes, data.rules.fusion.maxShopSlots), [wanted, indexes, data]);
+  const entangledIds = useMemo(() => new Set(entangled.keys()), [entangled]);
+
   const matchesFilters = (gift: Gift): boolean => {
     const needle = query.trim().toLowerCase();
     if (needle && !`${gift.name.ko} ${gift.name.en}`.toLowerCase().includes(needle)) return false;
@@ -144,150 +127,51 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
     if (!jump) return;
     const el = document.getElementById(`gift-${jump.id}`);
     if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'center' });
-  }, [jump, otherOpen]);
+  }, [jump, collapsed]);
   const jumpTo = (id: number): void => {
     const gift = indexes.giftById.get(id);
     const parentId = gift?.upgradeOf ?? id;
-    if (groups.other.some((e) => e.gift.id === parentId)) setOtherOpen(true);
+    for (const { group } of GROUPS) {
+      if (groups[group].some((e) => e.gift.id === parentId)) setCollapsed((state) => ({ ...state, [group]: false }));
+    }
     setJump({ id, nonce: Date.now() });
   };
   const giftName = (id: number): string => pick(indexes.giftById.get(id)?.name, lang);
 
   const toggle = (gift: Gift): void => toggleWanted(gift.id, (childrenOf.get(gift.id) ?? []).map((g) => g.id));
 
-  const renderRow = (row: Row): React.ReactNode => {
-    const gift = row.entry.gift;
-    if (row.kind === 'child') {
-      const parentSelected = row.parent ? wanted.includes(row.parent.id) : false;
-      const selected = wanted.includes(gift.id);
-      const { badge, label } = badgeFor(gift.acquisition.kind);
-      return (
-        <div
-          id={`gift-${gift.id}`}
-          className="flex h-9 items-center gap-2 border-b border-t border-dashed border-line bg-surface-2 px-3 pl-7"
-          data-testid="gift-child"
-          title={row.parent ? t('giftSubOf', lang, { parent: pick(row.parent.name, lang) }) : undefined}
-        >
-          <input
-            type="checkbox"
-            checked={parentSelected || selected}
-            disabled={parentSelected}
-            onChange={() => toggleWanted(gift.id)}
-            aria-label={pick(gift.name, lang)}
-            className="h-4 w-4 flex-none accent-[var(--color-ink)]"
-          />
-          <ArrowRight size={12} aria-hidden className="flex-none text-fg-3" />
-          <GiftIcon gift={gift} size={20} judgement={judgementOf(conditionByGift.get(gift.id))} lang={lang} />
-          <span className="min-w-0 flex-1 truncate text-sm text-fg-2">{pick(gift.name, lang)}</span>
-          <span className="font-mono text-xs text-fg-3">T{gift.tier ?? '?'}</span>
-          {parentSelected ? <Badge tone="sure">{t('giftIncluded', lang)}</Badge> : <Badge tone={badge}>{t(label, lang)}</Badge>}
-          {gift.hardOnly ? <Badge tone="hard">{t('hardOnly', lang)}</Badge> : null}
-        </div>
-      );
-    }
-    const selected = wanted.includes(gift.id);
-    const { badge, label } = badgeFor(gift.acquisition.kind);
-    const lack = row.entry.lack;
-    const lackName =
-      lack && lack.subject.kind === 'keyword'
-        ? keywordName(lack.subject.ids[0] as never, data.enums, lang)
-        : lack && lack.subject.kind === 'faction'
-          ? lack.subject.ids.map((id) => pick(data.enums.factions.find((f) => f.id === id)?.name, lang)).join('/')
-          : null;
-    const open = expanded === gift.id;
-    return (
-      <div className="border-b border-line" data-testid="gift-row" id={`gift-${gift.id}`}>
-        <div className="flex min-h-11 items-center gap-2 px-3">
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={() => toggle(gift)}
-            aria-label={pick(gift.name, lang)}
-            className="h-[18px] w-[18px] flex-none accent-[var(--color-ink)]"
-          />
-          <GiftIcon gift={gift} size={32} judgement={judgementOf(row.entry.reports)} lang={lang} />
-          <button type="button" onClick={() => setExpanded(open ? null : gift.id)} aria-expanded={open} className="min-w-0 flex-1 truncate text-left text-sm font-medium text-fg">
-            {pick(gift.name, lang)}
-          </button>
-          <span className="font-mono text-xs text-fg-3">T{gift.tier ?? '?'}</span>
-          <span className="hidden text-xs text-fg-2 @md:inline">{keywordName(gift.keyword, data.enums, lang)}</span>
-          <Badge tone={badge}>{t(label, lang)}</Badge>
-          {gift.hardOnly ? <Badge tone="hard">{t('hardOnly', lang)}</Badge> : null}
-          {lack && lackName && lack.have !== null && lack.need !== null ? (
-            <span className="whitespace-nowrap text-xs font-medium text-fg-2">{t('giftLack', lang, { name: lackName, n: lack.need - lack.have })}</span>
-          ) : null}
-          {row.entry.reports[0] ? (
-            <>
-              <span className="font-mono text-xs text-fg-3 @sm:hidden">{progressNumber(row.entry.lack ?? row.entry.reports[0])}</span>
-              <span className="hidden @sm:flex">
-                <Progress report={row.entry.lack ?? row.entry.reports[0]} lang={lang} enums={data.enums} />
-              </span>
-            </>
-          ) : null}
-        </div>
-        {open ? (
-          <div className="flex flex-col gap-1.5 px-3 pb-2.5 pl-10 text-xs text-fg-2">
-            <div className="line-clamp-2">{renderEffect(gift.desc, data.enums, lang)}</div>
-            {gift.fusion && gift.fusion.recipes.length > 0 ? (
-              <div className="flex flex-wrap items-center gap-1">
-                <span className="text-fg-3">{t('giftMaterials', lang)}</span>
-                {gift.fusion.recipes[0]!.ingredients.map((id, i) => (
-                  <span key={`${id}-${i}`} className="rounded-full border border-line bg-surface-2 px-2 py-0.5">
-                    {giftName(id)}
-                  </span>
-                ))}
-                {selected ? (
-                  <label className="ml-auto inline-flex items-center gap-1.5 text-fg" title={t('fusionGoalHint', lang)}>
-                    <input
-                      type="checkbox"
-                      checked={fusionGoal[gift.id] !== 'resultOnly'}
-                      onChange={(event) => setFusionGoal(gift.id, event.target.checked ? 'withIngredients' : 'resultOnly')}
-                      aria-label={`${pick(gift.name, lang)} ${t('fusionGoalIngredients', lang)}`}
-                      className="h-[14px] w-[14px] accent-[var(--color-ink)]"
-                    />
-                    {t('fusionGoalIngredients', lang)}
-                  </label>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-    );
-  };
-
-  const rowsFor = (entries: GiftEntry[]): Row[] =>
+  const tilesFor = (entries: GiftEntry[]): GiftTileData[] =>
     entries.flatMap((entry) => {
       const kids = (childrenOf.get(entry.gift.id) ?? []).filter((g) => g.obtainable || wanted.includes(g.id));
       return [
-        { kind: 'parent' as const, entry, height: ROW + (expanded === entry.gift.id ? DETAIL : 0) },
-        ...kids.map((g) => ({ kind: 'child' as const, entry: { ...entry, gift: g }, parent: entry.gift, height: SUB_ROW })),
+        { entry },
+        ...kids.map((g) => ({ entry: { ...entry, gift: g, reports: conditionByGift.get(g.id) ?? [] }, parent: entry.gift })),
       ];
     });
 
-  const section = (group: GiftGroup, titleKey: 'giftsActive' | 'giftsNear' | 'giftsOther', collapsed?: boolean, onToggle?: () => void) => {
+  const section = (group: GiftGroup, titleKey: 'giftsActive' | 'giftsNear' | 'giftsOther') => {
     const entries = groups[group];
-    const rows = rowsFor(entries);
-    const chosen = rows.filter((row) => wanted.includes(row.entry.gift.id)).length;
-    const jumpIndex = jump ? rows.findIndex((row) => row.entry.gift.id === jump.id) : -1;
+    const tiles = tilesFor(entries);
+    const chosen = tiles.filter((tile) => wanted.includes(tile.entry.gift.id)).length;
+    const shut = collapsed[group];
     return (
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden" key={group}>
         <button
           type="button"
-          onClick={onToggle}
-          aria-expanded={!collapsed}
+          onClick={() => setCollapsed((state) => ({ ...state, [group]: !state[group] }))}
+          aria-expanded={!shut}
           className="flex h-9 w-full items-center justify-between border-b border-line bg-surface-2 px-3 text-left"
         >
           <span className="flex items-center gap-2 text-sm font-semibold">
             {t(titleKey, lang)} <span className="font-mono text-xs text-fg-3">{entries.length}</span>
-            {collapsed && chosen > 0 ? <Badge tone="neutral">{t('giftsSelected', lang, { n: chosen })}</Badge> : null}
+            {shut && chosen > 0 ? <Badge tone="neutral">{t('giftsSelected', lang, { n: chosen })}</Badge> : null}
           </span>
-          <span className="text-fg-3">{collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</span>
+          <span className="text-fg-3">{shut ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</span>
         </button>
-        {collapsed ? null : group === 'other' ? (
-          <VirtualList rows={rows} renderRow={renderRow} lang={lang} scrollTo={jumpIndex >= 0 && jump ? { index: jumpIndex, nonce: jump.nonce } : null} />
-        ) : (
-          rows.map((row) => <div key={`${row.kind}-${row.entry.gift.id}`}>{renderRow(row)}</div>)
+        {shut ? null : (
+          <div className={group === 'other' ? 'max-h-[60vh] overflow-y-auto' : undefined} data-testid={group === 'other' ? 'gift-scroller' : undefined}>
+            <GiftTileGrid tiles={tiles} wanted={wanted} entangled={entangledIds} enums={data.enums} lang={lang} onToggle={toggle} onOpen={setDetail} />
+          </div>
         )}
       </Card>
     );
@@ -321,13 +205,7 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
       </Card>
     );
   } else {
-    body = (
-      <div className="flex flex-col gap-2.5">
-        {section('active', 'giftsActive')}
-        {section('near', 'giftsNear')}
-        {section('other', 'giftsOther', !otherOpen, () => setOtherOpen((v) => !v))}
-      </div>
-    );
+    body = <div className="flex flex-col gap-2.5">{GROUPS.map(({ group, title }) => section(group, title))}</div>;
   }
 
   const keywordOptions = data.enums.keywords.map((k) => ({ value: k.id as Keyword, label: pick(k.name, lang) }));
@@ -342,6 +220,8 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
     { value: 'p3', label: t('priceUpTo', lang, { n: 400 }) },
     { value: 'p4', label: t('priceOver', lang, { n: 400 }) },
   ];
+
+  const detailGift = detail !== null ? indexes.giftById.get(detail) : undefined;
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -385,6 +265,7 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
               <span
                 key={id}
                 data-priority={level}
+                data-entangled={entangledIds.has(id) || undefined}
                 className={`inline-flex h-7 items-center gap-1 rounded-full border bg-surface pl-1 pr-1 text-xs text-fg ${
                   level === 'must' ? 'border-ink' : level === 'skip' ? 'border-line opacity-60' : 'border-line-strong'
                 }`}
@@ -393,6 +274,7 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
                 <button type="button" onClick={() => jumpTo(id)} aria-label={t('giftGoTo', lang, { name: giftName(id) })} className={`hover:underline ${level === 'skip' ? 'line-through' : ''}`}>
                   {giftName(id)}
                 </button>
+                {entangledIds.has(id) ? <Link2 size={11} aria-hidden className="text-fg-2" /> : null}
                 <button
                   type="button"
                   onClick={() => setPriority(id, nextLevel)}
@@ -428,43 +310,18 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
 
       {body}
 
-    </div>
-  );
-}
-
-function VirtualList({
-  rows,
-  renderRow,
-  lang,
-  scrollTo,
-}: {
-  rows: Row[];
-  renderRow: (row: Row) => React.ReactNode;
-  lang: Lang;
-  scrollTo: { index: number; nonce: number } | null;
-}) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const heights = useMemo(() => rows.map((r) => r.height), [rows]);
-  const expanded = rows.some((r) => r.height > ROW);
-  const { start, end, padTop, padBottom } = useVirtualRows(heights, ref, expanded ? 10 : 6);
-  useEffect(() => {
-    if (!scrollTo || !ref.current) return;
-    let offset = 0;
-    for (let i = 0; i < scrollTo.index; i += 1) offset += heights[i] ?? 0;
-    ref.current.scrollTop = Math.max(0, offset - 80);
-  }, [scrollTo, heights]);
-  return (
-    <div>
-      <div className="sticky top-0 z-10 border-b border-line bg-surface px-3 py-1 text-right text-xs text-fg-3">
-        {t('giftsShowing', lang, { total: rows.length, from: Math.min(rows.length, start + 1), to: Math.min(rows.length, end) })}
-      </div>
-      <div ref={ref} className="max-h-[60vh] overflow-y-auto" data-testid="virtual-list">
-        <div style={{ height: padTop }} />
-        {rows.slice(start, end).map((row) => (
-          <div key={`${row.kind}-${row.entry.gift.id}`}>{renderRow(row)}</div>
-        ))}
-        <div style={{ height: padBottom }} />
-      </div>
+      {detailGift ? (
+        <GiftDetailSheet
+          gift={detailGift}
+          reports={conditionByGift.get(detailGift.id) ?? []}
+          entangled={entangled.get(detailGift.id) ?? []}
+          data={data}
+          indexes={indexes}
+          lang={lang}
+          onToggleWanted={toggle}
+          onClose={() => setDetail(null)}
+        />
+      ) : null}
     </div>
   );
 }

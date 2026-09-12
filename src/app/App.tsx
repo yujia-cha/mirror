@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshCw, TriangleAlert, Hourglass } from 'lucide-react';
 import type { GameData } from '../core/schema.ts';
 import { analyseDeck, buildIndexes } from '../core/index.ts';
 import { loadGameData } from '../core/data/load.ts';
 import { t } from './i18n.ts';
 import { decodeShared, encodeShared, useApp } from './store.ts';
+import { defaultDeck } from './lib/default-deck.ts';
 import { Button, Card, Skeleton, Toast } from './components/ui.tsx';
 import { AppShell } from './shell/AppShell.tsx';
 
@@ -19,6 +20,7 @@ export function App() {
   const setLang = useApp((s) => s.setLang);
   const toggleDark = useApp((s) => s.toggleDark);
   const applyShared = useApp((s) => s.applyShared);
+  const setDeck = useApp((s) => s.setDeck);
 
   const [data, setData] = useState<GameData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +58,15 @@ export function App() {
       cancelled = true;
     };
   }, [attempt]);
+
+  // A first visit starts from the deck everyone owns; a share link or a saved deck arrives first
+  // and wins. Seeding happens once, so emptying the deck by hand is not undone on the next render.
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (!data || seeded.current) return;
+    seeded.current = true;
+    if (useApp.getState().deck.length === 0) setDeck(defaultDeck(data), data.rules.deployment.default);
+  }, [data, setDeck]);
 
   const indexes = useMemo(() => (data ? buildIndexes(data) : null), [data]);
   const stats = useMemo(

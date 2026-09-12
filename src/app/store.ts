@@ -15,7 +15,13 @@ export interface UiState {
   leftTab: LeftTab;
   rightOpen: boolean;
   rightTab: RightTab;
+  /** Desktop panel widths in px, dragged by the divider between panel and stage. */
+  leftWidth: number;
+  rightWidth: number;
 }
+
+/** How wide a side panel may be dragged: narrow enough to read, never eating the whole stage. */
+export const PANEL_WIDTH = { min: 260, max: 560, default: 336 } as const;
 
 export interface SharedState {
   /** Identity ids in formation order (at most 12, one per sinner). */
@@ -66,7 +72,6 @@ interface AppState extends SharedState {
   /** Leave the stage floor: an undecided floor is skipped; `settle` applies collected / missed gifts first. */
   nextFloor: (settle?: { got?: number[]; failed?: number[] }) => void;
   /** Look back one floor; a skip right before the frontier is taken back so the floor is decided again. */
-  prevFloor: () => void;
   setStageFloor: (floor: number) => void;
   resetRun: () => void;
   setGiftStatus: (giftId: number, status: 'got' | 'failed' | null) => void;
@@ -149,7 +154,13 @@ export function emptyRun(): RunState {
 }
 
 export function defaultUi(): UiState {
-  return { leftOpen: true, leftTab: 'gifts', rightOpen: true, rightTab: 'plan' };
+  return { leftOpen: true, leftTab: 'gifts', rightOpen: true, rightTab: 'plan', leftWidth: PANEL_WIDTH.default, rightWidth: PANEL_WIDTH.default };
+}
+
+/** A stored or dragged width, rounded and held inside the allowed band. */
+export function clampPanelWidth(raw: unknown): number {
+  const value = typeof raw === 'number' && Number.isFinite(raw) ? Math.round(raw) : PANEL_WIDTH.default;
+  return Math.min(PANEL_WIDTH.max, Math.max(PANEL_WIDTH.min, value));
 }
 
 export function sanitizeUi(raw: unknown): UiState {
@@ -160,6 +171,8 @@ export function sanitizeUi(raw: unknown): UiState {
   if (typeof source.rightOpen === 'boolean') out.rightOpen = source.rightOpen;
   if (source.leftTab === 'deck' || source.leftTab === 'gifts' || source.leftTab === 'settings') out.leftTab = source.leftTab;
   if (source.rightTab === 'plan' || source.rightTab === 'tracker') out.rightTab = source.rightTab;
+  out.leftWidth = clampPanelWidth(source.leftWidth);
+  out.rightWidth = clampPanelWidth(source.rightWidth);
   return out;
 }
 
@@ -367,19 +380,14 @@ export const useApp = create<AppState>()(
           const stageFloor = Math.min(APP_LAST_FLOOR, run.stageFloor + 1);
           return { run: { ...run, currentFloor, stageFloor, giftStatus: withStatus(run.giftStatus, settle) } };
         }),
-      prevFloor: () =>
-        set((state) => {
-          const { run } = state;
-          if (run.stageFloor <= 1) return {};
-          const stageFloor = run.stageFloor - 1;
-          // A skip right before the frontier holds no record, so it is simply taken back.
-          const currentFloor = stageFloor === run.currentFloor - 1 && run.visits[stageFloor] === undefined ? stageFloor : run.currentFloor;
-          return { run: { ...run, stageFloor, currentFloor } };
-        }),
       setStageFloor: (floor) =>
         set((state) => {
           if (!Number.isInteger(floor)) return {};
-          return { run: { ...state.run, stageFloor: Math.min(APP_LAST_FLOOR, state.run.currentFloor, Math.max(1, floor)) } };
+          const { run } = state;
+          const stageFloor = Math.min(APP_LAST_FLOOR, run.currentFloor, Math.max(1, floor));
+          // A skip right before the frontier holds no record, so stepping back onto it takes it back.
+          const currentFloor = stageFloor === run.currentFloor - 1 && run.visits[stageFloor] === undefined ? stageFloor : run.currentFloor;
+          return { run: { ...run, stageFloor, currentFloor } };
         }),
       resetRun: () => set({ run: emptyRun() }),
       setGiftStatus: (giftId, status) =>

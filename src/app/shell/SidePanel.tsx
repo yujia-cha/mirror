@@ -46,6 +46,7 @@ export function SidePanel<Id extends string>({
   tab,
   onTab,
   lang,
+  width,
   children,
 }: {
   id: string;
@@ -59,6 +60,8 @@ export function SidePanel<Id extends string>({
   tab: Id;
   onTab: (id: Id) => void;
   lang: Lang;
+  /** Desktop width in px, dragged by the divider next to the panel. */
+  width: number;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -74,7 +77,8 @@ export function SidePanel<Id extends string>({
         id={id}
         aria-label={label}
         data-testid={`panel-${side}`}
-        className={`sticky top-14 flex h-[calc(100dvh-56px)] w-[336px] flex-none flex-col overflow-hidden bg-surface ${side === 'left' ? 'border-r' : 'border-l'} border-line`}
+        style={{ width }}
+        className={`sticky top-14 flex h-[calc(100dvh-56px)] flex-none flex-col overflow-hidden bg-surface ${side === 'left' ? 'border-r' : 'border-l'} border-line`}
       >
         {bar}
         <div className="@container min-h-0 flex-1 overflow-y-auto px-3 py-3">{children}</div>

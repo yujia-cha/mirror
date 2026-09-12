@@ -28,7 +28,7 @@ export { conflictGroups, wantedRoots } from './conflicts.ts';
 export type { ConflictGroup, ConflictCandidate } from './conflicts.ts';
 export { buildIndexes } from './data/indexes.ts';
 export { analyseDeck, dominantKeyword, evaluateConditions } from './deck.ts';
-export { expandRequirements, scarcity } from './requirements.ts';
+export { chooseRecipe, expandRequirements, scarcity } from './requirements.ts';
 export { assignPacks, modeForFloor, observationCost } from './search.ts';
 export { chooseStart, observable } from './starting.ts';
 export * from './types.ts';
