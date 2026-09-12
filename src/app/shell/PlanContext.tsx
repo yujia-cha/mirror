@@ -48,6 +48,8 @@ export interface PlanState {
   enter: (packId: number) => void;
   /** Leave the stage floor: an undecided floor is skipped, an entered pack's unmarked goals are missed. */
   next: () => void;
+  /** Go back from an entered pack: the entry and every status recorded for that pack's own drops are cleared. */
+  leave: (packId: number) => void;
   prev: () => void;
 }
 
@@ -112,6 +114,7 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
       const failed = entered !== undefined ? autoFailedFor(entered, goals, run.giftStatus, exclusivesOf) : [];
       nextFloor({ got: startSettle, failed });
     };
+    const leave = (packId: number): void => unvisitPack(packId, { reset: exclusivesOf(packId) });
     const ctx: PackContext = {
       indexes,
       judgements,
@@ -173,6 +176,7 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
       enter,
       next,
       prev: prevFloor,
+      leave,
     };
   }, [
     data,

@@ -1,128 +1,111 @@
 /**
- * The packs the player can enter on the stage floor: the ones the route allows here (the
- * suggested one first), a card for passing the floor without a pack, and a search over every
- * pack the game can offer on this floor. A card is dragged down into the drop zone to enter, or
- * entered with its button.
+ * The packs the player can enter on the stage floor. A card shows the pack's portrait, its name
+ * and the gifts only it drops; pulling the card down (or pressing 「입장」 at its foot) enters
+ * it. The dashed card at the end stands for a pack off the route: pulling it moves on without a
+ * record. A search over every pack the game can offer on this floor sits below.
  */
-import { useMemo, useState, type ReactNode, type RefObject } from 'react';
-import { ArrowDown, DoorClosed, LogIn, Search } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { ChevronsDown, DoorOpen, LogIn, Search } from 'lucide-react';
 import type { ThemePack } from '../../core/schema.ts';
-import { pick, t } from '../i18n.ts';
+import { pick, t, type Lang } from '../i18n.ts';
 import type { EnterablePack } from '../lib/stage.ts';
-import type { DragHandlers, DragState } from '../lib/useDragEnter.ts';
+import { pullStyle, usePullGesture } from '../lib/usePullGesture.ts';
 import { DetailSurface } from '../components/BlockDetail.tsx';
+import { GiftIcon } from '../components/GiftIcon.tsx';
 import { PackCard } from '../components/PackCard.tsx';
 import { PackSheetBody, PackStateBadge, type PackContext } from '../components/PackSheet.tsx';
 import { Badge, Button } from '../components/ui.tsx';
 
-export type DragId = number | 'skip';
-
-const CARD_CLASS = 'relative flex w-[150px] flex-none flex-col gap-2 rounded-md border bg-surface p-2.5 shadow-card select-none';
+const CARD_CLASS = 'relative flex w-[128px] flex-none flex-col items-center gap-2 rounded-md border bg-surface px-2.5 pt-2.5 select-none';
+const FOOT_CLASS = '-mx-2.5 mt-0.5 flex h-[34px] w-[calc(100%+20px)] items-center justify-center gap-1 rounded-b-md border-t text-sm font-medium transition-colors';
+const MAX_ICONS = 5;
 
 export function StagePackCard({
   pack,
   recommended,
   ctx,
   exclusivesOf,
-  handlers,
-  dragging,
   onEnter,
+  onOpen,
 }: {
   pack: ThemePack;
   recommended: boolean;
   ctx: PackContext;
   exclusivesOf: (packId: number) => number[];
-  handlers: DragHandlers;
-  dragging: boolean;
   onEnter: (packId: number) => void;
+  /** Open the pack's sheet; it is rendered by the caller, outside the card the pull transforms. */
+  onOpen: (packId: number) => void;
 }) {
   const { lang } = ctx;
-  const [open, setOpen] = useState(false);
+  const pull = usePullGesture({ directions: ['down'], onCommit: () => onEnter(pack.id) });
   const exclusives = exclusivesOf(pack.id);
-  const wantedHere = exclusives.filter((id) => ctx.wanted.has(id)).length;
+  const shown = exclusives.slice(0, MAX_ICONS);
+  const more = exclusives.length - shown.length;
   const name = pick(pack.name, lang);
   return (
     <div
-      {...handlers}
-      className={`${CARD_CLASS} ${recommended ? 'border-ink' : 'border-line'} ${dragging ? 'opacity-40' : ''}`}
-      style={{ touchAction: 'pan-x' }}
+      {...pull.handlers}
+      className={`${CARD_CLASS} ${recommended ? 'border-ink' : 'border-line'} ${pull.pulling ? 'z-10 shadow-pop' : 'shadow-card'} motion-reduce:transition-none`}
+      style={pullStyle(pull)}
       data-testid="stage-pack"
       data-pack={pack.id}
       data-recommended={recommended || undefined}
+      data-pulling={pull.pulling || undefined}
+      data-past={pull.past ?? undefined}
     >
-      <div className="flex items-start gap-2">
-        <PackCard pack={pack} size={48} caption lang={lang} />
-        <div className="flex min-w-0 flex-1 flex-col gap-1 text-xs">
-          {recommended ? <Badge tone="sure">{t('stageRecommended', lang)}</Badge> : <PackStateBadge packId={pack.id} ctx={ctx} />}
-          <span className="text-fg-2">{t('aheadExclusives', lang, { n: exclusives.length })}</span>
-          {wantedHere > 0 ? <span className="font-medium text-fg">{`${t('giftWanted', lang)} ${wantedHere}`}</span> : null}
-        </div>
+      <div className="flex h-5 items-center">{recommended ? <Badge tone="sure">{t('stageRecommended', lang)}</Badge> : <PackStateBadge packId={pack.id} ctx={ctx} />}</div>
+      <PackCard pack={pack} size={96} lang={lang} />
+      <button type="button" onClick={() => onOpen(pack.id)} aria-haspopup="dialog" aria-label={t('stagePackDetail', lang, { name })} className="line-clamp-2 w-full break-keep text-center text-xs font-medium leading-tight text-fg underline-offset-2 hover:underline">
+        {name}
+      </button>
+      <div className="flex min-h-5 flex-wrap justify-center gap-[3px]" data-testid="stage-pack-gifts">
+        {shown.map((id) => {
+          const gift = ctx.indexes.giftById.get(id);
+          if (!gift) return null;
+          const wanted = ctx.wanted.has(id);
+          return (
+            <span key={id} className={`inline-flex rounded-sm ${wanted ? 'ring-1 ring-ink' : ''}`} data-wanted={wanted || undefined}>
+              <GiftIcon gift={gift} size={20} must={ctx.isMust(id)} status={ctx.run?.giftStatus(id) ?? null} lang={lang} />
+            </span>
+          );
+        })}
+        {more > 0 ? <span className="inline-flex h-5 items-center px-1 font-mono text-[10px] text-fg-3">{t('stageExclusiveMore', lang, { n: more })}</span> : null}
       </div>
-      <div className="flex gap-1.5">
-        <Button size="sm" variant="primary" className="flex-1" onClick={() => onEnter(pack.id)} ariaLabel={t('stageEnterPack', lang, { name })}>
-          <LogIn size={12} aria-hidden />
-          {t('stageEnter', lang)}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => setOpen(true)} ariaLabel={`${name} ${t('stageDetail', lang)}`}>
-          {t('stageDetail', lang)}
-        </Button>
-      </div>
-      {open ? (
-        <DetailSurface mode="sheet" label={name} closeLabel={t('routeClose', lang)} onClose={() => setOpen(false)}>
-          <PackSheetBody packId={pack.id} ctx={ctx} />
-        </DetailSurface>
-      ) : null}
+      <button
+        type="button"
+        onClick={() => onEnter(pack.id)}
+        aria-label={t('stageEnterPack', lang, { name })}
+        className={`${FOOT_CLASS} ${pull.past ? 'border-ink bg-ink text-ink-fg' : 'border-line text-fg-2 hover:bg-surface-2'}`}
+      >
+        {pull.past ? t('stageReleaseEnter', lang) : t('stageEnter', lang)}
+        <ChevronsDown size={14} aria-hidden />
+      </button>
     </div>
   );
 }
 
-export function SkipCard({ handlers, dragging, onSkip, lang }: { handlers: DragHandlers; dragging: boolean; onSkip: () => void; lang: PackContext['lang'] }) {
-  return (
-    <div {...handlers} className={`${CARD_CLASS} border-dashed border-line-strong ${dragging ? 'opacity-40' : ''}`} style={{ touchAction: 'pan-x' }} data-testid="skip-card">
-      <div className="flex items-start gap-2">
-        <span className="flex h-[90px] w-12 flex-none items-center justify-center rounded-sm border border-dashed border-line-strong text-fg-3" aria-hidden>
-          <DoorClosed size={18} />
-        </span>
-        <div className="flex min-w-0 flex-1 flex-col gap-1 text-xs">
-          <span className="text-sm font-medium">{t('stageSkip', lang)}</span>
-          <span className="text-fg-3">{t('stageSkipHint', lang)}</span>
-        </div>
-      </div>
-      <Button size="sm" variant="secondary" onClick={onSkip}>
-        {t('stageSkip', lang)}
-      </Button>
-    </div>
-  );
-}
-
-export function DropZone({ zoneRef, over, active, lang }: { zoneRef: RefObject<HTMLDivElement | null>; over: boolean; active: boolean; lang: PackContext['lang'] }) {
+/** The dashed card for a pack off the route: pulling it down passes the floor without a record. */
+export function OtherEntryCard({ onSkip, lang }: { onSkip: () => void; lang: Lang }) {
+  const pull = usePullGesture({ directions: ['down'], onCommit: onSkip });
   return (
     <div
-      ref={zoneRef}
-      role="region"
-      aria-label={t('stageDropZone', lang)}
-      data-testid="drop-zone"
-      data-over={over || undefined}
-      className={`flex min-h-24 items-center justify-center gap-2 rounded-md border-2 border-dashed text-sm transition-colors ${
-        over ? 'border-ink bg-surface-2 text-fg' : active ? 'border-line-strong text-fg-2' : 'border-line text-fg-3'
-      }`}
+      {...pull.handlers}
+      className={`${CARD_CLASS} border-dashed border-line-strong ${pull.pulling ? 'z-10 shadow-pop' : ''} motion-reduce:transition-none`}
+      style={pullStyle(pull)}
+      data-testid="other-entry-card"
+      data-pulling={pull.pulling || undefined}
+      data-past={pull.past ?? undefined}
     >
-      <ArrowDown size={16} aria-hidden />
-      {active ? t('stageDropZone', lang) : t('stageDropHint', lang)}
-    </div>
-  );
-}
-
-export function DragGhost({ drag, label, children }: { drag: DragState<DragId>; label: string; children: ReactNode }) {
-  return (
-    <div
-      className="pointer-events-none fixed z-50 rounded-md border border-ink bg-surface p-2 shadow-pop"
-      style={{ left: drag.startRect.left + drag.dx, top: drag.startRect.top + drag.dy, width: drag.startRect.width }}
-      aria-hidden
-      data-testid="drag-ghost"
-    >
-      {children}
-      <div className="mt-1 text-center text-[11px] text-fg-2">{label}</div>
+      <div className="h-5" />
+      <span className="inline-flex h-[180px] w-24 flex-none items-center justify-center rounded-sm border border-dashed border-line-strong bg-surface-3 text-fg-3" aria-hidden>
+        <DoorOpen size={40} strokeWidth={1.5} className="opacity-40" />
+      </span>
+      <span className="text-center text-xs font-medium leading-tight text-fg">{t('stageOtherEntry', lang)}</span>
+      <span className="min-h-5 text-center text-[11px] leading-tight text-fg-3">{t('stageOtherEntryHint', lang)}</span>
+      <button type="button" onClick={onSkip} aria-label={t('stageOtherEntry', lang)} className={`${FOOT_CLASS} border-dashed ${pull.past ? 'border-ink bg-ink text-ink-fg' : 'border-line-strong text-fg-2 hover:bg-surface-2'}`}>
+        {pull.past ? t('stageReleaseNext', lang) : t('stageNext', lang)}
+        <ChevronsDown size={14} aria-hidden />
+      </button>
     </div>
   );
 }
