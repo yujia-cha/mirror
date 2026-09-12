@@ -61,7 +61,8 @@ interface AppState extends SharedState {
    */
   visitPack: (packId: number, floor: number, settle?: { got?: number[] }) => void;
   /** Drop the record; when it was the last decided floor, that floor becomes undecided again. */
-  unvisitPack: (packId: number) => void;
+  /** Undo an entry; `reset` names gift ids whose recorded status is cleared with it (the pack's own drops). */
+  unvisitPack: (packId: number, opts?: { reset?: number[] }) => void;
   /** Leave the stage floor: an undecided floor is skipped; `settle` applies collected / missed gifts first. */
   nextFloor: (settle?: { got?: number[]; failed?: number[] }) => void;
   /** Look back one floor; a skip right before the frontier is taken back so the floor is decided again. */
@@ -345,7 +346,7 @@ export const useApp = create<AppState>()(
             },
           };
         }),
-      unvisitPack: (packId) =>
+      unvisitPack: (packId, opts) =>
         set((state) => {
           const entry = Object.entries(state.run.visits).find(([, id]) => id === packId);
           if (!entry) return {};
@@ -353,7 +354,9 @@ export const useApp = create<AppState>()(
           const visits = withoutPack(state.run.visits, packId);
           // The last decided floor becomes undecided again; an older one turns into a skip.
           const currentFloor = floor === state.run.currentFloor - 1 ? floor : state.run.currentFloor;
-          return { run: { ...state.run, visits, currentFloor, stageFloor: Math.min(state.run.stageFloor, currentFloor) } };
+          const giftStatus = { ...state.run.giftStatus };
+          for (const id of opts?.reset ?? []) delete giftStatus[id];
+          return { run: { ...state.run, visits, currentFloor, stageFloor: Math.min(state.run.stageFloor, currentFloor), giftStatus } };
         }),
       nextFloor: (settle) =>
         set((state) => {

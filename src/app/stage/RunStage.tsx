@@ -1,35 +1,42 @@
 /**
- * The run screen in the middle of the shell. The floor on stage is either undecided (choose a
- * pack to enter, or skip), entered (mark the gifts got), skipped (nothing here; a pack can still
- * be recorded), or past the end of the run.
+ * The run screen in the middle of the shell. The floor on stage is either undecided (pull a pack
+ * card down to enter it, or the dashed card to pass), entered (the pack area is open), skipped
+ * (nothing here; a pack can still be recorded), or past the end of the run.
  */
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Star } from 'lucide-react';
 import { t } from '../i18n.ts';
 import { useApp } from '../store.ts';
 import { enterablePacks, packsOfferedOn } from '../lib/stage.ts';
-import { useDragEnter } from '../lib/useDragEnter.ts';
-import { PackCard } from '../components/PackCard.tsx';
 import { Button, Card, Notice } from '../components/ui.tsx';
 import { usePlan } from '../shell/PlanContext.tsx';
-import { DragGhost, DropZone, OtherPacks, SkipCard, StagePackCard, type DragId } from './EnterablePacks.tsx';
-import { EnteredPack } from './EnteredPack.tsx';
+import { OtherEntryCard, OtherPacks, StagePackCard } from './EnterablePacks.tsx';
+import { PackArea } from './EnteredPack.tsx';
 import { FloorHeader } from './FloorHeader.tsx';
 
+/** How long the pack area takes to fold away after the player goes back (matches its CSS transition). */
+const FOLD_MS = 200;
+
 export function RunStage({ onOpenGifts }: { onOpenGifts: () => void }) {
-  const { indexes, lang, shown, ctx, exclusivesOf, stageMode, enter, next, packName } = usePlan();
+  const { indexes, lang, shown, ctx, exclusivesOf, stageMode, enter, next } = usePlan();
   const run = useApp((s) => s.run);
   const resetRun = useApp((s) => s.resetRun);
-  const zoneRef = useRef<HTMLDivElement | null>(null);
   const floor = run.stageFloor;
-  const drop = (id: DragId): void => {
-    if (id === 'skip') next();
-    else enter(id);
-  };
-  const { drag, over, handlers } = useDragEnter<DragId>({ onDrop: drop, zoneRef });
   const routePacks = enterablePacks(shown, floor);
   const offered = packsOfferedOn(indexes, floor);
   const entered = run.visits[floor];
+
+  // When the entry on the stage floor is taken back, the area stays a moment to fold away.
+  const [closing, setClosing] = useState<number | null>(null);
+  const previous = useRef<{ floor: number; entered: number | undefined }>({ floor, entered });
+  useEffect(() => {
+    const before = previous.current;
+    previous.current = { floor, entered };
+    if (before.floor !== floor || before.entered === undefined || entered !== undefined) return undefined;
+    setClosing(before.entered);
+    const timer = window.setTimeout(() => setClosing(null), FOLD_MS);
+    return () => window.clearTimeout(timer);
+  }, [floor, entered]);
 
   let body;
   if (stageMode === 'done') {
@@ -42,11 +49,11 @@ export function RunStage({ onOpenGifts }: { onOpenGifts: () => void }) {
       </Card>
     );
   } else if (stageMode === 'entered' && entered !== undefined) {
-    body = <EnteredPack packId={entered} floor={floor} />;
+    body = <PackArea key={entered} packId={entered} floor={floor} />;
   } else {
-    const ghostPack = drag && drag.id !== 'skip' ? indexes.packById.get(drag.id) : undefined;
     body = (
       <div className="flex flex-col gap-3" data-testid="stage-undecided" data-mode={stageMode}>
+        {closing !== null ? <PackArea key={`closing-${closing}`} packId={closing} floor={floor} closing /> : null}
         {!shown ? (
           <Notice icon={<Star size={14} aria-hidden />}>
             <span className="mr-2">{t('stageNoGoals', lang)}</span>
@@ -56,27 +63,19 @@ export function RunStage({ onOpenGifts }: { onOpenGifts: () => void }) {
           </Notice>
         ) : null}
         {stageMode === 'skipped' ? <Notice>{t('stageHistoryHint', lang)}</Notice> : null}
-        <div className="text-sm font-semibold">{t('stageEnterable', lang)}</div>
+        <div className="flex flex-wrap items-baseline gap-2">
+          <span className="text-sm font-semibold">{t('stageEnterable', lang)}</span>
+          <span className="text-xs text-fg-3">{t('stagePullHint', lang)}</span>
+        </div>
         {shown && routePacks.length === 0 && stageMode === 'undecided' ? <p className="text-xs text-fg-3">{t('stageNoRoutePack', lang)}</p> : null}
-        <div className="scroll-x -mx-4 flex gap-2.5 overflow-x-auto px-4 pb-1 lg:mx-0 lg:flex-wrap lg:px-0" data-testid="stage-packs">
+        <div className="flex flex-wrap items-start gap-2.5 pb-3" data-testid="stage-packs">
           {routePacks.map(({ packId, recommended }) => {
             const pack = indexes.packById.get(packId);
-            return pack ? (
-              <StagePackCard key={packId} pack={pack} recommended={recommended} ctx={ctx} exclusivesOf={exclusivesOf} handlers={handlers(packId)} dragging={drag?.id === packId} onEnter={enter} />
-            ) : null;
+            return pack ? <StagePackCard key={packId} pack={pack} recommended={recommended} ctx={ctx} exclusivesOf={exclusivesOf} onEnter={enter} /> : null;
           })}
-          {stageMode === 'undecided' ? <SkipCard handlers={handlers('skip')} dragging={drag?.id === 'skip'} onSkip={next} lang={lang} /> : null}
+          {stageMode === 'undecided' ? <OtherEntryCard onSkip={next} lang={lang} /> : null}
         </div>
-        <DropZone zoneRef={zoneRef} over={over} active={drag !== null} lang={lang} />
         <OtherPacks offered={offered} exclude={new Set(routePacks.map((p) => p.packId))} ctx={ctx} exclusivesOf={exclusivesOf} onEnter={enter} />
-        {drag ? (
-          <DragGhost drag={drag} label={t('stageDragging', lang, { name: drag.id === 'skip' ? t('stageSkip', lang) : packName(drag.id) })}>
-            {ghostPack ? <PackCard pack={ghostPack} size={48} caption lang={lang} /> : <div className="h-[90px] w-12 rounded-sm border border-dashed border-line-strong" />}
-          </DragGhost>
-        ) : null}
-        <span className="sr-only" role="status" aria-live="polite">
-          {drag ? t('stageDragging', lang, { name: drag.id === 'skip' ? t('stageSkip', lang) : packName(drag.id) }) : ''}
-        </span>
       </div>
     );
   }

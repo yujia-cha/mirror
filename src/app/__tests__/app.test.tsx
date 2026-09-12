@@ -163,8 +163,11 @@ describe('run store', () => {
     const input = planInputFor(useApp.getState());
     expect(input.options).toMatchObject({ currentFloor: 4, pinnedPacks: { 3: 1016 }, ownedGifts: [9222], unobtainableGifts: [9431] });
     expect(input.wanted).toEqual([{ giftId: 9249, required: false, ingredientsAsGoals: false }]);
-    useApp.getState().unvisitPack(1016);
+    // Undoing an entry can take the statuses recorded for that pack's own drops with it.
+    useApp.getState().setGiftStatus(9267, 'got');
+    useApp.getState().unvisitPack(1016, { reset: [9267, 9431] });
     expect(useApp.getState().run.visits).toEqual({});
+    expect(useApp.getState().run.giftStatus).toEqual({ 9222: 'got' });
     useApp.getState().resetRun();
     expect(useApp.getState().run).toEqual(emptyRun());
     expect(planInputFor(useApp.getState()).options).toMatchObject({ currentFloor: 1, ownedGifts: [], pinnedPacks: {} });
@@ -869,8 +872,15 @@ describe('RunStage', () => {
     );
   const header = () => screen.getByTestId('floor-header');
   const skipFloor = async (user: ReturnType<typeof userEvent.setup>) => user.click(within(header()).getByRole('button', { name: '입장하지 않음' }));
+  const pointer = { pointerId: 1, button: 0, clientX: 60, clientY: 200 };
+  /** Pull an element vertically by `dy` and let go. */
+  const pull = (el: HTMLElement, dy: number) => {
+    fireEvent.pointerDown(el, pointer);
+    fireEvent.pointerMove(window, { ...pointer, clientY: pointer.clientY + dy });
+    fireEvent.pointerUp(window, { ...pointer, clientY: pointer.clientY + dy });
+  };
 
-  it('asks for goals first, then walks to the recommended pack, enters it, marks its gifts and takes it back', async () => {
+  it('asks for goals first, then walks to the recommended pack, enters it, marks its gifts and goes back', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
     const { unmount } = renderStage();
@@ -881,7 +891,7 @@ describe('RunStage', () => {
     expect(screen.getByTestId('stage-floor')).toHaveTextContent('1');
     expect(screen.queryByTestId('stage-pack')).toBeNull();
     expect(screen.getByText(/이 층에 계획된 팩이 없습니다/)).toBeInTheDocument();
-    expect(screen.getByTestId('skip-card')).toBeInTheDocument();
+    expect(screen.getByTestId('other-entry-card')).toHaveTextContent('다른 팩 입장');
     for (let i = 0; i < 3; i += 1) await skipFloor(user);
     expect(screen.getByTestId('stage-floor')).toHaveTextContent('4');
     expect(useApp.getState().run).toMatchObject({ currentFloor: 4, stageFloor: 4 });
@@ -890,14 +900,23 @@ describe('RunStage', () => {
     expect(card).toHaveAttribute('data-pack', '1402');
     expect(card).toHaveAttribute('data-recommended');
     expect(card).toHaveTextContent('추천');
+    // Portrait, name, then the gifts only this pack drops with the goal ringed; the foot says 입장.
+    expect(within(card).getByTestId('pack-image')).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: '화왕지절 자세히' })).toBeInTheDocument();
+    const icons = within(screen.getByTestId('stage-pack-gifts')).getAllByTestId('gift-icon');
+    expect(icons.length).toBeGreaterThan(1);
+    expect(within(screen.getByTestId('stage-pack-gifts')).getAllByRole('img', { name: /달궈진 놋쇠/ })[0]!.parentElement).toHaveAttribute('data-wanted');
+    expect(within(card).getByRole('button', { name: '화왕지절 입장' })).toHaveTextContent('입장');
     expect(screen.getAllByTestId('floor-cell').filter((c) => c.getAttribute('data-state') === 'skipped')).toHaveLength(3);
     await user.click(within(card).getByRole('button', { name: '화왕지절 입장' }));
     expect(useApp.getState().run).toMatchObject({ visits: { 4: 1402 }, currentFloor: 5, stageFloor: 4 });
-    // The entered view: the pack on the left, its exclusive drops on the right, goals first and ringed.
+    // The pack area: the pack on the left, its exclusive drops on the right, goals first and ringed.
     expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'entered');
     const entered = screen.getByTestId('entered-pack');
     expect(entered).toHaveAttribute('data-pack', '1402');
     expect(entered).toHaveTextContent('4층에 입장');
+    expect(within(entered).getByTestId('area-back')).toHaveTextContent('돌아가기');
+    expect(within(entered).getByTestId('area-next')).toHaveTextContent('다음 층');
     const tiles = within(screen.getByTestId('exclusive-gifts')).getAllByTestId('gift-tile');
     expect(tiles.length).toBeGreaterThan(1);
     expect(tiles[0]).toHaveAttribute('data-gift', '9267');
@@ -908,77 +927,89 @@ describe('RunStage', () => {
     expect(useApp.getState().run.giftStatus).toMatchObject({ 9267: 'got' });
     expect(tiles[0]).toHaveAttribute('aria-pressed', 'true');
     expect(tiles[0]).toHaveAttribute('data-status', 'got');
-    await user.click(tiles[0]!);
-    expect(useApp.getState().run.giftStatus[9267]).toBeUndefined();
-    // Looking ahead and back keeps the record; undoing the entry reopens the floor.
-    await user.click(within(header()).getByRole('button', { name: '다음 층' }));
+    // Looking ahead and back keeps the record; going back clears the entry and what was marked in it.
+    await user.click(within(entered).getByTestId('area-next'));
     expect(screen.getByTestId('stage-floor')).toHaveTextContent('5');
     expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'undecided');
     await user.click(within(header()).getByRole('button', { name: '이전 층' }));
     expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'entered');
-    await user.click(screen.getByRole('button', { name: '화왕지절 입장 취소' }));
+    expect(useApp.getState().run.giftStatus).toMatchObject({ 9267: 'got' });
+    await user.click(screen.getByRole('button', { name: '화왕지절 돌아가기' }));
     expect(useApp.getState().run).toMatchObject({ visits: {}, currentFloor: 4, stageFloor: 4 });
+    expect(useApp.getState().run.giftStatus[9267]).toBeUndefined();
     expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'undecided');
+    // The area folds away before it goes, above the card row that is back.
+    expect(screen.getByTestId('pack-area-closing')).toBeInTheDocument();
+    expect(screen.getByTestId('stage-pack')).toHaveAttribute('data-pack', '1402');
+    await waitFor(() => expect(screen.queryByTestId('pack-area-closing')).toBeNull());
   });
 
-  it('enters a pack by dragging its card down into the drop zone, but not by a tap or a sideways move', async () => {
+  it('enters a pack by pulling its card down past the threshold, but not by a tap, a short pull or a sideways move', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
     useApp.getState().toggleWanted(9267);
     renderStage();
     for (let i = 0; i < 3; i += 1) await skipFloor(user);
     const card = screen.getByTestId('stage-pack');
-    const zone = screen.getByTestId('drop-zone');
-    vi.spyOn(zone, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 300, right: 400, bottom: 400, width: 400, height: 100, x: 0, y: 300, toJSON: () => ({}) });
-    const pointer = { pointerId: 1, button: 0, clientX: 60, clientY: 60 };
-    // A tap: down and up without moving is not a drag.
+    // A tap: down and up without moving is not a pull.
     fireEvent.pointerDown(card, pointer);
     fireEvent.pointerUp(window, pointer);
     expect(useApp.getState().run.visits).toEqual({});
-    // A press that starts on the card's own button never becomes a drag, so the click reaches the button.
+    // A press that starts on the card's own button never becomes a pull, so the click reaches the button.
     fireEvent.pointerDown(within(card).getByRole('button', { name: '화왕지절 입장' }), pointer);
-    fireEvent.pointerMove(window, { ...pointer, clientY: 350 });
-    expect(screen.queryByTestId('drag-ghost')).toBeNull();
-    fireEvent.pointerUp(window, { ...pointer, clientY: 350 });
+    fireEvent.pointerMove(window, { ...pointer, clientY: 300 });
+    expect(card).not.toHaveAttribute('data-pulling');
+    fireEvent.pointerUp(window, { ...pointer, clientY: 300 });
     expect(useApp.getState().run.visits).toEqual({});
-    // A sideways move scrolls the row instead of starting a drag.
+    // A sideways move scrolls instead of starting a pull.
     fireEvent.pointerDown(card, pointer);
-    fireEvent.pointerMove(window, { ...pointer, clientX: 160, clientY: 70 });
-    expect(screen.queryByTestId('drag-ghost')).toBeNull();
-    fireEvent.pointerUp(window, { ...pointer, clientX: 160, clientY: 70 });
-    // A small vertical move stays under the threshold; a real one shows the ghost and lights the zone.
+    fireEvent.pointerMove(window, { ...pointer, clientX: 160, clientY: 210 });
+    expect(card).not.toHaveAttribute('data-pulling');
+    fireEvent.pointerUp(window, { ...pointer, clientX: 160, clientY: 210 });
+    // A short pull moves the card but lets it spring back; past the threshold the foot says so.
     fireEvent.pointerDown(card, pointer);
-    fireEvent.pointerMove(window, { ...pointer, clientY: 65 });
-    expect(screen.queryByTestId('drag-ghost')).toBeNull();
-    fireEvent.pointerMove(window, { ...pointer, clientY: 200 });
-    expect(screen.getByTestId('drag-ghost')).toHaveTextContent('화왕지절 · 놓으면 입장');
-    expect(zone).not.toHaveAttribute('data-over');
-    fireEvent.pointerMove(window, { ...pointer, clientY: 350 });
-    expect(zone).toHaveAttribute('data-over');
-    fireEvent.pointerUp(window, { ...pointer, clientY: 350 });
+    fireEvent.pointerMove(window, { ...pointer, clientY: 205 });
+    expect(card).not.toHaveAttribute('data-pulling');
+    fireEvent.pointerMove(window, { ...pointer, clientY: 240 });
+    expect(card).toHaveAttribute('data-pulling');
+    expect(card).not.toHaveAttribute('data-past');
+    expect(card.style.transform).toBe('translateY(40px)');
+    expect(within(card).getByRole('button', { name: '화왕지절 입장' })).toHaveTextContent('입장');
+    fireEvent.pointerUp(window, { ...pointer, clientY: 240 });
+    expect(useApp.getState().run.visits).toEqual({});
+    expect(card.style.transform).toBe('translateY(0px)');
+    fireEvent.pointerDown(card, pointer);
+    fireEvent.pointerMove(window, { ...pointer, clientY: 290 });
+    expect(card).toHaveAttribute('data-past', 'down');
+    expect(within(card).getByRole('button', { name: '화왕지절 입장' })).toHaveTextContent('놓으면 입장');
+    // Pulling up is not allowed here: it resists and never commits.
+    fireEvent.pointerMove(window, { ...pointer, clientY: 100 });
+    expect(card).not.toHaveAttribute('data-past');
+    expect(card.style.transform).toBe('translateY(-30px)');
+    fireEvent.pointerMove(window, { ...pointer, clientY: 290 });
+    fireEvent.pointerUp(window, { ...pointer, clientY: 290 });
     expect(useApp.getState().run).toMatchObject({ visits: { 4: 1402 }, currentFloor: 5, stageFloor: 4 });
-    expect(screen.queryByTestId('drag-ghost')).toBeNull();
   });
 
-  it('skips a floor by dropping the empty card, and misses the unmarked goals of an entered pack on leaving it', async () => {
+  it('passes a floor by pulling the dashed card, and the pack area moves on down and goes back up', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
     useApp.getState().toggleWanted(9267);
     renderStage(true);
-    const zone = screen.getByTestId('drop-zone');
-    vi.spyOn(zone, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 300, right: 400, bottom: 400, width: 400, height: 100, x: 0, y: 300, toJSON: () => ({}) });
-    const pointer = { pointerId: 2, button: 0, clientX: 60, clientY: 60 };
-    fireEvent.pointerDown(screen.getByTestId('skip-card'), pointer);
-    fireEvent.pointerMove(window, { ...pointer, clientY: 350 });
-    expect(screen.getByTestId('drag-ghost')).toHaveTextContent('입장하지 않음 · 놓으면 입장');
-    fireEvent.pointerUp(window, { ...pointer, clientY: 350 });
+    expect(within(screen.getByTestId('other-entry-card')).getByRole('button', { name: '다른 팩 입장' })).toHaveTextContent('다음 층');
+    pull(screen.getByTestId('other-entry-card'), 90);
     expect(useApp.getState().run).toMatchObject({ currentFloor: 2, stageFloor: 2, visits: {} });
     for (let i = 0; i < 2; i += 1) await skipFloor(user);
     await user.click(screen.getByRole('button', { name: '화왕지절 입장' }));
     expect(screen.getByTestId('route-summary')).not.toHaveTextContent('실패');
-    // Leaving the entered floor without marking the goal counts it as missed, and the plan reports it.
-    await user.click(within(header()).getByRole('button', { name: '다음 층' }));
-    expect(useApp.getState().run.giftStatus).toMatchObject({ 9267: 'failed' });
+    // Pulling the area down leaves the floor: the unmarked goal counts as missed, and the plan reports it.
+    const area = screen.getByTestId('entered-pack');
+    fireEvent.pointerDown(area, pointer);
+    fireEvent.pointerMove(window, { ...pointer, clientY: 290 });
+    expect(area).toHaveAttribute('data-past', 'down');
+    expect(within(area).getByTestId('area-next')).toHaveTextContent('놓으면 다음 층');
+    fireEvent.pointerUp(window, { ...pointer, clientY: 290 });
+    expect(useApp.getState().run).toMatchObject({ currentFloor: 5, stageFloor: 5, giftStatus: { 9267: 'failed' } });
     expect(screen.getByTestId('route-summary')).toHaveTextContent('실패 1');
     expect(screen.getByTestId('unresolved-row')).toHaveTextContent('수집 실패');
     expect(screen.getByText(/^확보/).parentElement).toHaveTextContent('0/1');
@@ -989,6 +1020,20 @@ describe('RunStage', () => {
     await user.click(tile);
     expect(useApp.getState().run.giftStatus).toMatchObject({ 9267: 'got' });
     expect(screen.getByText(/^확보/).parentElement).toHaveTextContent('1/1');
+    // Pushing the area up goes back: the entry and the marks made in it are gone, the frontier retreats.
+    const again = screen.getByTestId('entered-pack');
+    fireEvent.pointerDown(again, pointer);
+    fireEvent.pointerMove(window, { ...pointer, clientY: 110 });
+    expect(again).toHaveAttribute('data-past', 'up');
+    expect(within(again).getByTestId('area-back')).toHaveTextContent('놓으면 돌아가기');
+    fireEvent.pointerUp(window, { ...pointer, clientY: 110 });
+    expect(useApp.getState().run).toMatchObject({ visits: {}, currentFloor: 4, stageFloor: 4 });
+    expect(useApp.getState().run.giftStatus[9267]).toBeUndefined();
+    // The gift is a plain goal again: the plan covers it through the pack, not through a record.
+    expect(screen.getByText(/^확보/).parentElement).toHaveTextContent('1/1');
+    expect(screen.getByTestId('route-summary')).not.toHaveTextContent('실패');
+    expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'undecided');
+    await waitFor(() => expect(screen.queryByTestId('pack-area-closing')).toBeNull());
   });
 
   it('collects the observed gift on the first move off floor 1 and shows played floors as history', async () => {
@@ -1009,7 +1054,7 @@ describe('RunStage', () => {
     expect(useApp.getState().run).toMatchObject({ currentFloor: 3, stageFloor: 1 });
     expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'skipped');
     expect(screen.getByText(/지나간 층 · 다시 입장하면 기록이 바뀝니다/)).toBeInTheDocument();
-    expect(screen.queryByTestId('skip-card')).toBeNull();
+    expect(screen.queryByTestId('other-entry-card')).toBeNull();
   });
 
   it('finds any other pack of the floor by name and adds a gift from it as a goal', async () => {
