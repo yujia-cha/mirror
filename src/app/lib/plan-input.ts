@@ -7,23 +7,66 @@ import type { PlanInput, PlanOptions, WantedGift } from '../../core/types.ts';
 
 export type Priority = 'must' | 'normal' | 'skip';
 export type PriorityMap = Record<number, 'must' | 'skip'>;
+/** Fusion results the user wants only as a whole: their ingredients are not goals of their own. */
+export type FusionGoalMap = Record<number, 'resultOnly'>;
+
+export type GiftStatus = 'got' | 'failed';
+
+/** The run being played, as the player reports it. */
+export interface RunState {
+  /**
+   * The planner's frontier: the first floor still to plan = the floor after the last one entered
+   * or skipped. 1..16 (16 = the run is over). A floor below it with no visit was skipped.
+   */
+  currentFloor: number;
+  /** The floor shown on the stage, 1..min(currentFloor, 15): the player can look back at history. */
+  stageFloor: number;
+  /** floor -> pack entered there. */
+  visits: Record<number, number>;
+  giftStatus: Record<number, GiftStatus>;
+}
 
 export function priorityOf(priority: PriorityMap, giftId: number): Priority {
   return priority[giftId] ?? 'normal';
 }
 
-export function plannedGifts(wanted: number[], priority: PriorityMap): WantedGift[] {
-  return wanted.filter((id) => priorityOf(priority, id) !== 'skip').map((id) => ({ giftId: id, required: priorityOf(priority, id) === 'must' }));
+export function plannedGifts(wanted: number[], priority: PriorityMap, fusionGoal: FusionGoalMap = {}): WantedGift[] {
+  return wanted
+    .filter((id) => priorityOf(priority, id) !== 'skip')
+    .map((id) => ({
+      giftId: id,
+      required: priorityOf(priority, id) === 'must',
+      ...(fusionGoal[id] === 'resultOnly' ? { ingredientsAsGoals: false } : {}),
+    }));
 }
 
 export function skippedGifts(wanted: number[], priority: PriorityMap): number[] {
   return wanted.filter((id) => priorityOf(priority, id) === 'skip');
 }
 
-export function planInputFor(state: { deck: number[]; deployed: number[]; wanted: number[]; priority: PriorityMap; options: PlanOptions }): PlanInput {
+export function planInputFor(state: {
+  deck: number[];
+  deployed: number[];
+  wanted: number[];
+  priority: PriorityMap;
+  options: PlanOptions;
+  fusionGoal?: FusionGoalMap;
+  run?: RunState;
+}): PlanInput {
+  const run = state.run;
+  // The run pins the packs already entered, moves the plan to the frontier floor, and settles
+  // the gifts the player has recorded as collected or missed.
+  const progress: Partial<PlanOptions> = run
+    ? {
+        pinnedPacks: { ...state.options.pinnedPacks, ...run.visits },
+        currentFloor: run.currentFloor,
+        ownedGifts: Object.entries(run.giftStatus).filter(([, s]) => s === 'got').map(([id]) => Number(id)),
+        unobtainableGifts: Object.entries(run.giftStatus).filter(([, s]) => s === 'failed').map(([id]) => Number(id)),
+      }
+    : { currentFloor: 1, ownedGifts: [], unobtainableGifts: [] };
   return {
     deck: state.deck,
-    wanted: plannedGifts(state.wanted, state.priority),
-    options: { ...state.options, deployed: state.deployed },
+    wanted: plannedGifts(state.wanted, state.priority, state.fusionGoal ?? {}),
+    options: { ...state.options, ...progress, deployed: state.deployed },
   };
 }

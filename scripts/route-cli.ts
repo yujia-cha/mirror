@@ -9,6 +9,9 @@
  *        --must gift,gift (these are required; the rest are best-effort),
  *        --observe gift,gift (pin these for 기프트 관측), --no-observe (planner may not observe),
  *        --pin floor:pack,…, --ban pack,…, --prefer pack,… (must be included somewhere),
+ *        --floor N (run in progress: floors below N are played; pin them to say which pack was taken),
+ *        --own gift,… (already in hand), --failed gift,… (missed for good),
+ *        --result-only gift,… (fusion results whose ingredients are not goals of their own),
  *        --alternatives, --json, --explain, --trace
  */
 // lz-string ships CommonJS, so under Node's ESM loader it only has a default export.
@@ -75,6 +78,7 @@ const input: PlanInput = share
       wanted: numbers(flagValue('--want')).map((giftId) => ({
         giftId,
         required: flagValue('--must') === undefined || numbers(flagValue('--must')).includes(giftId),
+        ...(numbers(flagValue('--result-only')).includes(giftId) ? { ingredientsAsGoals: false } : {}),
       })),
       options: {
         ...defaultOptions(),
@@ -90,6 +94,9 @@ const input: PlanInput = share
         pinnedPacks: parsePins(flagValue('--pin')),
         bannedPacks: numbers(flagValue('--ban')),
         preferredPacks: numbers(flagValue('--prefer')),
+        currentFloor: flagValue('--floor') !== undefined ? Number(flagValue('--floor')) : 1,
+        ownedGifts: numbers(flagValue('--own')),
+        unobtainableGifts: numbers(flagValue('--failed')),
       },
     };
 
@@ -117,6 +124,11 @@ if (input.deck.length > 0) {
   console.log(`덱: ${names.join(', ')}`);
 }
 
+if ((input.options.currentFloor ?? 1) > 1) {
+  const owned = input.options.ownedGifts ?? [];
+  console.log(`진행 중: 현재 ${input.options.currentFloor}층${owned.length > 0 ? `, 보유 ${owned.map(giftName).join(', ')}` : ''}`);
+}
+
 console.log('\n시작');
 console.log(`  키워드: ${plan.start.keyword ?? '(없음)'}`);
 console.log(`  시작 기프트: ${plan.start.startGift ? giftName(plan.start.startGift) : '(없음)'}`);
@@ -140,10 +152,12 @@ for (const floor of plan.floors) {
   const window =
     floor.window && floor.window.from !== floor.window.to
       ? ` [${floor.window.from}~${floor.window.to}층 중 한 층]`
-      : floor.reason === 'pinned'
-        ? ' [고정(핀)]'
-        : '';
-  console.log(`  ${String(floor.floor).padStart(2)}층 (${floor.mode}) ${pack}${window}${obs}`);
+      : floor.passed
+        ? ' [지남]'
+        : floor.reason === 'pinned'
+          ? ' [고정(핀)]'
+          : '';
+  console.log(`  ${String(floor.floor).padStart(2)}층 (${floor.mode}) ${floor.passed && floor.packId === null ? '지남' : pack}${window}${obs}`);
   for (const pickup of floor.pickups) {
     const tag = pickup.kind === 'exclusive' ? '전용' : '풀';
     const why = pickup.neededFor ? ` → ${giftName(pickup.neededFor)} 재료` : '';

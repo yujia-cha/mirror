@@ -62,7 +62,7 @@ describe('metro segments', () => {
       [11, 15, false, 5],
     ]);
     expect(metro.segments.every((s) => !s.partial)).toBe(true);
-    expect(metro.freeRuns).toEqual([{ from: 1, to: 4 }]);
+    expect(metro.freeRuns).toEqual([{ from: 1, to: 4, passed: false }]);
   });
 
   it('stacks a card only over the cards it overlaps, by their height', () => {

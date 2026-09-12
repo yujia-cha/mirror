@@ -11,7 +11,7 @@ import { pick, t } from '../i18n.ts';
 import { UNRESOLVED_LABEL } from '../lib/labels.ts';
 import type { Priority } from '../lib/plan-input.ts';
 import type { UnresolvedAction } from '../lib/unresolved-actions.ts';
-import { DetailSurface } from './BlockDetail.tsx';
+import { DetailSurface, type DetailMode } from './BlockDetail.tsx';
 import { GiftIcon } from './GiftIcon.tsx';
 import { PackCard } from './PackCard.tsx';
 import { PackActions, PackSheetBody, PackStateBadge, type PackContext } from './PackSheet.tsx';
@@ -30,13 +30,11 @@ export interface PackConflictsProps {
   headerActions: (UnresolvedAction & { label: string })[];
   onAction: (action: UnresolvedAction) => void;
   onSeeVariants?: () => void;
+  /** How a pack opens from a card; a sheet fits inside a narrow panel. */
+  detailMode?: DetailMode;
 }
 
-function isDesktop(): boolean {
-  return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 1024px)').matches;
-}
-
-export function PackConflicts({ groups, others, skippedGifts, ctx, priorityOf, setPriority, observeAction, headerActions, onAction, onSeeVariants }: PackConflictsProps) {
+export function PackConflicts({ groups, others, skippedGifts, ctx, priorityOf, setPriority, observeAction, headerActions, onAction, onSeeVariants, detailMode = 'sheet' }: PackConflictsProps) {
   const { lang } = ctx;
   const [openPack, setOpenPack] = useState<number | null>(null);
   const banned = [...ctx.banned].sort((a, b) => a - b);
@@ -55,14 +53,17 @@ export function PackConflicts({ groups, others, skippedGifts, ctx, priorityOf, s
       {icon}
     </button>
   );
-  const detailText = (entry: Unresolved): string =>
-    entry.reason === 'fusion-ingredient-unresolved' && entry.missing && entry.missing.length > 0
-      ? t('unresolvedMissing', lang, { names: entry.missing.map(ctx.giftName).join(', ') })
-      : pick(entry.detail, lang);
+  const detailText = (entry: Unresolved): string => {
+    if (entry.reason !== 'fusion-ingredient-unresolved' || !entry.missing || entry.missing.length === 0) return pick(entry.detail, lang);
+    const missing = t('unresolvedMissing', lang, { names: entry.missing.map(ctx.giftName).join(', ') });
+    return entry.droppedIngredients && entry.droppedIngredients.length > 0
+      ? `${missing} ${t('unresolvedDropped', lang, { names: entry.droppedIngredients.map(ctx.giftName).join(', ') })}`
+      : missing;
+  };
 
   const packSheet = (packId: number): ReactNode =>
     openPack === packId ? (
-      <DetailSurface mode={isDesktop() ? 'popover' : 'sheet'} label={ctx.packName(packId)} closeLabel={t('routeClose', lang)} onClose={() => setOpenPack(null)}>
+      <DetailSurface mode={detailMode} label={ctx.packName(packId)} closeLabel={t('routeClose', lang)} onClose={() => setOpenPack(null)}>
         <PackSheetBody packId={packId} ctx={ctx} />
       </DetailSurface>
     ) : null;
@@ -100,7 +101,7 @@ export function PackConflicts({ groups, others, skippedGifts, ctx, priorityOf, s
               <Chip on>{`${from}~${to}`}</Chip>
               <span className="text-sm font-semibold">{t('conflictHeader', lang, { from, to, slots: group.floors.length, packs: group.candidates.length })}</span>
             </div>
-            <ul className="grid grid-cols-1 gap-2 lg:grid-cols-3">
+            <ul className="grid grid-cols-1 gap-2">
               {group.candidates.map((candidate) => {
                 const pack = ctx.indexes.packById.get(candidate.packId);
                 if (!pack) return null;

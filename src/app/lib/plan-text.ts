@@ -15,12 +15,18 @@ export function planToText(
   keywordLabel: (id: Keyword) => string,
   lang: Lang,
   dropped: number[] = [],
-  marks: { must?: number[]; skipped?: number[]; bannedPacks?: number[] } = {},
+  marks: { must?: number[]; skipped?: number[]; bannedPacks?: number[]; run?: { currentFloor: number; visits: Record<number, number> } } = {},
 ): string {
   const lines: string[] = [];
   const must = new Set(marks.must ?? []);
   const name = (id: number): string => (must.has(id) ? `${giftName(id)} (${t('priorityMust', lang)})` : giftName(id));
   if (dropped.length > 0) lines.push(t('routeVariantWithout', lang, { name: dropped.map(giftName).join(', ') }));
+  if (marks.run) {
+    const visits = Object.entries(marks.run.visits)
+      .sort(([a], [b]) => Number(a) - Number(b))
+      .map(([floor, packId]) => `${floor}F ${packName(packId)}`);
+    lines.push(`${t('runActive', lang)} · ${t('runCurrentFloor', lang)} ${marks.run.currentFloor}F${visits.length > 0 ? ` · ${visits.join(', ')}` : ''}`);
+  }
   lines.push(`${t('routeStart', lang)}: ${plan.start.keyword ? keywordLabel(plan.start.keyword) : '—'}`);
   if (plan.start.startGift) lines.push(`  ${t('routeStartGift', lang)}: ${giftName(plan.start.startGift)}`);
   if (plan.start.observed.length > 0) {
@@ -33,10 +39,13 @@ export function planToText(
   const metro = segmentsFor(plan);
   const rows: { at: number; text: string[] }[] = [];
   for (const run of metro.freeRuns) {
-    rows.push({ at: run.from, text: [run.from === run.to ? `${run.from}F: ${t('routeFree', lang)}` : `${run.from}~${run.to}F: ${t('routeFree', lang)}`] });
+    const word = run.passed ? t('runPassed', lang) : t('routeFree', lang);
+    rows.push({ at: run.from, text: [run.from === run.to ? `${run.from}F: ${word}` : `${run.from}~${run.to}F: ${word}`] });
   }
   for (const segment of metro.segments) {
-    const head = segment.fixed
+    const head = segment.passed
+      ? `${segment.from}F (${t('runVisited', lang, { floor: segment.from })})`
+      : segment.fixed
       ? `${segment.from}F`
       : segment.partial
         ? `${segment.from}~${segment.to}F (${t('routeSuggestOrder', lang, { from: segment.from, to: segment.to, order: suggestedOrder(segment).join(' → ') })})`

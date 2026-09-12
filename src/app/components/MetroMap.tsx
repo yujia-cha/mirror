@@ -17,10 +17,20 @@ import { GiftIcon } from './GiftIcon.tsx';
 import { PackCard } from './PackCard.tsx';
 import { PackSheetBody, type PackContext } from './PackSheet.tsx';
 
+/** The run in progress as the map draws it: played stations filled, the frontier ringed. */
+export interface MetroRun {
+  currentFloor: number;
+}
+
 export interface MetroMapProps {
   plan: RoutePlan;
   ctx: PackContext;
   keywordLabel: (id: NonNullable<RoutePlan['start']['keyword']>) => string;
+  run?: MetroRun;
+  /** `auto` switches horizontal/vertical on the viewport; `vertical` always draws the narrow form (side panels). */
+  variant?: 'auto' | 'vertical';
+  /** How a pack opens from a label card; the vertical form defaults to a sheet. */
+  detailMode?: DetailMode;
 }
 
 type Open = { kind: 'pack'; packId: number; key: string; mode: DetailMode } | { kind: 'observed'; giftId: number; mode: DetailMode };
@@ -39,6 +49,7 @@ function bandFill(band: 0 | 1 | 2): string {
 }
 
 function segmentTitle(segment: Segment, lang: Lang): string {
+  if (segment.passed) return t('runVisited', lang, { floor: segment.from });
   if (segment.fixed) return t('routeFixedFloor', lang, { floor: segment.from });
   if (segment.partial) return t('routeSuggestOrder', lang, { from: segment.from, to: segment.to, order: suggestedOrder(segment).join(' → ') });
   return segment.packs.length > 1
@@ -46,11 +57,30 @@ function segmentTitle(segment: Segment, lang: Lang): string {
     : t('routeSegmentOne', lang, { from: segment.from, to: segment.to });
 }
 
-function Station({ cx, cy, r, half, floor }: { cx: number; cy: number; r: number; half: boolean; floor: number }) {
+function Station({
+  cx,
+  cy,
+  r,
+  half,
+  floor,
+  passed = false,
+  current = false,
+}: {
+  cx: number;
+  cy: number;
+  r: number;
+  half: boolean;
+  floor: number;
+  /** Run progress: already played, or the floor about to be decided. */
+  passed?: boolean;
+  current?: boolean;
+}) {
   return (
-    <g data-testid="station" data-floor={floor} data-overlap={half || undefined}>
-      <circle cx={cx} cy={cy} r={r} fill="var(--color-surface)" stroke="var(--color-fg)" strokeWidth={2} />
-      {half ? <path d={`M${cx} ${cy - r} A${r} ${r} 0 0 0 ${cx} ${cy + r} Z`} fill="var(--color-fg)" /> : null}
+    <g data-testid="station" data-floor={floor} data-overlap={half || undefined} data-passed={passed || undefined} data-current={current || undefined}>
+      {current ? <circle cx={cx} cy={cy} r={r + 4} fill="none" stroke="var(--color-fg)" strokeWidth={1.5} /> : null}
+      <circle cx={cx} cy={cy} r={r} fill={passed ? 'var(--color-fg)' : 'var(--color-surface)'} stroke="var(--color-fg)" strokeWidth={2} />
+      {half && !passed ? <path d={`M${cx} ${cy - r} A${r} ${r} 0 0 0 ${cx} ${cy + r} Z`} fill="var(--color-fg)" /> : null}
+      {passed ? <path d={`M${cx - 3.5} ${cy} l2.5 2.5 l4.5 -5`} fill="none" stroke="var(--color-surface)" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" /> : null}
     </g>
   );
 }
@@ -89,11 +119,15 @@ function ObservedTile({ entry, ctx, onPress }: { entry: ObservedGift; ctx: PackC
   );
 }
 
-export function MetroMap({ plan, ctx, keywordLabel }: MetroMapProps) {
+export function MetroMap({ plan, ctx, keywordLabel, run, variant = 'auto', detailMode }: MetroMapProps) {
   const { lang } = ctx;
   const metro = segmentsFor(plan);
   const [open, setOpen] = useState<Open | null>(null);
   const close = (): void => setOpen(null);
+  const vertical = variant === 'vertical';
+  const phoneMode: DetailMode = detailMode ?? 'sheet';
+  const deskMode: DetailMode = detailMode ?? 'popover';
+
   const detailFor = (key: string, mode: DetailMode): ReactNode => {
     if (!open || open.mode !== mode) return null;
     if (open.kind === 'pack' && open.key === key) {
@@ -113,6 +147,11 @@ export function MetroMap({ plan, ctx, keywordLabel }: MetroMapProps) {
     }
     return null;
   };
+
+  const stationProps = (floor: number) => ({
+    passed: run !== undefined && floor < run.currentFloor,
+    current: run !== undefined && floor === run.currentFloor,
+  });
   const packEntry = (segment: Segment, pack: Segment['packs'][number], mode: DetailMode, compact: boolean): ReactNode => {
     const theme = ctx.indexes.packById.get(pack.packId);
     if (!theme) return null;
@@ -210,7 +249,7 @@ export function MetroMap({ plan, ctx, keywordLabel }: MetroMapProps) {
   const skyline = Math.max(EST_CARD_H, ...cards.map((c, i) => offsets[i]! + heightOf(c.segment.key)));
   const LINE_Y = 40 + skyline + 42;
   const H = LINE_Y + 46;
-  const desktop = (
+  const desktop = vertical ? null : (
     <div className="hidden lg:block" data-testid="metro-columns">
       <div ref={deskRef} className="relative w-full" style={{ height: H }}>
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="absolute left-0 top-0" aria-hidden>
@@ -235,8 +274,8 @@ export function MetroMap({ plan, ctx, keywordLabel }: MetroMapProps) {
           </text>
           {Array.from({ length: MAX_FLOOR }, (_, i) => i + 1).map((f) => (
             <g key={f}>
-              <Station cx={x(f)} cy={LINE_Y} r={7} half={metro.overlap.has(f)} floor={f} />
-              <text x={x(f)} y={LINE_Y + 24} textAnchor="middle" fontSize={12} fontFamily="var(--font-mono)" fill="var(--color-fg)">
+              <Station cx={x(f)} cy={LINE_Y} r={7} half={metro.overlap.has(f)} floor={f} {...stationProps(f)} />
+              <text x={x(f)} y={LINE_Y + 24} textAnchor="middle" fontSize={12} fontFamily="var(--font-mono)" fill="var(--color-fg)" fontWeight={run && f === run.currentFloor ? 700 : undefined}>
                 {f}
               </text>
             </g>
@@ -273,21 +312,22 @@ export function MetroMap({ plan, ctx, keywordLabel }: MetroMapProps) {
                 if (el) cardRefs.current.set(segment.key, el);
                 else cardRefs.current.delete(segment.key);
               }}
-              className={`absolute flex flex-col gap-1.5 rounded-md bg-surface px-2 py-1.5 shadow-card ${segment.fixed ? 'border border-ink' : 'border-[1.5px] border-dashed border-fg-2'}`}
+              className={`absolute flex flex-col gap-1.5 rounded-md px-2 py-1.5 shadow-card ${segment.passed ? 'border border-ink bg-surface-2' : segment.fixed ? 'border border-ink bg-surface' : 'border-[1.5px] border-dashed border-fg-2 bg-surface'}`}
               style={{ left: cl, width: cw, bottom: H - y + 14 }}
               data-testid="segment"
               data-from={segment.from}
               data-to={segment.to}
               data-partial={segment.partial || undefined}
+              data-passed={segment.passed || undefined}
               data-lane={deskLanes[i]}
             >
               <div className="truncate text-xs text-fg-2">{segmentTitle(segment, lang)}</div>
-              <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5">{segment.packs.map((p) => packEntry(segment, p, 'popover', false))}</div>
+              <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5">{segment.packs.map((p) => packEntry(segment, p, deskMode, false))}</div>
             </div>
           );
         })}
       </div>
-      {startRow('popover')}
+      {startRow(deskMode)}
     </div>
   );
 
@@ -304,8 +344,8 @@ export function MetroMap({ plan, ctx, keywordLabel }: MetroMapProps) {
   const base = X0 + metro.lanes * LANE_W + 6;
   const avail = PW - base - 4;
   const phone = (
-    <div className="lg:hidden" data-testid="metro-rows">
-      {startRow('sheet')}
+    <div className={vertical ? undefined : 'lg:hidden'} data-testid="metro-rows">
+      {startRow(phoneMode)}
       <div ref={phoneRef} className="relative w-full" style={{ height: PH }}>
         <svg width={PW} height={PH} viewBox={`0 0 ${PW} ${PH}`} className="absolute left-0 top-0" aria-hidden>
           <defs>
@@ -328,8 +368,8 @@ export function MetroMap({ plan, ctx, keywordLabel }: MetroMapProps) {
           <line x1={LX} y1={y(1) - 20} x2={LX} y2={y(MAX_FLOOR) + 20} stroke="var(--color-line-strong)" strokeWidth={4} />
           {Array.from({ length: MAX_FLOOR }, (_, i) => i + 1).map((f) => (
             <g key={f}>
-              <Station cx={LX} cy={y(f)} r={7} half={metro.overlap.has(f)} floor={f} />
-              <text x={LX - 16} y={y(f) + 4} textAnchor="end" fontSize={12} fontFamily="var(--font-mono)" fill="var(--color-fg)">
+              <Station cx={LX} cy={y(f)} r={7} half={metro.overlap.has(f)} floor={f} {...stationProps(f)} />
+              <text x={LX - 16} y={y(f) + 4} textAnchor="end" fontSize={12} fontFamily="var(--font-mono)" fill="var(--color-fg)" fontWeight={run && f === run.currentFloor ? 700 : undefined}>
                 {f}
               </text>
             </g>
@@ -364,16 +404,18 @@ export function MetroMap({ plan, ctx, keywordLabel }: MetroMapProps) {
           return (
             <div
               key={segment.key}
-              className={`absolute flex flex-col gap-1 overflow-hidden rounded-md bg-surface px-1.5 py-1 shadow-card ${segment.fixed ? 'border border-ink' : 'border-[1.5px] border-dashed border-fg-2'}`}
+              className={`absolute flex ${compact ? 'flex-row items-center gap-2' : 'flex-col gap-1'} overflow-hidden rounded-md px-1.5 py-1 shadow-card ${segment.passed ? 'border border-ink bg-surface-2' : segment.fixed ? 'border border-ink bg-surface' : 'border-[1.5px] border-dashed border-fg-2 bg-surface'}`}
               style={{ left: cl, top: y(segment.from) - SP / 2 + 4, width: cw, height: SP * span - 8 }}
               data-testid="segment"
               data-from={segment.from}
               data-to={segment.to}
               data-partial={segment.partial || undefined}
+              data-passed={segment.passed || undefined}
               data-lane={segment.lane}
             >
-              <div className="truncate text-[10px] leading-3 text-fg-2">{segmentTitle(segment, lang)}</div>
-              <div className={`flex ${compact ? 'flex-col gap-1' : 'flex-wrap items-start gap-x-2 gap-y-1'}`}>{segment.packs.map((p) => packEntry(segment, p, 'sheet', compact))}</div>
+              {/* One floor is 56px tall: the label sits beside the pack there, above it otherwise. */}
+              <div className={`truncate text-[10px] leading-3 text-fg-2 ${compact ? 'shrink-0' : ''}`}>{segmentTitle(segment, lang)}</div>
+              <div className={`flex min-w-0 ${compact ? 'flex-wrap items-center gap-x-2 gap-y-1' : 'flex-wrap items-start gap-x-2 gap-y-1'}`}>{segment.packs.map((p) => packEntry(segment, p, phoneMode, compact))}</div>
             </div>
           );
         })}
@@ -399,6 +441,20 @@ export function MetroMap({ plan, ctx, keywordLabel }: MetroMapProps) {
         <span className="h-2.5 w-2.5 rounded-full border-[1.5px] border-fg" style={{ background: 'linear-gradient(90deg, var(--color-fg) 50%, var(--color-surface) 50%)' }} />
         {t('legendOverlap', lang)}
       </span>
+      {run ? (
+        <>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-fg" />
+            {t('legendPassed', lang)}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-3 w-3 rounded-full border-[1.5px] border-fg p-px">
+              <span className="block h-full w-full rounded-full border border-fg" />
+            </span>
+            {t('legendCurrent', lang)}
+          </span>
+        </>
+      ) : null}
     </div>
   );
 

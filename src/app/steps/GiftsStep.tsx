@@ -20,6 +20,8 @@ interface Props {
   indexes: GameIndexes;
   stats: DeckStats;
   lang: Lang;
+  /** Where to send the player when the deck is empty (the deck tab). */
+  onGoDeck?: () => void;
 }
 
 type TierFilter = '1' | '2' | '3' | '4' | '5' | 'EX';
@@ -57,7 +59,7 @@ function progressNumber(report: ConditionReport): string {
   return report.have === null || report.need === null ? '?' : `${report.have}/${report.need}`;
 }
 
-export function GiftsStep({ data, indexes, stats, lang }: Props) {
+export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
   const deck = useApp((s) => s.deck);
   const wanted = useApp((s) => s.wanted);
   const toggleWanted = useApp((s) => s.toggleWanted);
@@ -67,7 +69,8 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
   const toggleObserved = useApp((s) => s.toggleObserved);
   const priority = useApp((s) => s.priority);
   const setPriority = useApp((s) => s.setPriority);
-  const setStep = useApp((s) => s.setStep);
+  const fusionGoal = useApp((s) => s.fusionGoal);
+  const setFusionGoal = useApp((s) => s.setFusionGoal);
   const observeMax = data.rules.giftObservation.max;
 
   const [query, setQuery] = useState('');
@@ -207,7 +210,7 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
             {pick(gift.name, lang)}
           </button>
           <span className="font-mono text-xs text-fg-3">T{gift.tier ?? '?'}</span>
-          <span className="hidden text-xs text-fg-2 sm:inline">{keywordName(gift.keyword, data.enums, lang)}</span>
+          <span className="hidden text-xs text-fg-2 @md:inline">{keywordName(gift.keyword, data.enums, lang)}</span>
           <Badge tone={badge}>{t(label, lang)}</Badge>
           {gift.hardOnly ? <Badge tone="hard">{t('hardOnly', lang)}</Badge> : null}
           {lack && lackName && lack.have !== null && lack.need !== null ? (
@@ -215,8 +218,8 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
           ) : null}
           {row.entry.reports[0] ? (
             <>
-              <span className="font-mono text-xs text-fg-3 sm:hidden">{progressNumber(row.entry.lack ?? row.entry.reports[0])}</span>
-              <span className="hidden sm:flex">
+              <span className="font-mono text-xs text-fg-3 @sm:hidden">{progressNumber(row.entry.lack ?? row.entry.reports[0])}</span>
+              <span className="hidden @sm:flex">
                 <Progress report={row.entry.lack ?? row.entry.reports[0]} lang={lang} enums={data.enums} />
               </span>
             </>
@@ -233,6 +236,18 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
                     {giftName(id)}
                   </span>
                 ))}
+                {selected ? (
+                  <label className="ml-auto inline-flex items-center gap-1.5 text-fg" title={t('fusionGoalHint', lang)}>
+                    <input
+                      type="checkbox"
+                      checked={fusionGoal[gift.id] !== 'resultOnly'}
+                      onChange={(event) => setFusionGoal(gift.id, event.target.checked ? 'withIngredients' : 'resultOnly')}
+                      aria-label={`${pick(gift.name, lang)} ${t('fusionGoalIngredients', lang)}`}
+                      className="h-[14px] w-[14px] accent-[var(--color-ink)]"
+                    />
+                    {t('fusionGoalIngredients', lang)}
+                  </label>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -285,10 +300,12 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
         <User size={28} className="text-fg-3" aria-hidden />
         <div className="text-sm font-semibold">{t('giftsDeckEmpty', lang)}</div>
         <div className="text-xs text-fg-3">{t('giftsDeckEmptyHint', lang)}</div>
-        <Button variant="primary" onClick={() => setStep(1)}>
-          <ChevronLeft size={14} aria-hidden />
-          {t('toDeck', lang)}
-        </Button>
+        {onGoDeck ? (
+          <Button variant="primary" onClick={onGoDeck}>
+            <ChevronLeft size={14} aria-hidden />
+            {t('toDeck', lang)}
+          </Button>
+        ) : null}
       </Card>
     );
   } else if (total === 0) {
@@ -338,7 +355,7 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
           className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-fg-3"
         />
       </label>
-      <div className="scroll-x -mx-4 flex gap-1.5 px-4 lg:mx-0 lg:flex-wrap lg:px-0">
+      <div className="flex flex-wrap gap-1.5">
         <FilterSelect label={t('filterKeyword', lang)} value={keyword} options={keywordOptions} onChange={setKeyword} allLabel={t('filterAll', lang)} />
         <FilterSelect label={t('filterTier', lang)} value={tier} options={(['1', '2', '3', '4', '5', 'EX'] as TierFilter[]).map((v) => ({ value: v, label: `T${v}` }))} onChange={setTier} allLabel={t('filterAll', lang)} />
         <FilterSelect label={t('filterAcquisition', lang)} value={acquisition} options={acqOptions} onChange={setAcquisition} allLabel={t('filterAll', lang)} />
@@ -411,15 +428,6 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
 
       {body}
 
-      <div className="mt-auto hidden justify-between pb-4 lg:flex">
-        <Button variant="ghost" onClick={() => setStep(1)}>
-          <ChevronLeft size={14} aria-hidden />1 {t('step1', lang)}
-        </Button>
-        <Button variant="primary" disabled={deck.length === 0} onClick={() => setStep(3)}>
-          3 {t('step3', lang)}
-          <ChevronRight size={14} aria-hidden />
-        </Button>
-      </div>
     </div>
   );
 }

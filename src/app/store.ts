@@ -4,9 +4,18 @@ import lzString from 'lz-string';
 import type { PlanOptions } from '../core/types.ts';
 import { defaultOptions } from '../core/index.ts';
 import type { Lang } from './i18n.ts';
-import type { Priority, PriorityMap } from './lib/plan-input.ts';
+import type { FusionGoalMap, Priority, PriorityMap, RunState } from './lib/plan-input.ts';
 
-export type Step = 1 | 2 | 3;
+export type LeftTab = 'deck' | 'gifts' | 'settings';
+export type RightTab = 'plan' | 'tracker';
+
+/** Which side panels are open on a desktop layout, and which tab each shows. Device-only. */
+export interface UiState {
+  leftOpen: boolean;
+  leftTab: LeftTab;
+  rightOpen: boolean;
+  rightTab: RightTab;
+}
 
 export interface SharedState {
   /** Identity ids in formation order (at most 12, one per sinner). */
@@ -17,12 +26,17 @@ export interface SharedState {
   /** Per-gift priority; gifts absent here are planned as best-effort. */
   priority: PriorityMap;
   options: PlanOptions;
+  /** Fusion results whose ingredients are not goals of their own. Absent = ingredients count too. */
+  fusionGoal?: FusionGoalMap;
 }
 
 interface AppState extends SharedState {
+  fusionGoal: FusionGoalMap;
+  /** Progress of the run being played. Kept on this device only; never part of a share link. */
+  run: RunState;
+  ui: UiState;
   lang: Lang;
   dark: boolean;
-  step: Step;
 
   /** Fill a sinner's slot; a newcomer is deployed while fewer than `autoDeployUpTo` fight. */
   setDeckSlot: (sinnerId: number, identityId: number | null, autoDeployUpTo?: number) => void;
@@ -40,9 +54,24 @@ interface AppState extends SharedState {
   preferPack: (packId: number) => void;
   banPack: (packId: number) => void;
   restorePack: (packId: number) => void;
+  setFusionGoal: (giftId: number, goal: 'resultOnly' | 'withIngredients') => void;
+  /**
+   * Record that `packId` was entered on `floor`; a pack is visited once, so an earlier floor for it
+   * is replaced. `settle.got` marks gifts collected in the same update (the start-of-run gifts).
+   */
+  visitPack: (packId: number, floor: number, settle?: { got?: number[] }) => void;
+  /** Drop the record; when it was the last decided floor, that floor becomes undecided again. */
+  unvisitPack: (packId: number) => void;
+  /** Leave the stage floor: an undecided floor is skipped; `settle` applies collected / missed gifts first. */
+  nextFloor: (settle?: { got?: number[]; failed?: number[] }) => void;
+  /** Look back one floor; a skip right before the frontier is taken back so the floor is decided again. */
+  prevFloor: () => void;
+  setStageFloor: (floor: number) => void;
+  resetRun: () => void;
+  setGiftStatus: (giftId: number, status: 'got' | 'failed' | null) => void;
   setOptions: (patch: Partial<PlanOptions>) => void;
   resetOptions: () => void;
-  setStep: (step: Step) => void;
+  setUi: (patch: Partial<UiState>) => void;
   setLang: (lang: Lang) => void;
   toggleDark: () => void;
   applyShared: (shared: SharedState) => void;
@@ -96,7 +125,87 @@ export function sanitizeOptions(raw: unknown): PlanOptions {
   out.pinnedPacks = pins;
   out.lastFloor = APP_LAST_FLOOR;
   out.hardFromFloor = 1;
+  // Run progress lives in the `run` slice, never in shared or saved options.
+  out.currentFloor = 1;
+  out.ownedGifts = [];
+  out.unobtainableGifts = [];
   return out as unknown as PlanOptions;
+}
+
+/** Fusion goals only for wanted gifts, with the one non-default value. */
+export function sanitizeFusionGoal(raw: unknown, wanted: number[]): FusionGoalMap {
+  const out: FusionGoalMap = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const id = Number(key);
+    if (wanted.includes(id) && value === 'resultOnly') out[id] = value;
+  }
+  return out;
+}
+
+export function emptyRun(): RunState {
+  return { currentFloor: 1, stageFloor: 1, visits: {}, giftStatus: {} };
+}
+
+export function defaultUi(): UiState {
+  return { leftOpen: true, leftTab: 'gifts', rightOpen: true, rightTab: 'plan' };
+}
+
+export function sanitizeUi(raw: unknown): UiState {
+  const out = defaultUi();
+  if (!raw || typeof raw !== 'object') return out;
+  const source = raw as Record<string, unknown>;
+  if (typeof source.leftOpen === 'boolean') out.leftOpen = source.leftOpen;
+  if (typeof source.rightOpen === 'boolean') out.rightOpen = source.rightOpen;
+  if (source.leftTab === 'deck' || source.leftTab === 'gifts' || source.leftTab === 'settings') out.leftTab = source.leftTab;
+  if (source.rightTab === 'plan' || source.rightTab === 'tracker') out.rightTab = source.rightTab;
+  return out;
+}
+
+/** The floor after the run: `currentFloor` reaches it once floor 15 is decided. */
+export const RUN_DONE_FLOOR = APP_LAST_FLOOR + 1;
+
+/** A saved run, kept only when it still makes sense: integer floors within the run, one floor per pack. */
+export function sanitizeRun(raw: unknown): RunState {
+  const out = emptyRun();
+  if (!raw || typeof raw !== 'object') return out;
+  const source = raw as Record<string, unknown>;
+  // Before v6 a run had to be started; a saved run that never was carries nothing worth keeping.
+  if (source.active === false) return out;
+  const seen = new Set<number>();
+  if (source.visits && typeof source.visits === 'object') {
+    for (const [floor, packId] of Object.entries(source.visits as Record<string, unknown>)) {
+      const f = Number(floor);
+      if (!Number.isInteger(f) || f < 1 || f > APP_LAST_FLOOR || typeof packId !== 'number' || seen.has(packId)) continue;
+      seen.add(packId);
+      out.visits[f] = packId;
+    }
+  }
+  if (source.giftStatus && typeof source.giftStatus === 'object') {
+    for (const [id, status] of Object.entries(source.giftStatus as Record<string, unknown>)) {
+      if (Number.isInteger(Number(id)) && (status === 'got' || status === 'failed')) out.giftStatus[Number(id)] = status;
+    }
+  }
+  const floor = typeof source.currentFloor === 'number' ? Math.round(source.currentFloor) : 1;
+  out.currentFloor = Math.min(RUN_DONE_FLOOR, Math.max(1, floor, ...Object.keys(out.visits).map((f) => Number(f) + 1)));
+  const stage = typeof source.stageFloor === 'number' ? Math.round(source.stageFloor) : out.currentFloor;
+  out.stageFloor = Math.min(APP_LAST_FLOOR, out.currentFloor, Math.max(1, stage));
+  return out;
+}
+
+function withoutPack(visits: Record<number, number>, packId: number): Record<number, number> {
+  const out: Record<number, number> = {};
+  for (const [f, id] of Object.entries(visits)) if (id !== packId) out[Number(f)] = id;
+  return out;
+}
+
+function withStatus(giftStatus: RunState['giftStatus'], settle?: { got?: number[]; failed?: number[] }): RunState['giftStatus'] {
+  if (!settle) return giftStatus;
+  const next = { ...giftStatus };
+  for (const id of settle.got ?? []) next[id] = 'got';
+  // A miss never overrides what the player already recorded.
+  for (const id of settle.failed ?? []) if (next[id] === undefined) next[id] = 'failed';
+  return next;
 }
 
 /** Priorities only for the gifts in `wanted`, with the two non-default values. */
@@ -144,9 +253,11 @@ export const useApp = create<AppState>()(
       wanted: [],
       priority: {},
       options: appDefaultOptions(),
+      fusionGoal: {},
+      run: emptyRun(),
+      ui: defaultUi(),
       lang: 'ko',
       dark: prefersDark(),
-      step: 1,
 
       setDeckSlot: (sinnerId, identityId, autoDeployUpTo = 0) =>
         set((state) => {
@@ -190,16 +301,91 @@ export const useApp = create<AppState>()(
           const wanted = state.wanted.includes(giftId)
             ? state.wanted.filter((id) => id !== giftId)
             : [...state.wanted.filter((id) => !dropWithIt.includes(id)), giftId].sort((a, b) => a - b);
-          return { wanted, priority: sanitizePriority(state.priority, wanted), options: withObservedIn(state.options, wanted) };
+          return {
+            wanted,
+            priority: sanitizePriority(state.priority, wanted),
+            fusionGoal: sanitizeFusionGoal(state.fusionGoal, wanted),
+            options: withObservedIn(state.options, wanted),
+          };
         }),
 
       removeWanted: (giftId) =>
         set((state) => {
           const wanted = state.wanted.filter((id) => id !== giftId);
-          return { wanted, priority: withoutGift(state.priority, giftId), options: withObservedIn(state.options, wanted) };
+          return {
+            wanted,
+            priority: withoutGift(state.priority, giftId),
+            fusionGoal: sanitizeFusionGoal(state.fusionGoal, wanted),
+            options: withObservedIn(state.options, wanted),
+          };
         }),
 
-      clearWanted: () => set((state) => ({ wanted: [], priority: {}, options: { ...state.options, observedGifts: [] } })),
+      clearWanted: () => set((state) => ({ wanted: [], priority: {}, fusionGoal: {}, options: { ...state.options, observedGifts: [] } })),
+
+      setFusionGoal: (giftId, goal) =>
+        set((state) => {
+          if (!state.wanted.includes(giftId)) return {};
+          const next = { ...state.fusionGoal };
+          if (goal === 'resultOnly') next[giftId] = 'resultOnly';
+          else delete next[giftId];
+          return { fusionGoal: next };
+        }),
+
+      visitPack: (packId, floor, settle) =>
+        set((state) => {
+          if (!Number.isInteger(floor) || floor < 1 || floor > APP_LAST_FLOOR) return {};
+          const visits = withoutPack(state.run.visits, packId);
+          visits[floor] = packId;
+          return {
+            run: {
+              ...state.run,
+              visits,
+              currentFloor: Math.max(state.run.currentFloor, floor + 1),
+              giftStatus: withStatus(state.run.giftStatus, settle),
+            },
+          };
+        }),
+      unvisitPack: (packId) =>
+        set((state) => {
+          const entry = Object.entries(state.run.visits).find(([, id]) => id === packId);
+          if (!entry) return {};
+          const floor = Number(entry[0]);
+          const visits = withoutPack(state.run.visits, packId);
+          // The last decided floor becomes undecided again; an older one turns into a skip.
+          const currentFloor = floor === state.run.currentFloor - 1 ? floor : state.run.currentFloor;
+          return { run: { ...state.run, visits, currentFloor, stageFloor: Math.min(state.run.stageFloor, currentFloor) } };
+        }),
+      nextFloor: (settle) =>
+        set((state) => {
+          const { run } = state;
+          if (run.currentFloor >= RUN_DONE_FLOOR && run.stageFloor >= APP_LAST_FLOOR) return {};
+          const skipping = run.stageFloor === run.currentFloor;
+          const currentFloor = skipping ? run.currentFloor + 1 : run.currentFloor;
+          const stageFloor = Math.min(APP_LAST_FLOOR, run.stageFloor + 1);
+          return { run: { ...run, currentFloor, stageFloor, giftStatus: withStatus(run.giftStatus, settle) } };
+        }),
+      prevFloor: () =>
+        set((state) => {
+          const { run } = state;
+          if (run.stageFloor <= 1) return {};
+          const stageFloor = run.stageFloor - 1;
+          // A skip right before the frontier holds no record, so it is simply taken back.
+          const currentFloor = stageFloor === run.currentFloor - 1 && run.visits[stageFloor] === undefined ? stageFloor : run.currentFloor;
+          return { run: { ...run, stageFloor, currentFloor } };
+        }),
+      setStageFloor: (floor) =>
+        set((state) => {
+          if (!Number.isInteger(floor)) return {};
+          return { run: { ...state.run, stageFloor: Math.min(APP_LAST_FLOOR, state.run.currentFloor, Math.max(1, floor)) } };
+        }),
+      resetRun: () => set({ run: emptyRun() }),
+      setGiftStatus: (giftId, status) =>
+        set((state) => {
+          const giftStatus = { ...state.run.giftStatus };
+          if (status === null) delete giftStatus[giftId];
+          else giftStatus[giftId] = status;
+          return { run: { ...state.run, giftStatus } };
+        }),
 
       setPriority: (giftId, priority) =>
         set((state) => {
@@ -250,43 +436,57 @@ export const useApp = create<AppState>()(
 
       setOptions: (patch) => set((state) => ({ options: { ...state.options, ...patch } })),
       resetOptions: () => set({ options: appDefaultOptions() }),
-      setStep: (step) => set({ step }),
+      setUi: (patch) => set((state) => ({ ui: sanitizeUi({ ...state.ui, ...patch }) })),
       setLang: (lang) => set({ lang }),
       toggleDark: () => set((state) => ({ dark: !state.dark })),
-      // A recipient lands on the furthest step the link can show: the route when gifts were chosen.
+      // A link is someone's plan, not this device's run: the run record starts over with it.
       applyShared: (shared) =>
         set({
           deck: shared.deck,
           deployed: shared.deployed.filter((id) => shared.deck.includes(id)),
           wanted: shared.wanted,
           priority: sanitizePriority(shared.priority, shared.wanted),
+          fusionGoal: sanitizeFusionGoal(shared.fusionGoal, shared.wanted),
           options: sanitizeOptions(shared.options),
-          step: shared.deck.length === 0 ? 1 : shared.wanted.length === 0 ? 2 : 3,
+          run: emptyRun(),
         }),
     }),
     {
       name: 'md-route-planner',
-      version: 4,
+      version: 6,
       migrate: (persisted, version) => {
-        let state = (persisted ?? {}) as Partial<AppState>;
+        let state = (persisted ?? {}) as Partial<AppState> & { step?: unknown };
         if (version < 2) {
           const deck = Array.isArray(state.deck) ? state.deck : [];
-          state = { ...state, deck, deployed: deck.slice(0, LEGACY_DEPLOYED), step: 1 as Step };
+          state = { ...state, deck, deployed: deck.slice(0, LEGACY_DEPLOYED) };
         }
         // v3 replaced the observation count with pinned observation gifts; v4 fixed the floor
-        // range at 15 and added per-gift priorities.
+        // range at 15 and added per-gift priorities; v5 added fusion goals and the run in
+        // progress; v6 dropped the step flow (the run is always on) and added the panel state.
         const wanted = Array.isArray(state.wanted) ? state.wanted : [];
-        return { ...state, wanted, priority: sanitizePriority(state.priority, wanted), options: sanitizeOptions(state.options) } as AppState;
+        const { step: _step, ...rest } = state;
+        void _step;
+        return {
+          ...rest,
+          wanted,
+          priority: sanitizePriority(state.priority, wanted),
+          fusionGoal: sanitizeFusionGoal(state.fusionGoal, wanted),
+          run: sanitizeRun(state.run),
+          ui: sanitizeUi(state.ui),
+          options: sanitizeOptions(state.options),
+        } as AppState;
       },
       partialize: (state) => ({
         deck: state.deck,
         deployed: state.deployed,
         wanted: state.wanted,
         priority: state.priority,
+        fusionGoal: state.fusionGoal,
+        run: state.run,
+        ui: state.ui,
         options: state.options,
         lang: state.lang,
         dark: state.dark,
-        step: state.step,
       }),
     },
   ),
@@ -300,11 +500,12 @@ const HASH_PREFIX = '#s=';
 
 export function encodeShared(state: SharedState): string {
   const payload = JSON.stringify({
-    v: 3,
+    v: 4,
     deck: state.deck,
     deployed: state.deployed,
     wanted: state.wanted,
     priority: state.priority,
+    fusionGoal: state.fusionGoal ?? {},
     options: state.options,
   });
   return HASH_PREFIX + lzString.compressToEncodedURIComponent(payload);
@@ -328,6 +529,7 @@ export function decodeShared(hash: string): SharedState | null {
       deployed,
       wanted,
       priority: sanitizePriority(parsed.priority, wanted),
+      fusionGoal: sanitizeFusionGoal(parsed.fusionGoal, wanted),
       options: sanitizeOptions(parsed.options),
     };
   } catch {

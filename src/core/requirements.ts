@@ -11,6 +11,12 @@ export interface ExpandResult {
   unresolved: Unresolved[];
 }
 
+/** Gifts the run already settled: in hand, or missed for good. */
+export interface RunState {
+  owned: Set<number>;
+  failed: Set<number>;
+}
+
 /**
  * How hard a gift is to obtain, as a rough count of the opportunities to pick it up. Lower is
  * harder. Used to pick between alternative recipes and to rank observation candidates.
@@ -81,13 +87,14 @@ export function expandRequirements(
   indexes: GameIndexes,
   stats: DeckStats,
   maxShopSlots: number,
+  run: RunState = { owned: new Set(), failed: new Set() },
 ): ExpandResult {
   const requirements = new Map<string, Requirement>();
   const fusions: { result: number; ingredients: number[] }[] = [];
   const unresolved: Unresolved[] = [];
   const seenFusions = new Set<number>();
 
-  const addRequirement = (giftId: number, required: boolean, neededFor: number | null): void => {
+  const addRequirement = (giftId: number, required: boolean, neededFor: number | null, via: Requirement['via'] = 'route'): void => {
     const key = `${giftId}:${neededFor ?? 'direct'}`;
     const existing = requirements.get(key);
     if (existing) {
@@ -95,7 +102,7 @@ export function expandRequirements(
       existing.required = existing.required || required;
       return;
     }
-    requirements.set(key, { giftId, count: 1, required, neededFor, via: 'route' });
+    requirements.set(key, { giftId, count: 1, required, neededFor, via });
   };
 
   const visit = (giftId: number, required: boolean, neededFor: number | null, depth: number): void => {
@@ -105,6 +112,22 @@ export function expandRequirements(
         giftId,
         reason: 'not-obtainable',
         detail: { ko: '게임 데이터에 없는 기프트입니다.', en: 'Not present in the game data.' },
+      });
+      return;
+    }
+
+    // Run progress settles a gift before any routing: in hand, or missed for good. A fusion result
+    // in hand needs none of its ingredients; a missed one is reported, not re-planned.
+    if (run.owned.has(giftId)) {
+      addRequirement(giftId, required, neededFor, 'owned');
+      return;
+    }
+    if (run.failed.has(giftId)) {
+      addRequirement(giftId, required, neededFor, 'unresolved');
+      unresolved.push({
+        giftId,
+        reason: 'failed',
+        detail: { ko: '이번 런에서 수집 실패로 표시한 기프트입니다.', en: 'Marked as missed in this run.' },
       });
       return;
     }

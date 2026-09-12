@@ -45,6 +45,9 @@ export function defaultOptions(): PlanOptions {
     pinnedPacks: {},
     bannedPacks: [],
     preferredPacks: [],
+    currentFloor: 1,
+    ownedGifts: [],
+    unobtainableGifts: [],
   };
 }
 
@@ -82,6 +85,14 @@ function normaliseOptions(
   const maxFloor = Math.max(...data.rules.floors.normal, ...data.rules.floors.parallel, ...data.rules.floors.extreme);
   const lastFloor = Math.min(maxFloor, Math.max(1, Math.round(next.lastFloor)));
   if (lastFloor !== next.lastFloor) next = { ...next, lastFloor };
+
+  // Run progress: the floor about to be entered stays within the plan, and a gift is either in
+  // hand or missed, never both (in hand wins).
+  const currentFloor = Number.isFinite(next.currentFloor) ? Math.min(lastFloor, Math.max(1, Math.round(next.currentFloor as number))) : 1;
+  const knownGift = (id: unknown): id is number => typeof id === 'number' && indexes.giftById.has(id);
+  const ownedGifts = [...new Set((next.ownedGifts ?? []).filter(knownGift))];
+  const unobtainableGifts = [...new Set((next.unobtainableGifts ?? []).filter(knownGift))].filter((id) => !ownedGifts.includes(id));
+  next = { ...next, currentFloor, ownedGifts, unobtainableGifts };
 
   if (next.deployed) {
     const inDeck = new Set(deck);
@@ -158,7 +169,8 @@ function windowFor(
       const pinnedHere = options.pinnedPacks[g];
       return pinnedHere === undefined || pinnedHere === id;
     });
-  const others = [...assignment.entries()].filter(([, id]) => id !== packId);
+  // Played floors are settled and never move, so only packs still on plannable floors compete.
+  const others = [...assignment.entries()].filter(([own, id]) => id !== packId && floors.includes(own));
   const otherCandidates = others.map(([own, id]) => candidates(id, own));
 
   // Floor g is possible for this pack when every other required pack still fits somewhere else:
@@ -190,29 +202,46 @@ function windowFor(
   return { from, to };
 }
 
-function floorsFor(options: PlanOptions, data: GameData): number[] {
+/**
+ * The floors of the run: `rows` is every floor the plan reports on, `plannable` the ones still
+ * ahead of the player (a fresh run plans them all).
+ */
+function floorsFor(options: PlanOptions, data: GameData): { rows: number[]; plannable: number[] } {
   const all = [...data.rules.floors.normal, ...data.rules.floors.parallel, ...data.rules.floors.extreme].sort(
     (a, b) => a - b,
   );
-  return [...new Set(all)].filter((floor) => floor <= options.lastFloor);
+  const rows = [...new Set(all)].filter((floor) => floor <= options.lastFloor);
+  const currentFloor = options.currentFloor ?? 1;
+  return { rows, plannable: rows.filter((floor) => floor >= currentFloor) };
 }
 
 export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes): RoutePlan {
   const startedAt = Date.now();
   const { options, warnings } = normaliseOptions(input.options, data, indexes, input.deck);
-  const floors = floorsFor(options, data);
+  const { rows, plannable: floors } = floorsFor(options, data);
+  const currentFloor = options.currentFloor ?? 1;
+  const midRun = currentFloor > 1;
+  // Played floors: the pack taken there is settled and its gifts count as picked up there.
+  const passed = new Map<number, number>();
+  for (const floor of rows) {
+    if (floor >= currentFloor) break;
+    const packId = options.pinnedPacks[floor];
+    if (packId !== undefined) passed.set(floor, packId);
+  }
+  const run = { owned: new Set(options.ownedGifts ?? []), failed: new Set(options.unobtainableGifts ?? []) };
 
   const stats = analyseDeck(input.deck, indexes, data.rules.deployment, options.deployed);
   const unresolved: Unresolved[] = [];
 
   // ---- 1. What do we actually have to obtain? -----------------------------
-  const expansion = expandRequirements(input.wanted, indexes, stats, data.rules.fusion.maxShopSlots);
+  const expansion = expandRequirements(input.wanted, indexes, stats, data.rules.fusion.maxShopSlots, run);
   unresolved.push(...expansion.unresolved);
   const requirements = expansion.requirements;
 
   // ---- 2. Gifts that need no routing -------------------------------------
   const generalDrops: number[] = [];
   for (const requirement of requirements) {
+    if (requirement.via !== 'route') continue;
     const gift = indexes.giftById.get(requirement.giftId);
     if (!gift) continue;
     if (!gift.obtainable) {
@@ -250,8 +279,9 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
   }
 
   // ---- 3. The free starting-keyword gift ----------------------------------
+  // Mid-run the start was chosen long ago (whatever it gave is in hand), so only the keyword stands.
   const start = chooseStart(
-    requirements.filter((r) => r.via === 'route'),
+    midRun ? [] : requirements.filter((r) => r.via === 'route'),
     indexes,
     data.rules,
     stats,
@@ -286,6 +316,7 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
       options,
       rules: data.rules,
       indexes,
+      passed,
     });
 
   /**
@@ -317,8 +348,9 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
 
   let search = runSearch();
 
+  // Observation happens at run start, so mid-run only the pins the player reports still apply.
   // b) rescue: what the search had to leave out
-  if (search.unresolvedGiftIds.length > 0 && observed.length < budget) {
+  if (!midRun && search.unresolvedGiftIds.length > 0 && observed.length < budget) {
     // Required gifts are rescued first; among equals the scarcer one, then the lower id.
     const isRequired = (giftId: number): number => (requirements.some((r) => r.giftId === giftId && r.required) ? 1 : 0);
     const missed = [...search.unresolvedGiftIds].sort(
@@ -343,7 +375,7 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
   }
 
   // c) flexibility: free a forced pack whose only job is one observable gift
-  while (observed.length < budget) {
+  while (!midRun && observed.length < budget) {
     const forced = [...search.assignment.entries()]
       .filter(([floor, packId]) => options.pinnedPacks[floor] === undefined && !options.preferredPacks.includes(packId))
       .map(([floor, packId]) => {
@@ -374,6 +406,87 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
   const startObserved = [...observed].sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.giftId - b.giftId);
   const startStarlight = observed.length === 0 ? 0 : (data.rules.giftObservation.costTable[observed.length - 1] ?? 0);
 
+  // ---- 6. Fusions, and ingredients no longer worth routing for ------------
+  const schedule = (): { fusions: FusionStep[]; obtainedAtFloor: Map<number, number> } => {
+    const obtainedAtFloor = new Map<number, number>();
+    for (const requirement of requirements) {
+      if (requirement.via === 'startGift' || requirement.via === 'observation' || requirement.via === 'owned') {
+        obtainedAtFloor.set(requirement.giftId, 0);
+      } else if (requirement.via === 'generalDrop') {
+        obtainedAtFloor.set(requirement.giftId, currentFloor);
+      } else if (requirement.via === 'route') {
+        const floor = search.supplier.get(requirement.giftId);
+        if (floor !== undefined) obtainedAtFloor.set(requirement.giftId, floor);
+      }
+    }
+    const fusions: FusionStep[] = [];
+    for (const fusion of expansion.fusions) {
+      const floorsNeeded = fusion.ingredients.map((id) => obtainedAtFloor.get(id));
+      const unreachable = floorsNeeded.some((floor) => floor === undefined);
+      const earliestFloor = unreachable ? 0 : Math.max(...(floorsNeeded as number[]), currentFloor);
+      fusions.push({
+        result: fusion.result,
+        ingredients: fusion.ingredients,
+        earliestFloor,
+        unreachable,
+        exceedsShopSlots: fusion.ingredients.length > data.rules.fusion.maxShopSlots,
+      });
+      // A fusion result can itself be an ingredient, so it becomes available from that floor on.
+      if (!unreachable) obtainedAtFloor.set(fusion.result, earliestFloor);
+    }
+    return { fusions, obtainedAtFloor };
+  };
+  let scheduled = schedule();
+
+  /**
+   * A fusion that can no longer happen (an ingredient failed, or its only floor has passed) still
+   * has the plan chasing the other ingredients. When every wanted result it serves is a goal only
+   * as a whole (`ingredientsAsGoals: false`), those pickups stop being goals: their floors go back
+   * to the planner and the search runs once more. Nested fusions follow their parent.
+   */
+  const droppedFor = new Map<number, number[]>();
+  {
+    const wantedById = new Map(input.wanted.map((w) => [w.giftId, w]));
+    const parents = new Map<number, number[]>();
+    for (const fusion of expansion.fusions) {
+      for (const id of fusion.ingredients) parents.set(id, [...(parents.get(id) ?? []), fusion.result]);
+    }
+    const rootsOf = (result: number, seen = new Set<number>()): number[] => {
+      const out: number[] = wantedById.has(result) ? [result] : [];
+      if (seen.has(result)) return out;
+      seen.add(result);
+      for (const parent of parents.get(result) ?? []) out.push(...rootsOf(parent, seen));
+      return out;
+    };
+    const resultOnly = (result: number): boolean => {
+      const roots = rootsOf(result);
+      return roots.length > 0 && roots.every((id) => wantedById.get(id)?.ingredientsAsGoals === false);
+    };
+    const dropped = new Set<number>();
+    for (const fusion of [...scheduled.fusions].reverse()) {
+      if (!resultOnly(fusion.result)) continue;
+      const parentDropped = (parents.get(fusion.result) ?? []).some((id) => dropped.has(id));
+      if (fusion.unreachable || (!wantedById.has(fusion.result) && parentDropped)) dropped.add(fusion.result);
+    }
+    for (const result of dropped) {
+      const ids: number[] = [];
+      for (const requirement of requirements) {
+        if (requirement.neededFor !== result || requirement.via !== 'route') continue;
+        if (search.unresolvedGiftIds.includes(requirement.giftId)) continue; // this one is what is missing
+        const floor = search.supplier.get(requirement.giftId);
+        if (floor !== undefined && passed.has(floor)) continue; // already picked up on a played floor
+        requirement.via = 'dropped';
+        ids.push(requirement.giftId);
+      }
+      if (ids.length > 0) droppedFor.set(result, ids.sort((a, b) => a - b));
+    }
+    if (droppedFor.size > 0) {
+      search = runSearch();
+      scheduled = schedule();
+    }
+  }
+  const { fusions, obtainedAtFloor } = scheduled;
+
   const bannedPacks = new Set(options.bannedPacks);
   for (const giftId of search.unresolvedGiftIds) {
     const gift = indexes.giftById.get(giftId);
@@ -395,10 +508,15 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
               ko: '이 기프트를 주는 팩을 모두 포기했습니다.',
               en: 'Every pack that supplies it has been given up.',
             }
-          : {
-              ko: `${gift?.name.ko ?? giftId}를 주는 팩이 계획한 층 범위에 없습니다.`,
-              en: 'No pack that supplies it appears within the planned floors.',
-            },
+          : midRun
+            ? {
+                ko: `${gift?.name.ko ?? giftId}를 주는 팩이 남은 층에 없습니다.`,
+                en: 'No pack that supplies it appears on the floors still ahead.',
+              }
+            : {
+                ko: `${gift?.name.ko ?? giftId}를 주는 팩이 계획한 층 범위에 없습니다.`,
+                en: 'No pack that supplies it appears within the planned floors.',
+              },
     });
   }
   if (search.unplacedPacks.length > 0) {
@@ -433,13 +551,14 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
     pickupsByFloor.set(floor, list);
   }
 
-  const forcedFloors = [...search.assignment.keys()].sort((a, b) => a - b);
+  const forcedFloors = [...search.assignment.keys()].filter((floor) => floor >= currentFloor).sort((a, b) => a - b);
   let observationIndex = 0;
 
-  const floorPlans: FloorPlan[] = floors.map((floor): FloorPlan => {
+  const floorPlans: FloorPlan[] = rows.map((floor): FloorPlan => {
     const mode = modeForFloor(floor, options);
-    const packId = search.assignment.get(floor) ?? null;
-    const pinned = options.pinnedPacks[floor] === packId && packId !== null;
+    const isPassed = floor < currentFloor;
+    const packId = isPassed ? (passed.get(floor) ?? null) : (search.assignment.get(floor) ?? null);
+    const pinned = packId !== null && (isPassed || options.pinnedPacks[floor] === packId);
     const pickups = (pickupsByFloor.get(floor) ?? []).sort((a, b) => a.giftId - b.giftId);
 
     const needsObservation = packId !== null && !pinned;
@@ -453,7 +572,7 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
 
     // Packs on this floor that could have supplied the same pickups.
     const alternatives =
-      pickups.length > 0
+      pickups.length > 0 && !isPassed
         ? (indexes.packsByFloor[mode].get(floor) ?? [])
             .filter((candidate) => candidate !== packId && !bannedPacks.has(candidate))
             .filter((candidate) => {
@@ -474,6 +593,7 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
       mode,
       packId,
       reason: packId === null ? 'free' : pinned ? 'pinned' : 'required',
+      passed: isPassed,
       pickups,
       observation: { needed: needsObservation, possible: canObserve, starlight },
       alternatives,
@@ -481,47 +601,25 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
     };
   });
 
-  // ---- 7. Schedule fusions ------------------------------------------------
-  const obtainedAtFloor = new Map<number, number>();
-  for (const requirement of requirements) {
-    if (requirement.via === 'startGift' || requirement.via === 'observation') {
-      obtainedAtFloor.set(requirement.giftId, 0);
-    } else if (requirement.via === 'generalDrop') {
-      obtainedAtFloor.set(requirement.giftId, floors[0] ?? 1);
-    } else {
-      const floor = search.supplier.get(requirement.giftId);
-      if (floor !== undefined) obtainedAtFloor.set(requirement.giftId, floor);
-    }
-  }
-
-  const fusions: FusionStep[] = [];
-  for (const fusion of expansion.fusions) {
-    const floorsNeeded = fusion.ingredients.map((id) => obtainedAtFloor.get(id));
-    const unreachable = floorsNeeded.some((floor) => floor === undefined);
-    const earliestFloor = unreachable ? 0 : Math.max(...(floorsNeeded as number[]), floors[0] ?? 1);
-    const step: FusionStep = {
-      result: fusion.result,
-      ingredients: fusion.ingredients,
-      earliestFloor,
-      unreachable,
-      exceedsShopSlots: fusion.ingredients.length > data.rules.fusion.maxShopSlots,
-    };
-    fusions.push(step);
-    // A fusion result can itself be an ingredient, so it becomes available from that floor on.
-    if (!unreachable) obtainedAtFloor.set(fusion.result, earliestFloor);
-  }
-
+  // ---- 7. Fusions that cannot happen ----------------------------------------
   for (const fusion of fusions) {
     if (!fusion.unreachable) continue;
-    const missing = fusion.ingredients.filter((id) => !obtainedAtFloor.has(id));
+    const droppedIngredients = droppedFor.get(fusion.result);
+    const missing = fusion.ingredients.filter((id) => !obtainedAtFloor.has(id) && !droppedIngredients?.includes(id));
     unresolved.push({
       giftId: fusion.result,
       reason: 'fusion-ingredient-unresolved',
       missing,
-      detail: {
-        ko: `재료 ${missing.join(', ')}를 구할 수 없어 조합할 수 없습니다.`,
-        en: `Cannot be fused: ingredients ${missing.join(', ')} are not obtainable in this plan.`,
-      },
+      ...(droppedIngredients ? { droppedIngredients } : {}),
+      detail: droppedIngredients
+        ? {
+            ko: `재료 ${missing.join(', ')}를 구할 수 없어 조합할 수 없습니다. 나머지 재료(${droppedIngredients.join(', ')})만을 위한 방문은 취소했습니다.`,
+            en: `Cannot be fused: ingredients ${missing.join(', ')} are not obtainable. Visits for the remaining ingredients (${droppedIngredients.join(', ')}) alone were dropped.`,
+          }
+        : {
+            ko: `재료 ${missing.join(', ')}를 구할 수 없어 조합할 수 없습니다.`,
+            en: `Cannot be fused: ingredients ${missing.join(', ')} are not obtainable in this plan.`,
+          },
     });
   }
 
@@ -711,6 +809,8 @@ export function requirementSummary(requirements: Requirement[]): Record<Requirem
     observation: [],
     generalDrop: [],
     fusion: [],
+    owned: [],
+    dropped: [],
     unresolved: [],
   };
   for (const requirement of requirements) out[requirement.via].push(requirement.giftId);
