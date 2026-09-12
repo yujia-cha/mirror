@@ -69,7 +69,7 @@ export function GiftTileGrid({
               </span>
             ) : null}
             {parent ? (
-              <span className="absolute bottom-1 left-0.5 z-10 text-fg-3" aria-hidden>
+              <span className="absolute left-0.5 top-5 z-10 text-fg-3" aria-hidden>
                 <CornerDownRight size={10} />
               </span>
             ) : null}

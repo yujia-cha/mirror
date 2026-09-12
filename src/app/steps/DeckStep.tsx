@@ -98,6 +98,10 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
     } else if (event.key === 'Enter' && open && globalResults[activeIndex]) {
       event.preventDefault();
       pickIdentity(globalResults[activeIndex]);
+    } else if (event.key === 'Escape' && open) {
+      // Only the result list closes; on a phone the panel is a drawer that Escape would close too.
+      event.stopPropagation();
+      setListOpen(false);
     }
   };
 

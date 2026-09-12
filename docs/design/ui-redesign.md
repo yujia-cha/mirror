@@ -313,3 +313,21 @@
 - **제스처 규칙**: 세로 8px 넘게, 가로보다 세로가 크게 움직여야 시작. 링크·입력·`summary`에서는 시작하지 않지만 **버튼에서는 시작한다**(핸들·카드 하단). 포인터 캡처를 쓰지 않아 탭은 클릭으로 남고, 커밋 직후 같은 태스크의 click 하나를 삼킨다. 카드·영역은 `touch-action: pan-x`. `prefers-reduced-motion`이면 전환 없음(`motion-reduce:transition-none`).
 - 헤더의 「입장하지 않음 | 다음 층」과 「이전 층」은 M13 그대로 키보드 경로로 남는다. 팩 시트의 「입장 · n층」「입장 취소」도 그대로(시트의 입장 취소는 기프트 상태를 지우지 않는다).
 - 문구 키(M14 추가): `stagePullHint`, `stageReleaseEnter`, `stageOtherEntry`, `stageOtherEntryHint`, `stageReleaseNext`, `stageNextHint`, `stageBack`, `stageBackHint`, `stageReleaseBack`, `stageBackPack`, `stageExclusiveMore`, `stagePackDetail`. 삭제: `stageSkipHint`, `stageDetail`, `stageDropZone`, `stageDropHint`, `stageDragging`.
+
+## M15 추가 규칙 (아이템 격자 · 덱 기본값 · 패널 너비)
+
+시안: https://claude.ai/code/artifact/5711d43c-5189-4f03-9d79-233fbbbba3fd. 사용자가 격자 A(아이콘 32 + 이름 + 조건 한 줄)를 골랐다.
+
+- **덱 기본값**: 첫 방문은 LCB 수감자 12인 · 출격 6으로 시작한다(`defaultDeck()` = `LIMBUS_COMPANY_LCB` 소속). 저장된 덱과 공유 링크가 우선하고, 툴바의 「기본 덱」이 되돌린다.
+- **인격 검색**: 목록은 고른 뒤에도 남는다. 덱에 있는 줄은 체크 + `aria-pressed=true`, 다시 누르면 빠진다(`setDeckSlot(sinnerId, null)`). 머리글에 「{n}명 일치 · 눌러서 넣고 빼기」와 「덱에 {k}명」. Esc는 목록만 닫고(폰 드로어는 열린 채), ✕가 검색어를 지운다. 공백으로 나뉜 여러 낱말은 **OR**: 「화상 침잠」은 둘 중 하나라도 가진 인격을 모두 낸다.
+- **덱 요약 칩**: 「{키워드} {출격}/{편성}」. 대기 인원만 가진 키워드도 나오고, 보조 문구는 「출격 / 편성 12인」.
+- **무대 헤더**: 버튼이 없다. 층수·밴드·입장 배지·15칸 스트립뿐. 뒤로는 스트립(`setStageFloor`; 프런티어 직전의 건너뜀 칸을 누르면 그 층이 다시 미결정), 앞으로는 「다른 팩 입장」 카드와 팩 영역의 「다음 층」.
+- **아이템 격자**(`gift-grid`, `auto-fill minmax(64px,1fr)`): 타일(`gift-tile[data-gift][data-selected][data-locked][data-entangled]`)은 아이콘 32(판정 테두리·티어 칩) + 이름 2줄 + 조건 한 줄. **아이콘 버튼** = 목표 토글(`aria-pressed`), **이름 버튼** = 상세 시트(`{name} 자세히`). 조합 계승 자식은 부모 뒤에 ↳ 표시로 오고 부모를 고르면 잠긴다. 선택·잠금은 ink 링 + 체크 코너.
+- **지운 것**: 획득 배지(확정/가능/조합/시작/포함), Hard 배지, 행의 「T{n}」 텍스트, 키워드 이름, 「{키워드} +{n}」 부족 힌트, 진행 바, 가상 스크롤과 그 「{n}행 중 …」 라벨. 티어는 아이콘 모서리 칩으로만 남는다.
+- **조건 줄**(`conditionShort`): 「진동 3/5」·「새벽 사무소 2/3」·「공명 2/3」, 판정 불가는 「?」. 충족이면 진한 글씨 + 초록 테두리, 미충족이면 흐린 글씨 + 빨간 테두리. 문장 전체는 시트에.
+- **섹션**: 「지금 덱으로 활성 / 거의 활성 / 기타」 셋 다 헤더로 접힌다(`aria-expanded`). 기타만 기본 접힘이고 `max-h-[60vh]`로 스크롤한다. 타일은 `content-visibility: auto`.
+- **상세 시트**(`gift-detail`): 아이콘 44 + 이름 + 획득 문장(「조합 · 화왕지절 전용 · Hard 전용」) → 「목표로 삼기 / 목표에서 빼기」 + (선택했을 때) 우선순위·관측 버튼 → 조건 전부(`gift-conditions`, 짧은 값 + 문장 + 도달 단계) → 효과 전문 → 얽힘 → **`<details>` 「조합식」(기본 닫힘, `gift-recipe`)**. 조합식은 `chooseRecipe`(core)가 고르는 레시피를 `recipe-item` 알약으로 보이고, 재료가 또 조합이면 한 단계 들여쓴다. `fusion.mixed`는 「키워드 상위 7종 중 2개 + 공격 유형 3종 중 3개」 문장. 선택한 기프트에는 「재료도 목표」 체크가 붙는다.
+- **얽힘**(`entanglements`): 선택한 조합 목표 둘이 재료를 공유하면 양쪽에 🔗(`data-entangled`)와 시트 문장 「{이름}과(와) 재료가 겹칩니다: {목록}」. 한쪽이 다른 쪽의 재료이면(포함 관계) 표시하지 않는다. 선택을 막지 않는다.
+- **시트는 포털**: `DetailSurface` sheet는 `document.body`로 `createPortal`한다. 패널이 `@container`라 그 안의 `position: fixed`가 패널 기준이 되기 때문이다(M14의 transform 문제와 같은 부류).
+- **패널 너비**: 패널과 무대 사이 `role="separator"` 구분선(`panel-resizer-{side}`)을 끌어 260~560px. 두 번 누르면 336px, ←/→ 16px씩, Home 기본값. `ui.leftWidth`·`ui.rightWidth`로 기기에 저장(`clampPanelWidth`). 폰 드로어는 그대로.
+- 문구 키(M15 추가): `deckDefault`, `deckSearchPicked`, `deckChipBasis`, `panelResize`, `panelResizeHint`, `condResonance`, `hardOnlyFull`, `giftSubRecipe`, `giftMixedRecipe`, `giftPackOnly`, `giftSelect`, `giftUnselect`, `giftEntangled`, `giftEntangledWith`, `giftDetail`. 삭제: `stageSkip`, `stagePrev`, `giftIncluded`, `giftLack`, `giftsShowing`. `giftMaterials`는 「재료」 → 「조합식」.

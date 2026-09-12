@@ -4,6 +4,7 @@
  * row, which lets it be pinned or released.
  */
 import { useEffect, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Eye, X } from 'lucide-react';
 import type { ObservedGift } from '../../core/types.ts';
 import { pick, t } from '../i18n.ts';
@@ -40,7 +41,10 @@ export function DetailSurface({
     if (mode === 'sheet') ref.current?.querySelector<HTMLButtonElement>('button')?.focus();
   }, [mode]);
   if (mode === 'sheet') {
-    return (
+    // Rendered into the body: a side panel is a `@container`, which makes it the containing block
+    // for `position: fixed`, so a sheet opened inside one would be pinned to the panel instead of
+    // the viewport. React events still bubble through the tree that opened it.
+    return createPortal(
       <>
         <div className="fixed inset-0 z-40 bg-black/40" aria-hidden />
         <div
@@ -65,7 +69,8 @@ export function DetailSurface({
           </div>
           {children}
         </div>
-      </>
+      </>,
+      document.body,
     );
   }
   const vertical = placement?.vertical === 'above' ? { bottom: '100%' } : { top: '100%' };

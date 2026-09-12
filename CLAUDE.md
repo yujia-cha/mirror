@@ -50,7 +50,10 @@ npm run route -- --deck 10101,... --want 9088,... --floors 1-5 --difficulty hard
 - 계획이 불가능한 요구는 조용히 버리지 않고 `unresolved`에 이유와 함께 남긴다.
 - 팩 단위 선택(`preferredPacks`·`bannedPacks`·`pinnedPacks`)은 core 옵션이다. UI는 팩 충돌 그룹(`conflictGroups`)에서 팩째로 포함·포기를 고르고, 루트는 노선도(세그먼트 = 같은 창의 팩 묶음)로 그린다.
 - 런 진행 상태(`currentFloor`·`ownedGifts`·`unobtainableGifts`, `WantedGift.ingredientsAsGoals`)도 core 옵션이다. 앱은 `run` 슬라이스(기기에만 저장, 공유 링크 제외)와 `fusionGoal`(공유 링크 포함)에서 `planInputFor`로 만든다. 지나간 층은 `FloorPlan.passed`로만 남고 그 층의 `pinnedPacks`가 방문한 팩이다.
-- 앱은 **항상 런 화면**이다(단계 없음). `run.currentFloor`는 아직 결정하지 않은 첫 층(프런티어), `run.stageFloor`는 무대에 보이는 층이고, **건너뜀 = 지난 층에 방문 없음**(가짜 팩 id를 쓰지 않는다). 패널 열림·탭은 `ui` 슬라이스(기기 저장). 층을 떠날 때의 획득/실패 정리(`settle`)는 `PlanContext`의 `enter`/`next`가 한다. 무대의 입장·다음 층·돌아가기는 **당기기 제스처**(`usePullGesture`, 세로 72px)와 버튼이 같은 동작이고, **돌아가기(`leave`) = 방문 취소 + 그 팩 전용 기프트 상태 초기화**다.
+- 덱은 비어 있지 않다: 첫 방문은 **LCB 수감자 12인**으로 시작하고(`lib/default-deck.ts`), 저장된 덱·공유 링크가 우선한다.
+- 아이템 선택은 **타일 격자**다. 타일에는 아이콘·이름·조건 한 줄(「진동 3/5」)만 두고, 획득 배지·티어 텍스트는 쓰지 않는다(티어는 아이콘 칩). 나머지 설명과 조합식은 상세 시트에 있고 **조합식은 기본으로 닫혀** 있다. 같은 재료를 쓰는 조합 목표 둘은 막지 않고 **「얽힘」**으로 알린다(`lib/entangle.ts`).
+- 패널 안에서 여는 시트는 `createPortal`로 `document.body`에 붙인다. 패널이 `@container`라 그 안의 `position: fixed`는 패널 기준이 된다.
+- 앱은 **항상 런 화면**이다(단계 없음). `run.currentFloor`는 아직 결정하지 않은 첫 층(프런티어), `run.stageFloor`는 무대에 보이는 층이고, **건너뜀 = 지난 층에 방문 없음**(가짜 팩 id를 쓰지 않는다). 패널 열림·탭은 `ui` 슬라이스(기기 저장). 층을 떠날 때의 획득/실패 정리(`settle`)는 `PlanContext`의 `enter`/`next`가 한다. 무대의 입장·다음 층·돌아가기는 **당기기 제스처**(`usePullGesture`, 세로 72px)와 버튼이 같은 동작이고, **돌아가기(`leave`) = 방문 취소 + 그 팩 전용 기프트 상태 초기화**다. 무대 헤더에는 버튼이 없다 — 뒤로는 층 스트립(`setStageFloor`), 앞으로는 카드와 팩 영역이다.
 
 ## 에이전트와 스킬
 
