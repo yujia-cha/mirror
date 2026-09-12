@@ -42,7 +42,7 @@ export function DetailSurface({
   if (mode === 'sheet') {
     return (
       <>
-        <div className="fixed inset-0 z-40 bg-black/40 lg:hidden" aria-hidden />
+        <div className="fixed inset-0 z-40 bg-black/40" aria-hidden />
         <div
           ref={ref}
           role="dialog"
@@ -50,7 +50,7 @@ export function DetailSurface({
           aria-label={label}
           data-testid="block-sheet"
           {...stop}
-          className="fixed inset-x-0 bottom-0 z-50 max-h-[80vh] overflow-y-auto rounded-t-md border-t border-line-strong bg-surface px-4 pb-6 pt-2 shadow-pop lg:hidden"
+          className="fixed inset-x-0 bottom-0 z-50 max-h-[80vh] overflow-y-auto rounded-t-md border-t border-line-strong bg-surface px-4 pb-6 pt-2 shadow-pop lg:inset-x-auto lg:left-1/2 lg:w-[520px] lg:-translate-x-1/2 lg:rounded-md lg:border"
         >
           <div className="mb-2 flex items-center">
             <span className="mx-auto h-1 w-10 rounded-full bg-line-strong" aria-hidden />

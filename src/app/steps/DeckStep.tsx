@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, Copy, Plus, Search, X } from 'lucide-react';
+import { Copy, Plus, Search, X } from 'lucide-react';
 import type { GameData, Identity } from '../../core/schema.ts';
 import type { DeckStats, GameIndexes } from '../../core/types.ts';
 import { pick, t, type Lang } from '../i18n.ts';
@@ -56,7 +56,6 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
   const setDeckSlot = useApp((s) => s.setDeckSlot);
   const setDeck = useApp((s) => s.setDeck);
   const toggleDeployed = useApp((s) => s.toggleDeployed);
-  const setStep = useApp((s) => s.setStep);
   const max = data.rules.deployment.max;
   const full = deployed.length >= max;
 
@@ -203,7 +202,7 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
         </form>
       ) : null}
 
-      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4" aria-label={t('step1', lang)}>
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4" aria-label={t('tabDeck', lang)}>
         {data.enums.sinners.map((sinner) => {
           const id = bySinner.get(sinner.id) ?? null;
           const identity = id !== null ? indexes.identityById.get(id) : undefined;
@@ -298,12 +297,6 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
 
       {stats.identitiesWithoutKeywords.length > 0 ? <Notice>{t('deckKeywordUnknown', lang)}</Notice> : null}
 
-      <div className="mt-auto hidden justify-end pb-4 lg:flex">
-        <Button variant="primary" disabled={deck.length === 0} onClick={() => setStep(2)}>
-          2 {t('step2', lang)}
-          <ChevronRight size={14} aria-hidden />
-        </Button>
-      </div>
     </div>
   );
 }

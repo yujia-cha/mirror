@@ -101,11 +101,16 @@ export function IconButton({
   onClick,
   label,
   className = '',
+  expanded,
+  controls,
 }: {
   children: ReactNode;
   onClick?: () => void;
   label: string;
   className?: string;
+  /** For a button that opens a panel: its open state and the panel's id. */
+  expanded?: boolean;
+  controls?: string;
 }) {
   return (
     <button
@@ -113,7 +118,9 @@ export function IconButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={`inline-flex h-8 w-8 flex-none items-center justify-center rounded-sm border border-line bg-surface text-fg-2 hover:bg-surface-2 ${className}`}
+      aria-expanded={expanded}
+      aria-controls={controls}
+      className={`inline-flex h-8 w-8 flex-none items-center justify-center rounded-sm border ${expanded ? 'border-ink bg-ink text-ink-fg' : 'border-line bg-surface text-fg-2 hover:bg-surface-2'} ${className}`}
     >
       {children}
     </button>

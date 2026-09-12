@@ -14,7 +14,6 @@ export type GiftStatus = 'got' | 'failed';
 
 /** The run being played, as the player reports it. */
 export interface RunState {
-  active: boolean;
   /**
    * The planner's frontier: the first floor still to plan = the floor after the last one entered
    * or skipped. 1..16 (16 = the run is over). A floor below it with no visit was skipped.
@@ -55,17 +54,16 @@ export function planInputFor(state: {
   run?: RunState;
 }): PlanInput {
   const run = state.run;
-  // A run in progress pins the packs already entered, moves the plan to the current floor, and
-  // settles the gifts the player has reported as collected or missed.
-  const progress: Partial<PlanOptions> =
-    run && run.active
-      ? {
-          pinnedPacks: { ...state.options.pinnedPacks, ...run.visits },
-          currentFloor: run.currentFloor,
-          ownedGifts: Object.entries(run.giftStatus).filter(([, s]) => s === 'got').map(([id]) => Number(id)),
-          unobtainableGifts: Object.entries(run.giftStatus).filter(([, s]) => s === 'failed').map(([id]) => Number(id)),
-        }
-      : { currentFloor: 1, ownedGifts: [], unobtainableGifts: [] };
+  // The run pins the packs already entered, moves the plan to the frontier floor, and settles
+  // the gifts the player has recorded as collected or missed.
+  const progress: Partial<PlanOptions> = run
+    ? {
+        pinnedPacks: { ...state.options.pinnedPacks, ...run.visits },
+        currentFloor: run.currentFloor,
+        ownedGifts: Object.entries(run.giftStatus).filter(([, s]) => s === 'got').map(([id]) => Number(id)),
+        unobtainableGifts: Object.entries(run.giftStatus).filter(([, s]) => s === 'failed').map(([id]) => Number(id)),
+      }
+    : { currentFloor: 1, ownedGifts: [], unobtainableGifts: [] };
   return {
     deck: state.deck,
     wanted: plannedGifts(state.wanted, state.priority, state.fusionGoal ?? {}),

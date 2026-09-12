@@ -6,7 +6,16 @@ import { defaultOptions } from '../core/index.ts';
 import type { Lang } from './i18n.ts';
 import type { FusionGoalMap, Priority, PriorityMap, RunState } from './lib/plan-input.ts';
 
-export type Step = 1 | 2 | 3;
+export type LeftTab = 'deck' | 'gifts' | 'settings';
+export type RightTab = 'plan' | 'tracker';
+
+/** Which side panels are open on a desktop layout, and which tab each shows. Device-only. */
+export interface UiState {
+  leftOpen: boolean;
+  leftTab: LeftTab;
+  rightOpen: boolean;
+  rightTab: RightTab;
+}
 
 export interface SharedState {
   /** Identity ids in formation order (at most 12, one per sinner). */
@@ -25,9 +34,9 @@ interface AppState extends SharedState {
   fusionGoal: FusionGoalMap;
   /** Progress of the run being played. Kept on this device only; never part of a share link. */
   run: RunState;
+  ui: UiState;
   lang: Lang;
   dark: boolean;
-  step: Step;
 
   /** Fill a sinner's slot; a newcomer is deployed while fewer than `autoDeployUpTo` fight. */
   setDeckSlot: (sinnerId: number, identityId: number | null, autoDeployUpTo?: number) => void;
@@ -46,10 +55,6 @@ interface AppState extends SharedState {
   banPack: (packId: number) => void;
   restorePack: (packId: number) => void;
   setFusionGoal: (giftId: number, goal: 'resultOnly' | 'withIngredients') => void;
-  /** Start tracking a run; `alreadyOwned` (the observed and starting gifts) begins as collected. */
-  startRun: (alreadyOwned?: number[]) => void;
-  endRun: () => void;
-  setCurrentFloor: (floor: number) => void;
   /**
    * Record that `packId` was entered on `floor`; a pack is visited once, so an earlier floor for it
    * is replaced. `settle.got` marks gifts collected in the same update (the start-of-run gifts).
@@ -66,7 +71,7 @@ interface AppState extends SharedState {
   setGiftStatus: (giftId: number, status: 'got' | 'failed' | null) => void;
   setOptions: (patch: Partial<PlanOptions>) => void;
   resetOptions: () => void;
-  setStep: (step: Step) => void;
+  setUi: (patch: Partial<UiState>) => void;
   setLang: (lang: Lang) => void;
   toggleDark: () => void;
   applyShared: (shared: SharedState) => void;
@@ -139,7 +144,22 @@ export function sanitizeFusionGoal(raw: unknown, wanted: number[]): FusionGoalMa
 }
 
 export function emptyRun(): RunState {
-  return { active: false, currentFloor: 1, stageFloor: 1, visits: {}, giftStatus: {} };
+  return { currentFloor: 1, stageFloor: 1, visits: {}, giftStatus: {} };
+}
+
+export function defaultUi(): UiState {
+  return { leftOpen: true, leftTab: 'gifts', rightOpen: true, rightTab: 'plan' };
+}
+
+export function sanitizeUi(raw: unknown): UiState {
+  const out = defaultUi();
+  if (!raw || typeof raw !== 'object') return out;
+  const source = raw as Record<string, unknown>;
+  if (typeof source.leftOpen === 'boolean') out.leftOpen = source.leftOpen;
+  if (typeof source.rightOpen === 'boolean') out.rightOpen = source.rightOpen;
+  if (source.leftTab === 'deck' || source.leftTab === 'gifts' || source.leftTab === 'settings') out.leftTab = source.leftTab;
+  if (source.rightTab === 'plan' || source.rightTab === 'tracker') out.rightTab = source.rightTab;
+  return out;
 }
 
 /** The floor after the run: `currentFloor` reaches it once floor 15 is decided. */
@@ -150,8 +170,8 @@ export function sanitizeRun(raw: unknown): RunState {
   const out = emptyRun();
   if (!raw || typeof raw !== 'object') return out;
   const source = raw as Record<string, unknown>;
-  out.active = source.active === true;
-  if (!out.active) return out;
+  // Before v6 a run had to be started; a saved run that never was carries nothing worth keeping.
+  if (source.active === false) return out;
   const seen = new Set<number>();
   if (source.visits && typeof source.visits === 'object') {
     for (const [floor, packId] of Object.entries(source.visits as Record<string, unknown>)) {
@@ -235,9 +255,9 @@ export const useApp = create<AppState>()(
       options: appDefaultOptions(),
       fusionGoal: {},
       run: emptyRun(),
+      ui: defaultUi(),
       lang: 'ko',
       dark: prefersDark(),
-      step: 1,
 
       setDeckSlot: (sinnerId, identityId, autoDeployUpTo = 0) =>
         set((state) => {
@@ -311,21 +331,6 @@ export const useApp = create<AppState>()(
           return { fusionGoal: next };
         }),
 
-      startRun: (alreadyOwned = []) =>
-        set(() => {
-          const run = emptyRun();
-          run.active = true;
-          for (const id of alreadyOwned) run.giftStatus[id] = 'got';
-          return { run };
-        }),
-      endRun: () => set({ run: emptyRun() }),
-      setCurrentFloor: (floor) =>
-        set((state) => {
-          if (!state.run.active || !Number.isInteger(floor)) return {};
-          const visited = Object.keys(state.run.visits).map((f) => Number(f) + 1);
-          const currentFloor = Math.min(APP_LAST_FLOOR, Math.max(1, floor, ...visited));
-          return { run: { ...state.run, currentFloor, stageFloor: Math.min(state.run.stageFloor, currentFloor) } };
-        }),
       visitPack: (packId, floor, settle) =>
         set((state) => {
           if (!Number.isInteger(floor) || floor < 1 || floor > APP_LAST_FLOOR) return {};
@@ -373,10 +378,9 @@ export const useApp = create<AppState>()(
           if (!Number.isInteger(floor)) return {};
           return { run: { ...state.run, stageFloor: Math.min(APP_LAST_FLOOR, state.run.currentFloor, Math.max(1, floor)) } };
         }),
-      resetRun: () => set((state) => ({ run: { ...emptyRun(), active: state.run.active } })),
+      resetRun: () => set({ run: emptyRun() }),
       setGiftStatus: (giftId, status) =>
         set((state) => {
-          if (!state.run.active) return {};
           const giftStatus = { ...state.run.giftStatus };
           if (status === null) delete giftStatus[giftId];
           else giftStatus[giftId] = status;
@@ -432,10 +436,10 @@ export const useApp = create<AppState>()(
 
       setOptions: (patch) => set((state) => ({ options: { ...state.options, ...patch } })),
       resetOptions: () => set({ options: appDefaultOptions() }),
-      setStep: (step) => set({ step }),
+      setUi: (patch) => set((state) => ({ ui: sanitizeUi({ ...state.ui, ...patch }) })),
       setLang: (lang) => set({ lang }),
       toggleDark: () => set((state) => ({ dark: !state.dark })),
-      // A recipient lands on the furthest step the link can show: the route when gifts were chosen.
+      // A link is someone's plan, not this device's run: the run record starts over with it.
       applyShared: (shared) =>
         set({
           deck: shared.deck,
@@ -444,27 +448,31 @@ export const useApp = create<AppState>()(
           priority: sanitizePriority(shared.priority, shared.wanted),
           fusionGoal: sanitizeFusionGoal(shared.fusionGoal, shared.wanted),
           options: sanitizeOptions(shared.options),
-          step: shared.deck.length === 0 ? 1 : shared.wanted.length === 0 ? 2 : 3,
+          run: emptyRun(),
         }),
     }),
     {
       name: 'md-route-planner',
-      version: 5,
+      version: 6,
       migrate: (persisted, version) => {
-        let state = (persisted ?? {}) as Partial<AppState>;
+        let state = (persisted ?? {}) as Partial<AppState> & { step?: unknown };
         if (version < 2) {
           const deck = Array.isArray(state.deck) ? state.deck : [];
-          state = { ...state, deck, deployed: deck.slice(0, LEGACY_DEPLOYED), step: 1 as Step };
+          state = { ...state, deck, deployed: deck.slice(0, LEGACY_DEPLOYED) };
         }
         // v3 replaced the observation count with pinned observation gifts; v4 fixed the floor
-        // range at 15 and added per-gift priorities; v5 added fusion goals and the run in progress.
+        // range at 15 and added per-gift priorities; v5 added fusion goals and the run in
+        // progress; v6 dropped the step flow (the run is always on) and added the panel state.
         const wanted = Array.isArray(state.wanted) ? state.wanted : [];
+        const { step: _step, ...rest } = state;
+        void _step;
         return {
-          ...state,
+          ...rest,
           wanted,
           priority: sanitizePriority(state.priority, wanted),
           fusionGoal: sanitizeFusionGoal(state.fusionGoal, wanted),
           run: sanitizeRun(state.run),
+          ui: sanitizeUi(state.ui),
           options: sanitizeOptions(state.options),
         } as AppState;
       },
@@ -475,10 +483,10 @@ export const useApp = create<AppState>()(
         priority: state.priority,
         fusionGoal: state.fusionGoal,
         run: state.run,
+        ui: state.ui,
         options: state.options,
         lang: state.lang,
         dark: state.dark,
-        step: state.step,
       }),
     },
   ),

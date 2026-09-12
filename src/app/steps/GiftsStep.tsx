@@ -20,6 +20,8 @@ interface Props {
   indexes: GameIndexes;
   stats: DeckStats;
   lang: Lang;
+  /** Where to send the player when the deck is empty (the deck tab). */
+  onGoDeck?: () => void;
 }
 
 type TierFilter = '1' | '2' | '3' | '4' | '5' | 'EX';
@@ -57,7 +59,7 @@ function progressNumber(report: ConditionReport): string {
   return report.have === null || report.need === null ? '?' : `${report.have}/${report.need}`;
 }
 
-export function GiftsStep({ data, indexes, stats, lang }: Props) {
+export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
   const deck = useApp((s) => s.deck);
   const wanted = useApp((s) => s.wanted);
   const toggleWanted = useApp((s) => s.toggleWanted);
@@ -69,7 +71,6 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
   const setPriority = useApp((s) => s.setPriority);
   const fusionGoal = useApp((s) => s.fusionGoal);
   const setFusionGoal = useApp((s) => s.setFusionGoal);
-  const setStep = useApp((s) => s.setStep);
   const observeMax = data.rules.giftObservation.max;
 
   const [query, setQuery] = useState('');
@@ -299,10 +300,12 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
         <User size={28} className="text-fg-3" aria-hidden />
         <div className="text-sm font-semibold">{t('giftsDeckEmpty', lang)}</div>
         <div className="text-xs text-fg-3">{t('giftsDeckEmptyHint', lang)}</div>
-        <Button variant="primary" onClick={() => setStep(1)}>
-          <ChevronLeft size={14} aria-hidden />
-          {t('toDeck', lang)}
-        </Button>
+        {onGoDeck ? (
+          <Button variant="primary" onClick={onGoDeck}>
+            <ChevronLeft size={14} aria-hidden />
+            {t('toDeck', lang)}
+          </Button>
+        ) : null}
       </Card>
     );
   } else if (total === 0) {
@@ -425,15 +428,6 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
 
       {body}
 
-      <div className="mt-auto hidden justify-between pb-4 lg:flex">
-        <Button variant="ghost" onClick={() => setStep(1)}>
-          <ChevronLeft size={14} aria-hidden />1 {t('step1', lang)}
-        </Button>
-        <Button variant="primary" disabled={deck.length === 0} onClick={() => setStep(3)}>
-          3 {t('step3', lang)}
-          <ChevronRight size={14} aria-hidden />
-        </Button>
-      </div>
     </div>
   );
 }

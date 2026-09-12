@@ -5,8 +5,8 @@
  * planner's suggested stops marked. Each segment carries a label card with its packs (card and
  * name) and their pickups; a pack card opens the pack's gift list.
  */
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { Eye, MapPin, Star, X } from 'lucide-react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { Eye, Star } from 'lucide-react';
 import type { ObservedGift, RoutePlan } from '../../core/types.ts';
 import { pick, t, type Lang } from '../i18n.ts';
 import { MAX_FLOOR } from '../lib/timetable.ts';
@@ -16,15 +16,10 @@ import { DetailSurface, ObservedDetailBody, type DetailMode } from './BlockDetai
 import { GiftIcon } from './GiftIcon.tsx';
 import { PackCard } from './PackCard.tsx';
 import { PackSheetBody, type PackContext } from './PackSheet.tsx';
-import { Button } from './ui.tsx';
 
-/** The run in progress as the map draws it, plus the floor pick for a pack being recorded. */
+/** The run in progress as the map draws it: played stations filled, the frontier ringed. */
 export interface MetroRun {
   currentFloor: number;
-  /** The pack whose entry floor is being chosen on the stations, or null. */
-  selecting: number | null;
-  onSelectFloor: (floor: number) => void;
-  onCancel: () => void;
 }
 
 export interface MetroMapProps {
@@ -32,6 +27,10 @@ export interface MetroMapProps {
   ctx: PackContext;
   keywordLabel: (id: NonNullable<RoutePlan['start']['keyword']>) => string;
   run?: MetroRun;
+  /** `auto` switches horizontal/vertical on the viewport; `vertical` always draws the narrow form (side panels). */
+  variant?: 'auto' | 'vertical';
+  /** How a pack opens from a label card; the vertical form defaults to a sheet. */
+  detailMode?: DetailMode;
 }
 
 type Open = { kind: 'pack'; packId: number; key: string; mode: DetailMode } | { kind: 'observed'; giftId: number; mode: DetailMode };
@@ -66,51 +65,24 @@ function Station({
   floor,
   passed = false,
   current = false,
-  selectable = false,
-  selectLabel,
-  onSelect,
 }: {
   cx: number;
   cy: number;
   r: number;
   half: boolean;
   floor: number;
-  /** Run progress: already played, or the floor about to be entered. */
+  /** Run progress: already played, or the floor about to be decided. */
   passed?: boolean;
   current?: boolean;
-  /** A pack's entry floor is being chosen and this floor can take it. */
-  selectable?: boolean;
-  selectLabel?: string;
-  onSelect?: () => void;
 }) {
-  const interactive = selectable && onSelect !== undefined;
   return (
-    <g
-      data-testid="station"
-      data-floor={floor}
-      data-overlap={half || undefined}
-      data-passed={passed || undefined}
-      data-current={current || undefined}
-      data-selectable={selectable || undefined}
-      role={interactive ? 'button' : undefined}
-      tabIndex={interactive ? 0 : undefined}
-      aria-label={interactive ? selectLabel : undefined}
-      onClick={interactive ? onSelect : undefined}
-      onKeyDown={interactive ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(); } } : undefined}
-      className={interactive ? 'cursor-pointer outline-none focus-visible:[&>circle:first-child]:stroke-[3]' : undefined}
-    >
-      {interactive ? <circle cx={cx} cy={cy} r={r + 7} fill="var(--color-ink)" fillOpacity={0.12} stroke="var(--color-ink)" strokeWidth={1.5} strokeDasharray="3 2" /> : null}
-      {current && !interactive ? <circle cx={cx} cy={cy} r={r + 4} fill="none" stroke="var(--color-fg)" strokeWidth={1.5} /> : null}
+    <g data-testid="station" data-floor={floor} data-overlap={half || undefined} data-passed={passed || undefined} data-current={current || undefined}>
+      {current ? <circle cx={cx} cy={cy} r={r + 4} fill="none" stroke="var(--color-fg)" strokeWidth={1.5} /> : null}
       <circle cx={cx} cy={cy} r={r} fill={passed ? 'var(--color-fg)' : 'var(--color-surface)'} stroke="var(--color-fg)" strokeWidth={2} />
       {half && !passed ? <path d={`M${cx} ${cy - r} A${r} ${r} 0 0 0 ${cx} ${cy + r} Z`} fill="var(--color-fg)" /> : null}
       {passed ? <path d={`M${cx - 3.5} ${cy} l2.5 2.5 l4.5 -5`} fill="none" stroke="var(--color-surface)" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" /> : null}
     </g>
   );
-}
-
-/** The app plays floors 1-5 on Hard, 6-10 in 평행중첩 and 11-15 on EXTREME. */
-function bandMode(floor: number): 'hard' | 'parallel' | 'extreme' {
-  return floor >= 11 ? 'extreme' : floor >= 6 ? 'parallel' : 'hard';
 }
 
 function ObservedTile({ entry, ctx, onPress }: { entry: ObservedGift; ctx: PackContext; onPress?: () => void }) {
@@ -147,45 +119,15 @@ function ObservedTile({ entry, ctx, onPress }: { entry: ObservedGift; ctx: PackC
   );
 }
 
-export function MetroMap({ plan, ctx, keywordLabel, run }: MetroMapProps) {
+export function MetroMap({ plan, ctx, keywordLabel, run, variant = 'auto', detailMode }: MetroMapProps) {
   const { lang } = ctx;
   const metro = segmentsFor(plan);
   const [open, setOpen] = useState<Open | null>(null);
   const close = (): void => setOpen(null);
+  const vertical = variant === 'vertical';
+  const phoneMode: DetailMode = detailMode ?? 'sheet';
+  const deskMode: DetailMode = detailMode ?? 'popover';
 
-  // Choosing a pack's entry floor: only stations that offer the pack respond; Escape cancels.
-  const selecting = run?.selecting ?? null;
-  useEffect(() => {
-    if (selecting !== null) setOpen(null);
-  }, [selecting]);
-  const selectable = (floor: number): boolean =>
-    selecting !== null && (ctx.indexes.packsByFloor[bandMode(floor)].get(floor) ?? []).includes(selecting);
-  useEffect(() => {
-    if (selecting === null || !run) return;
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') run.onCancel();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [selecting, run]);
-  const stationProps = (floor: number) => ({
-    passed: run !== undefined && floor < run.currentFloor,
-    current: run !== undefined && floor === run.currentFloor,
-    selectable: selectable(floor),
-    selectLabel: selecting !== null ? t('runSelectFloor', lang, { floor, pack: ctx.packName(selecting) }) : undefined,
-    onSelect: run ? () => run.onSelectFloor(floor) : undefined,
-  });
-  const selectBanner =
-    run && selecting !== null ? (
-      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface-2 px-3 py-2 text-xs" data-testid="select-banner" role="status">
-        <MapPin size={13} aria-hidden />
-        <span className="font-medium">{t('runSelecting', lang, { pack: ctx.packName(selecting) })}</span>
-        <Button size="sm" variant="ghost" className="ml-auto" onClick={run.onCancel}>
-          <X size={12} aria-hidden />
-          {t('runSelectCancel', lang)}
-        </Button>
-      </div>
-    ) : null;
   const detailFor = (key: string, mode: DetailMode): ReactNode => {
     if (!open || open.mode !== mode) return null;
     if (open.kind === 'pack' && open.key === key) {
@@ -205,6 +147,11 @@ export function MetroMap({ plan, ctx, keywordLabel, run }: MetroMapProps) {
     }
     return null;
   };
+
+  const stationProps = (floor: number) => ({
+    passed: run !== undefined && floor < run.currentFloor,
+    current: run !== undefined && floor === run.currentFloor,
+  });
   const packEntry = (segment: Segment, pack: Segment['packs'][number], mode: DetailMode, compact: boolean): ReactNode => {
     const theme = ctx.indexes.packById.get(pack.packId);
     if (!theme) return null;
@@ -302,10 +249,10 @@ export function MetroMap({ plan, ctx, keywordLabel, run }: MetroMapProps) {
   const skyline = Math.max(EST_CARD_H, ...cards.map((c, i) => offsets[i]! + heightOf(c.segment.key)));
   const LINE_Y = 40 + skyline + 42;
   const H = LINE_Y + 46;
-  const desktop = (
+  const desktop = vertical ? null : (
     <div className="hidden lg:block" data-testid="metro-columns">
       <div ref={deskRef} className="relative w-full" style={{ height: H }}>
-        <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="absolute left-0 top-0" aria-hidden={selecting === null}>
+        <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="absolute left-0 top-0" aria-hidden>
           <defs>
             <pattern id="metro-hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(135)">
               <rect width="7" height="7" fill="var(--color-surface)" />
@@ -375,12 +322,12 @@ export function MetroMap({ plan, ctx, keywordLabel, run }: MetroMapProps) {
               data-lane={deskLanes[i]}
             >
               <div className="truncate text-xs text-fg-2">{segmentTitle(segment, lang)}</div>
-              <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5">{segment.packs.map((p) => packEntry(segment, p, 'popover', false))}</div>
+              <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5">{segment.packs.map((p) => packEntry(segment, p, deskMode, false))}</div>
             </div>
           );
         })}
       </div>
-      {startRow('popover')}
+      {startRow(deskMode)}
     </div>
   );
 
@@ -397,10 +344,10 @@ export function MetroMap({ plan, ctx, keywordLabel, run }: MetroMapProps) {
   const base = X0 + metro.lanes * LANE_W + 6;
   const avail = PW - base - 4;
   const phone = (
-    <div className="lg:hidden" data-testid="metro-rows">
-      {startRow('sheet')}
+    <div className={vertical ? undefined : 'lg:hidden'} data-testid="metro-rows">
+      {startRow(phoneMode)}
       <div ref={phoneRef} className="relative w-full" style={{ height: PH }}>
-        <svg width={PW} height={PH} viewBox={`0 0 ${PW} ${PH}`} className="absolute left-0 top-0" aria-hidden={selecting === null}>
+        <svg width={PW} height={PH} viewBox={`0 0 ${PW} ${PH}`} className="absolute left-0 top-0" aria-hidden>
           <defs>
             <pattern id="metro-hatch-m" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(135)">
               <rect width="7" height="7" fill="var(--color-surface)" />
@@ -467,7 +414,7 @@ export function MetroMap({ plan, ctx, keywordLabel, run }: MetroMapProps) {
               data-lane={segment.lane}
             >
               <div className="truncate text-[10px] leading-3 text-fg-2">{segmentTitle(segment, lang)}</div>
-              <div className={`flex ${compact ? 'flex-col gap-1' : 'flex-wrap items-start gap-x-2 gap-y-1'}`}>{segment.packs.map((p) => packEntry(segment, p, 'sheet', compact))}</div>
+              <div className={`flex ${compact ? 'flex-col gap-1' : 'flex-wrap items-start gap-x-2 gap-y-1'}`}>{segment.packs.map((p) => packEntry(segment, p, phoneMode, compact))}</div>
             </div>
           );
         })}
@@ -512,7 +459,6 @@ export function MetroMap({ plan, ctx, keywordLabel, run }: MetroMapProps) {
 
   return (
     <div className="rounded-md border border-line bg-surface shadow-card">
-      {selectBanner}
       {desktop}
       {phone}
       {legend}

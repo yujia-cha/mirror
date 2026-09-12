@@ -1,21 +1,28 @@
 /**
- * UI pieces with logic of their own: the store, share links, condition wording and the three
- * steps. Rendering uses the real generated data, like the planner tests.
+ * UI pieces with logic of their own: the store, share links, condition wording, the setup tabs,
+ * the run stage and the side panels. Rendering uses the real generated data, like the planner
+ * tests. jsdom has no matchMedia, so the shell renders as a phone unless a test stubs it.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import lzString from 'lz-string';
 import userEvent from '@testing-library/user-event';
 import { loadGameDataFromDisk } from '../../core/data/node.ts';
 import { analyseDeck, buildIndexes, defaultOptions, evaluateConditions } from '../../core/index.ts';
 import { conditionText, josa, reachedTierText } from '../condition-text.ts';
-import { appDefaultOptions, decodeShared, emptyRun, encodeShared, sanitizeOptions, sanitizeRun, sinnerOf, useApp } from '../store.ts';
+import { appDefaultOptions, decodeShared, defaultUi, emptyRun, encodeShared, sanitizeOptions, sanitizeRun, sinnerOf, useApp } from '../store.ts';
 import { planInputFor } from '../lib/plan-input.ts';
 import { classifyGift, prioritiseGifts } from '../lib/gift-priority.ts';
 import { DeckStep } from '../steps/DeckStep.tsx';
 import { GiftsStep } from '../steps/GiftsStep.tsx';
-import { RouteStep } from '../steps/RouteStep.tsx';
 import { App } from '../App.tsx';
+import { AppShell } from '../shell/AppShell.tsx';
+import { PlanProvider } from '../shell/PlanContext.tsx';
+import { RoutePlanPanel } from '../shell/RoutePlanPanel.tsx';
+import { RouteSettings } from '../shell/RouteSettings.tsx';
+import { RunStage } from '../stage/RunStage.tsx';
+import { Tracker } from '../tracker/Tracker.tsx';
 import { planToText } from '../lib/plan-text.ts';
 import { actionsFor } from '../lib/unresolved-actions.ts';
 import { keywordName } from '../format.ts';
@@ -37,8 +44,31 @@ const CLEAR_REWARDS = [9250, 9251, 9252, 9253, 9254, 9255];
 const BURN_DECK = [10112, 10216, 10311, 10415, 10512, 10604, 10715, 10808, 10916, 11009, 11115, 11216];
 
 beforeEach(() => {
-  useApp.setState({ deck: [], deployed: [], wanted: [], priority: {}, fusionGoal: {}, run: emptyRun(), options: appDefaultOptions(), lang: 'ko', dark: true, step: 1 });
+  useApp.setState({ deck: [], deployed: [], wanted: [], priority: {}, fusionGoal: {}, run: emptyRun(), ui: defaultUi(), options: appDefaultOptions(), lang: 'ko', dark: true });
 });
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+/** Render a piece of the shell with the plan computed from the store, as the shell does. */
+const renderPlanned = (node: ReactNode, override?: typeof data) => {
+  const { deck, deployed } = useApp.getState();
+  return render(
+    <PlanProvider data={override ?? data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko">
+      {node}
+    </PlanProvider>,
+  );
+};
+
+/** Pretend the viewport is a desktop (or not); jsdom has no matchMedia of its own. */
+const stubMatchMedia = (desktop: boolean): void => {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: (query: string) => ({ matches: desktop, media: query, addEventListener: () => undefined, removeEventListener: () => undefined }),
+  });
+};
 
 describe('share links', () => {
   it('round-trips a deck, who is deployed, a gift list with priorities and the options', () => {
@@ -55,7 +85,7 @@ describe('share links', () => {
   });
 
   it('carries fusion goals but never the run in progress, and strips run options from any link', () => {
-    useApp.getState().startRun([9283]);
+    useApp.getState().visitPack(1402, 4, { got: [9283] });
     const hash = encodeShared({ deck: [10101], deployed: [10101], wanted: [9088], priority: {}, fusionGoal: { 9088: 'resultOnly' }, options: { ...appDefaultOptions(), currentFloor: 4, ownedGifts: [9283] } });
     const raw = JSON.parse(lzString.decompressFromEncodedURIComponent(hash.slice(3))!) as Record<string, unknown>;
     expect(raw.v).toBe(4);
@@ -101,13 +131,12 @@ describe('share links', () => {
     expect(decodeShared('#s=not-valid')).toBeNull();
   });
 
-  it('lands a recipient on the furthest step the link can show', () => {
+  it('starts a recipient on a fresh run, whatever this device had recorded', () => {
+    useApp.getState().visitPack(1402, 4);
+    useApp.getState().setGiftStatus(9267, 'got');
     useApp.getState().applyShared({ deck: [10101], deployed: [10101], wanted: [9283], priority: {}, options: defaultOptions() });
-    expect(useApp.getState().step).toBe(3);
-    useApp.getState().applyShared({ deck: [10101], deployed: [10101], wanted: [], priority: {}, options: defaultOptions() });
-    expect(useApp.getState().step).toBe(2);
-    useApp.getState().applyShared({ deck: [], deployed: [], wanted: [], priority: {}, options: defaultOptions() });
-    expect(useApp.getState().step).toBe(1);
+    expect(useApp.getState().run).toEqual(emptyRun());
+    expect(useApp.getState().wanted).toEqual([9283]);
   });
 
   it('consumes the hash once so a reload keeps later edits', async () => {
@@ -115,24 +144,19 @@ describe('share links', () => {
     render(<App />);
     await waitFor(() => expect(useApp.getState().wanted).toEqual([9283]));
     expect(window.location.hash).toBe('');
-    expect(useApp.getState().step).toBe(3);
   });
 });
 
 describe('run store', () => {
-  it('tracks visits and gift status, feeds them to the planner, and clears on end', () => {
+  it('tracks visits and gift status, feeds them to the planner, and clears on a new run', () => {
     useApp.getState().setDeck([10101], 6);
     useApp.getState().toggleWanted(9249);
-    useApp.getState().startRun([9222]);
-    expect(useApp.getState().run).toMatchObject({ active: true, currentFloor: 1, giftStatus: { 9222: 'got' } });
-    useApp.getState().visitPack(1016, 1);
-    expect(useApp.getState().run.visits).toEqual({ 1: 1016 });
-    expect(useApp.getState().run.currentFloor).toBe(2);
+    expect(useApp.getState().run).toMatchObject({ currentFloor: 1, stageFloor: 1 });
+    useApp.getState().visitPack(1016, 1, { got: [9222] });
+    expect(useApp.getState().run).toMatchObject({ visits: { 1: 1016 }, currentFloor: 2, stageFloor: 1, giftStatus: { 9222: 'got' } });
     // A pack is entered once per run: a new floor replaces the old one.
     useApp.getState().visitPack(1016, 3);
     expect(useApp.getState().run.visits).toEqual({ 3: 1016 });
-    expect(useApp.getState().run.currentFloor).toBe(4);
-    useApp.getState().setCurrentFloor(2); // never behind a visited floor
     expect(useApp.getState().run.currentFloor).toBe(4);
     useApp.getState().setGiftStatus(9431, 'failed');
     useApp.getState().setFusionGoal(9249, 'resultOnly');
@@ -141,13 +165,12 @@ describe('run store', () => {
     expect(input.wanted).toEqual([{ giftId: 9249, required: false, ingredientsAsGoals: false }]);
     useApp.getState().unvisitPack(1016);
     expect(useApp.getState().run.visits).toEqual({});
-    useApp.getState().endRun();
+    useApp.getState().resetRun();
     expect(useApp.getState().run).toEqual(emptyRun());
     expect(planInputFor(useApp.getState()).options).toMatchObject({ currentFloor: 1, ownedGifts: [], pinnedPacks: {} });
   });
 
   it('walks the floors: entering, skipping, looking back, and taking a decision back', () => {
-    useApp.getState().startRun();
     const run = () => useApp.getState().run;
     // Floor 1 undecided → skipped; the frontier moves with the stage.
     useApp.getState().nextFloor({ got: [9423] });
@@ -180,21 +203,20 @@ describe('run store', () => {
   });
 
   it('keeps a saved run only where it still makes sense', () => {
-    expect(sanitizeRun({ active: true, visits: { 2: 1102, 5: 1102, 99: 1016, x: 1 }, giftStatus: { 9431: 'failed', 9706: 'odd' }, currentFloor: 1, stageFloor: 7 })).toEqual({
-      active: true,
+    expect(sanitizeRun({ visits: { 2: 1102, 5: 1102, 99: 1016, x: 1 }, giftStatus: { 9431: 'failed', 9706: 'odd' }, currentFloor: 1, stageFloor: 7 })).toEqual({
       currentFloor: 3,
       stageFloor: 3,
       visits: { 2: 1102 },
       giftStatus: { 9431: 'failed' },
     });
-    expect(sanitizeRun({ active: true, currentFloor: 20, stageFloor: 20, visits: {}, giftStatus: {} })).toMatchObject({ currentFloor: 16, stageFloor: 15 });
+    expect(sanitizeRun({ currentFloor: 20, stageFloor: 20, visits: {}, giftStatus: {} })).toMatchObject({ currentFloor: 16, stageFloor: 15 });
+    // A record saved before the run-first shell, while no run was on: nothing to keep.
     expect(sanitizeRun({ active: false, visits: { 2: 1102 } })).toEqual(emptyRun());
+    expect(sanitizeRun({ active: true, visits: { 2: 1102 }, currentFloor: 3 })).toMatchObject({ visits: { 2: 1102 }, currentFloor: 3, stageFloor: 3 });
     expect(sanitizeRun(null)).toEqual(emptyRun());
   });
 
-  it('gift status and fusion goals need the run and the wanted gift respectively', () => {
-    useApp.getState().setGiftStatus(9431, 'got');
-    expect(useApp.getState().run.giftStatus).toEqual({});
+  it('keeps a fusion goal only for a wanted gift', () => {
     useApp.getState().setFusionGoal(9249, 'resultOnly');
     expect(useApp.getState().fusionGoal).toEqual({});
     useApp.getState().toggleWanted(9249);
@@ -412,9 +434,16 @@ describe('GiftsStep', () => {
     expect(useApp.getState().options.observedGifts).toEqual([9435]);
   });
 
-  it('sends an empty deck back to step 1', () => {
-    render(<GiftsStep data={data} indexes={indexes} stats={statsFor([])} lang="ko" />);
+  it('points an empty deck at the deck tab only when it is given somewhere to go', async () => {
+    const user = userEvent.setup();
+    const onGoDeck = vi.fn();
+    const { unmount } = render(<GiftsStep data={data} indexes={indexes} stats={statsFor([])} lang="ko" />);
     expect(screen.getByText('덱이 비어 있습니다')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '덱 탭으로' })).toBeNull();
+    unmount();
+    render(<GiftsStep data={data} indexes={indexes} stats={statsFor([])} lang="ko" onGoDeck={onGoDeck} />);
+    await user.click(screen.getByRole('button', { name: '덱 탭으로' }));
+    expect(onGoDeck).toHaveBeenCalledTimes(1);
   });
 
   it('lets a chosen fusion result decide whether its ingredients are goals too', async () => {
@@ -435,12 +464,40 @@ describe('GiftsStep', () => {
   });
 });
 
-describe('RouteStep', () => {
-  const renderRoute = () => {
-    const { deck, deployed } = useApp.getState();
-    return render(<RouteStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
-  };
-  const columns = () => screen.getByTestId('metro-columns');
+
+describe('RouteSettings', () => {
+  it('shows the start keyword, the pinned observations and the pack choices, and resets each', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    for (const id of [9267, 9423]) useApp.getState().toggleWanted(id); // one observable gift among the goals
+    useApp.getState().banPack(1402);
+    renderPlanned(<RouteSettings />);
+    expect(screen.getByRole('combobox', { name: '시작 키워드' })).toBeInTheDocument();
+    expect(screen.getByText('항상 1~15층 · Hard로 계획합니다')).toBeInTheDocument();
+    expect(screen.queryByRole('radio')).toBeNull();
+    // Only the observable goal is listed, and pinning it takes a slot.
+    const observed = screen.getByTestId('settings-observed');
+    expect(within(observed).getAllByRole('listitem')).toHaveLength(1);
+    await user.click(within(observed).getByRole('button', { name: '깨진 안경 관측 지정 전환' }));
+    expect(useApp.getState().options.observedGifts).toEqual([9423]);
+    expect(observed).toHaveTextContent('1/3');
+    // The given-up pack is listed with its restore action.
+    const packs = screen.getByTestId('settings-packs');
+    expect(within(packs).getByTestId('settings-pack')).toHaveAttribute('data-pack', '1402');
+    await user.click(within(packs).getByRole('button', { name: '화왕지절 되돌리기' }));
+    expect(useApp.getState().options.bannedPacks).toEqual([]);
+    await user.click(screen.getByRole('button', { name: '옵션 초기화' }));
+    expect(useApp.getState().options.observedGifts).toEqual([]);
+    // A new run clears the record after a confirmation.
+    useApp.getState().visitPack(1402, 4);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await user.click(screen.getByRole('button', { name: '새 런' }));
+    expect(useApp.getState().run).toEqual(emptyRun());
+  });
+});
+
+describe('RoutePlanPanel', () => {
+  const renderRoute = () => renderPlanned(<RoutePlanPanel onOpenGifts={() => undefined} />);
   const rows = () => screen.getByTestId('metro-rows');
   /** Spend all three observation slots on other gifts so observable fixtures get routed. */
   const fillObservations = () => {
@@ -448,33 +505,30 @@ describe('RouteStep', () => {
     useApp.getState().setOptions({ observedGifts: [9435, 9222, 9217] });
   };
 
-  it('shows only the start keyword and a reset in the options bar, and fifteen stations on the line', () => {
+  it('shows an empty state without goals and fifteen stations on the vertical line with them', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
+    const { unmount } = renderRoute();
+    expect(screen.getByTestId('route-empty')).toHaveTextContent('기프트를 고르면 루트가 나옵니다');
+    unmount();
     useApp.getState().toggleWanted(9267);
     renderRoute();
-    expect(screen.getByRole('combobox', { name: '시작 키워드' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '옵션 초기화' })).toBeInTheDocument();
-    expect(screen.queryByRole('radio')).toBeNull();
-    expect(screen.getByText('항상 1~15층 · Hard로 계획합니다')).toBeInTheDocument();
-    expect(within(columns()).getAllByTestId('station')).toHaveLength(15);
+    expect(screen.queryByTestId('metro-columns')).toBeNull();
     expect(within(rows()).getAllByTestId('station')).toHaveLength(15);
+    expect(screen.getByTestId('route-summary')).toHaveTextContent('필요 팩');
   });
 
   it('draws a pack that may sit on several floors as one dashed segment with no suggested floor', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
     useApp.getState().toggleWanted(9267); // 화왕지절, Hard 4-5, not observable
     renderRoute();
-    const segment = within(columns()).getByTestId('segment');
+    const segment = within(rows()).getByTestId('segment');
     expect(segment).toHaveAttribute('data-from', '4');
     expect(segment).toHaveAttribute('data-to', '5');
     expect(segment).not.toHaveAttribute('data-partial');
     expect(segment).toHaveTextContent('4~5층 중 한 층');
     expect(within(segment).getByRole('button', { name: '화왕지절' })).toBeInTheDocument();
-    expect(within(segment).getByText('화왕지절')).toBeInTheDocument(); // the name sits under the card
-    expect(within(columns()).queryByTestId('suggested')).toBeNull();
-    // The phone line spans the same two stations.
-    const phoneSegment = within(rows()).getByTestId('segment');
-    expect(phoneSegment.style.height).toBe(`${64 * 2 - 8}px`);
+    expect(within(rows()).queryByTestId('suggested')).toBeNull();
+    expect(segment.style.height).toBe(`${64 * 2 - 8}px`);
   });
 
   it('draws two fixed packs as solid blocks over their stations', () => {
@@ -482,7 +536,7 @@ describe('RouteStep', () => {
     useApp.getState().toggleWanted(9754); // 2호선 (1109), Hard 4-5, not observable
     useApp.getState().toggleWanted(9208); // 해방된 분노 (1302), Hard 5 only
     renderRoute();
-    const segments = within(columns()).getAllByTestId('segment');
+    const segments = within(rows()).getAllByTestId('segment');
     expect(segments.map((s) => [s.getAttribute('data-from'), s.getAttribute('data-to')])).toEqual([
       ['4', '4'],
       ['5', '5'],
@@ -495,12 +549,12 @@ describe('RouteStep', () => {
     for (const id of [9415, 9427]) useApp.getState().toggleWanted(id); // 2-3 and 3-4
     fillObservations();
     renderRoute();
-    const segments = within(columns()).getAllByTestId('segment');
+    const segments = within(rows()).getAllByTestId('segment');
     expect(segments).toHaveLength(2);
     expect(segments.every((s) => s.hasAttribute('data-partial'))).toBe(true);
     expect(new Set(segments.map((s) => s.getAttribute('data-lane'))).size).toBe(2);
-    expect(within(columns()).getAllByTestId('suggested').map((c) => c.getAttribute('data-floor'))).toEqual(['2', '3']);
-    const overlapped = within(columns()).getAllByTestId('station').filter((el) => el.hasAttribute('data-overlap'));
+    expect(within(rows()).getAllByTestId('suggested').map((c) => c.getAttribute('data-floor'))).toEqual(['2', '3']);
+    const overlapped = within(rows()).getAllByTestId('station').filter((el) => el.hasAttribute('data-overlap'));
     expect(overlapped.map((el) => el.getAttribute('data-floor'))).toEqual(['3']);
     expect(segments[0]).toHaveTextContent('2~3층 · 추천 2');
   });
@@ -510,60 +564,63 @@ describe('RouteStep', () => {
     for (const id of [9415, 9419]) useApp.getState().toggleWanted(id); // both Hard 2-3
     fillObservations();
     renderRoute();
-    const segment = within(columns()).getByTestId('segment');
+    const segment = within(rows()).getByTestId('segment');
     expect(segment).toHaveTextContent('2~3층 · 2팩 · 어느 층이든');
     expect(within(segment).getAllByTestId('segment-pack')).toHaveLength(2);
-    expect(within(columns()).queryByTestId('suggested')).toBeNull();
+    expect(within(rows()).queryByTestId('suggested')).toBeNull();
   });
 
-  it('shows four legend items and no starlight, fusion or general-drop text', () => {
+  it('shows six legend items and no starlight, fusion or general-drop text', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
     useApp.getState().toggleWanted(9267);
     renderRoute();
-    expect(screen.getByTestId('legend').querySelectorAll(':scope > span')).toHaveLength(4);
+    expect(screen.getByTestId('legend').querySelectorAll(':scope > span')).toHaveLength(6);
     expect(screen.queryByText(/별빛|합성|범용 드랍|나올 수 있음/)).toBeNull();
   });
 
-  it('opens a pack from its card, lists its gifts, and lets it be given up and restored', async () => {
+  it('opens a pack in a sheet from its card, lists its gifts, and lets it be given up and restored', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
     useApp.getState().toggleWanted(9267); // 화왕지절 or 해방된 분노
     renderRoute();
-    await user.click(within(columns()).getByRole('button', { name: '화왕지절' }));
-    const popover = within(columns()).getByRole('dialog', { name: '화왕지절' });
-    expect(popover).toHaveTextContent('Hard 4~5');
-    expect(within(popover).getAllByTestId('pack-gift').length).toBeGreaterThan(1);
-    const wantedRow = within(popover).getAllByTestId('pack-gift').find((el) => el.hasAttribute('data-wanted'))!;
+    await user.click(within(rows()).getByRole('button', { name: '화왕지절' }));
+    const sheet = screen.getByRole('dialog', { name: '화왕지절' });
+    expect(sheet).toHaveAttribute('data-testid', 'block-sheet');
+    expect(sheet).toHaveTextContent('Hard 4~5');
+    expect(within(sheet).getAllByTestId('pack-gift').length).toBeGreaterThan(1);
+    const wantedRow = within(sheet).getAllByTestId('pack-gift').find((el) => el.hasAttribute('data-wanted'))!;
     expect(wantedRow).toHaveTextContent('달궈진 놋쇠');
     expect(wantedRow).toHaveTextContent('전용');
-    await user.click(within(popover).getByRole('button', { name: '화왕지절 이 팩 포기' }));
+    // The run context is on: each gift is a pressable tile, and floor 4 is not on stage so no entry button.
+    expect(within(wantedRow).getByTestId('gift-tile')).toHaveAttribute('aria-pressed', 'false');
+    expect(within(sheet).queryByRole('button', { name: '화왕지절 입장' })).toBeNull();
+    await user.click(within(sheet).getByRole('button', { name: '화왕지절 이 팩 포기' }));
     expect(useApp.getState().options.bannedPacks).toEqual([1402]);
     // The gift now comes from the other pack, and the given-up pack can be restored.
-    expect(within(columns()).getByRole('button', { name: '해방된 분노' })).toBeInTheDocument();
+    expect(within(rows()).getByRole('button', { name: '해방된 분노' })).toBeInTheDocument();
     const banned = within(screen.getByTestId('unresolved')).getByTestId('banned-pack');
     expect(banned).toHaveTextContent('화왕지절');
     await user.click(within(banned).getByRole('button', { name: '화왕지절 되돌리기' }));
     expect(useApp.getState().options.bannedPacks).toEqual([]);
   });
 
-  it('opens a bottom sheet from a phone pack card and from an observed tile', async () => {
+  it('opens a sheet from an observed tile and pins the observation from it', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
     useApp.getState().toggleWanted(9267);
     useApp.getState().toggleWanted(9423); // observable; the planner recommends observing it
     renderRoute();
-    await user.click(within(rows()).getByRole('button', { name: /화왕지절|해방된 분노/ }));
-    const sheet = screen.getByTestId('block-sheet');
-    expect(sheet).toHaveAttribute('role', 'dialog');
-    expect(within(sheet).getByTestId('pack-sheet-body')).toHaveTextContent('달궈진 놋쇠');
-    await user.click(within(sheet).getByRole('button', { name: '닫기' }));
-    expect(screen.queryByTestId('block-sheet')).toBeNull();
     const tile = within(within(rows()).getByTestId('start-cell')).getByTestId('observed-tile');
+    expect(tile).toHaveTextContent('추천');
+    expect(tile).toHaveAttribute('title', '깨진 안경 · 관측 · 변하지 않는 안 가도 됨');
     await user.click(tile);
     const observed = screen.getByTestId('block-sheet');
     expect(observed).toHaveTextContent('변하지 않는 안 가도 됨');
     await user.click(within(observed).getByRole('button', { name: '깨진 안경 관측 지정 전환' }));
     expect(useApp.getState().options.observedGifts).toEqual([9423]);
+    await user.click(within(observed).getByRole('button', { name: '닫기' }));
+    expect(screen.queryByTestId('block-sheet')).toBeNull();
+    expect(within(within(rows()).getByTestId('start-cell')).getByTestId('observed-tile')).toHaveTextContent('지정');
   });
 
   it('marks a must-have gift with a star badge on its tile', () => {
@@ -571,21 +628,8 @@ describe('RouteStep', () => {
     useApp.getState().toggleWanted(9267);
     useApp.getState().setPriority(9267, 'must');
     renderRoute();
-    const icon = within(within(columns()).getByTestId('segment')).getByTestId('gift-icon');
+    const icon = within(within(rows()).getByTestId('segment')).getByTestId('gift-icon');
     expect(icon).toHaveAttribute('data-must', 'true');
-  });
-
-  it('shows recommended observations in the start row and lets one be pinned', async () => {
-    const user = userEvent.setup();
-    useApp.getState().setDeck(BURN_DECK, 7);
-    useApp.getState().toggleWanted(9423); // observable; observing it frees 변하지 않는
-    renderRoute();
-    const tile = within(within(columns()).getByTestId('start-cell')).getByTestId('observed-tile');
-    expect(tile).toHaveTextContent('추천');
-    expect(tile).toHaveAttribute('title', '깨진 안경 · 관측 · 변하지 않는 안 가도 됨');
-    await user.click(tile);
-    expect(useApp.getState().options.observedGifts).toEqual([9423]);
-    expect(within(within(columns()).getByTestId('start-cell')).getByTestId('observed-tile')).toHaveTextContent('지정');
   });
 
   it('groups a pack conflict by its floors and lets a pack be included or given up as a whole', async () => {
@@ -603,6 +647,7 @@ describe('RouteStep', () => {
     expect(left).toHaveTextContent('핏물진 비린내');
     expect(left).toHaveTextContent('박수 짝짝!');
     expect(screen.getByRole('button', { name: '대안 루트 보기' })).toBeInTheDocument();
+    expect(screen.getByTestId('route-summary')).toHaveTextContent('미해결 1');
     // Include the left-out pack: it takes a floor and another pack drops out.
     await user.click(within(left).getByRole('button', { name: '핏물진 비린내 이 팩으로' }));
     expect(useApp.getState().options.preferredPacks).toEqual([1516]);
@@ -611,14 +656,12 @@ describe('RouteStep', () => {
     expect(after.filter((c) => !c.hasAttribute('data-included'))).toHaveLength(1);
     // Give up an included pack: it leaves the plan and shows in the given-up list until restored.
     const included = after.find((c) => c.hasAttribute('data-included') && c.getAttribute('data-pack') !== '1516')!;
-    const name = included.getAttribute('data-pack') === '1511' ? '코드 퍼플' : null;
     await user.click(within(included).getByRole('button', { name: /이 팩 포기$/ }));
     expect(useApp.getState().options.bannedPacks).toHaveLength(1);
     const skipped = screen.getByTestId('skipped');
     expect(skipped).toHaveTextContent('포기한 팩 1');
     await user.click(within(skipped).getByRole('button', { name: /되돌리기$/ }));
     expect(useApp.getState().options.bannedPacks).toEqual([]);
-    void name;
   });
 
   it('offers alternative routes as tabs and confirming one gives that gift up', async () => {
@@ -663,11 +706,10 @@ describe('RouteStep', () => {
 
   it('marks a condition it cannot judge as such, not as unmet', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
-    useApp.getState().setOptions({ hardFromFloor: 1 });
     useApp.getState().toggleWanted(9208); // 인연 얽힘: full-resonance condition
     renderRoute();
     // The judgement sits on the icon border and its accessible name, in the condition card and
-    // on the timetable tile alike.
+    // on the map tile alike.
     expect(screen.getAllByLabelText(/^판정 불가 · 인연 얽힘/).length).toBeGreaterThan(0);
     expect(screen.queryAllByLabelText(/^미충족/)).toHaveLength(0);
     const tile = within(screen.getByTestId('conditions')).getByTestId('gift-icon');
@@ -676,7 +718,6 @@ describe('RouteStep', () => {
 
   it('colours a gift icon by whether the deck meets its condition', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
-    useApp.getState().setOptions({ hardFromFloor: 1 });
     useApp.getState().toggleWanted(9088); // 진혼: combustion condition this deck meets
     useApp.getState().toggleWanted(9211); // 먹장구름: sinking condition it does not
     renderRoute();
@@ -740,110 +781,301 @@ describe('RouteStep', () => {
     expect(marked).toContain('포기한 팩: 화왕지절');
     expect(marked.trim().split('\n').at(-1)).toBe('포기: 상납된 시가');
   });
-});
-
-describe('RouteStep run mode', () => {
-  const renderRoute = () => {
-    const { deck, deployed } = useApp.getState();
-    return render(<RouteStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
-  };
-  const columns = () => screen.getByTestId('metro-columns');
-  const stations = () => within(columns()).getAllByTestId('station');
-
-  it('starts with the observed gifts collected, records a pack\'s floor from a station, and shows it as visited', async () => {
-    const user = userEvent.setup();
-    useApp.getState().setDeck(BURN_DECK, 7);
-    for (const id of [9267, 9423]) useApp.getState().toggleWanted(id); // 화왕지절 (Hard 4-5) + an observable gift
-    renderRoute();
-    expect(screen.queryByTestId('run-bar')).toBeNull();
-    await user.click(screen.getByRole('button', { name: '런 시작' }));
-    expect(useApp.getState().run.active).toBe(true);
-    expect(useApp.getState().run.giftStatus).toEqual({ 9423: 'got' });
-    expect(screen.getByTestId('run-bar')).toHaveTextContent('진행 중');
-    expect(screen.getByRole('combobox', { name: '현재 층' })).toHaveValue('1');
-    expect(stations().find((s) => s.getAttribute('data-floor') === '1')).toHaveAttribute('data-current');
-    // Open the pack from the map and ask for its floor: only the floors that offer it respond.
-    await user.click(within(columns()).getByRole('button', { name: '화왕지절' }));
-    await user.click(screen.getByRole('button', { name: '화왕지절 방문 층 지정' }));
-    expect(screen.getByTestId('select-banner')).toHaveTextContent('화왕지절');
-    // 화왕지절 is offered on Hard 4-5 and in 평행중첩 6-10.
-    expect(stations().filter((s) => s.hasAttribute('data-selectable')).map((s) => s.getAttribute('data-floor'))).toEqual(['4', '5', '6', '7', '8', '9', '10']);
-    await user.click(within(columns()).getByRole('button', { name: '4층에서 화왕지절 방문' }));
-    expect(useApp.getState().run).toMatchObject({ visits: { 4: 1402 }, currentFloor: 5 });
-    expect(screen.queryByTestId('select-banner')).toBeNull();
-    // The floor is played now: filled station, the pack sits on it as visited, and nothing is planned before floor 5.
-    expect(stations().filter((s) => s.hasAttribute('data-passed')).map((s) => s.getAttribute('data-floor'))).toEqual(['1', '2', '3', '4']);
-    expect(stations().find((s) => s.getAttribute('data-floor') === '5')).toHaveAttribute('data-current');
-    const visited = within(columns()).getByTestId('segment');
-    expect(visited).toHaveAttribute('data-passed');
-    expect(visited).toHaveTextContent('4층 방문');
-    expect(screen.getByRole('combobox', { name: '현재 층' })).toHaveValue('5');
-    // Ending the run clears everything.
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    await user.click(screen.getByRole('button', { name: '런 종료' }));
-    expect(useApp.getState().run).toEqual(emptyRun());
-    expect(screen.queryByTestId('run-bar')).toBeNull();
-  });
-
-  it('marks a gift as missed from the pack sheet and reports it as failed', async () => {
-    const user = userEvent.setup();
-    useApp.getState().setDeck(BURN_DECK, 7);
-    useApp.getState().toggleWanted(9267);
-    useApp.getState().startRun();
-    renderRoute();
-    await user.click(within(columns()).getByRole('button', { name: '화왕지절' }));
-    const status = screen.getByRole('radiogroup', { name: '달궈진 놋쇠 수집 상태' });
-    expect(within(status).getByRole('radio', { name: '수집 전' })).toHaveAttribute('aria-checked', 'true');
-    await user.click(within(status).getByRole('radio', { name: '실패' }));
-    expect(useApp.getState().run.giftStatus).toEqual({ 9267: 'failed' });
-    expect(screen.getByTestId('unresolved-row')).toHaveTextContent('수집 실패');
-    expect(screen.getByText(/^확보/).parentElement).toHaveTextContent('0/1');
-    expect(screen.getByText('실패 1')).toBeInTheDocument();
-    expect(within(columns()).queryByTestId('segment')).toBeNull();
-    // Collected after all: covered, and still nothing to plan for it.
-    act(() => useApp.getState().setGiftStatus(9267, 'got'));
-    expect(screen.getByText(/^확보/).parentElement).toHaveTextContent('1/1');
-    expect(within(columns()).queryByTestId('segment')).toBeNull();
-  });
 
   it('drops the visits made only for the other ingredients once the result alone is the goal', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
     useApp.getState().toggleWanted(9249); // ← 9431 (1016, Hard 1) + 9706·9707 (1102, Hard 2-3)
-    useApp.getState().startRun();
     // Observation off, or the planner would simply observe the ingredients instead of visiting.
     const noObservation = { ...data, rules: { ...data.rules, giftObservation: { ...data.rules.giftObservation, max: 0 } } };
-    const { deck, deployed } = useApp.getState();
-    render(<RouteStep data={noObservation} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
-    const packs = () => within(columns()).getAllByTestId('segment-pack').map((el) => el.getAttribute('data-pack'));
+    renderPlanned(<RoutePlanPanel />, noObservation);
+    const packs = () => within(rows()).getAllByTestId('segment-pack').map((el) => el.getAttribute('data-pack'));
     expect(packs()).toEqual(['1016', '1102']);
     act(() => useApp.getState().setGiftStatus(9707, 'failed'));
     // Ingredients stay goals by default, so both packs are still on the map.
     expect(packs()).toEqual(['1016', '1102']);
     expect(screen.getByTestId('unresolved')).toHaveTextContent('수집 실패');
+    expect(screen.getByTestId('route-summary')).toHaveTextContent('실패 1');
     act(() => useApp.getState().setFusionGoal(9249, 'resultOnly'));
-    expect(within(columns()).queryByTestId('segment-pack')).toBeNull();
+    expect(within(rows()).queryByTestId('segment-pack')).toBeNull();
     expect(screen.getByTestId('unresolved')).toHaveTextContent('취소했습니다');
   });
+});
 
-  it('lists the packs still ahead and adds a gift as a goal from one of them', async () => {
+describe('AppShell', () => {
+  const renderShell = () => {
+    const { deck, deployed } = useApp.getState();
+    return render(<AppShell data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" dark onShare={() => undefined} onToggleLang={() => undefined} onToggleDark={() => undefined} />);
+  };
+
+  it('opens the panels as drawers on a phone, one at a time, and remembers the tab', async () => {
+    const user = userEvent.setup();
+    renderShell();
+    expect(screen.queryByTestId('drawer-left')).toBeNull();
+    expect(screen.queryByTestId('panel-left')).toBeNull();
+    expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'undecided');
+    const left = screen.getByRole('button', { name: '설정 패널' });
+    expect(left).toHaveAttribute('aria-expanded', 'false');
+    await user.click(left);
+    const drawer = screen.getByRole('dialog', { name: '설정 패널' });
+    expect(left).toHaveAttribute('aria-expanded', 'true');
+    // The default tab is the items tab; the deck tab shows the twelve slots.
+    expect(within(drawer).getByRole('tab', { name: '아이템' })).toHaveAttribute('aria-selected', 'true');
+    await user.click(within(drawer).getByRole('tab', { name: '덱' }));
+    expect(useApp.getState().ui.leftTab).toBe('deck');
+    expect(within(drawer).getAllByText('인격 선택')).toHaveLength(12);
+    // Opening the other side closes this one.
+    await user.click(screen.getByRole('button', { name: '루트 패널' }));
+    expect(screen.queryByRole('dialog', { name: '설정 패널' })).toBeNull();
+    const right = screen.getByRole('dialog', { name: '루트 패널' });
+    expect(within(right).getByTestId('route-empty')).toBeInTheDocument();
+    // The empty state sends the player to the items tab of the left drawer.
+    await user.click(within(right).getByRole('button', { name: '아이템' }));
+    expect(screen.queryByRole('dialog', { name: '루트 패널' })).toBeNull();
+    expect(within(screen.getByRole('dialog', { name: '설정 패널' })).getByRole('tab', { name: '아이템' })).toHaveAttribute('aria-selected', 'true');
+    await user.click(screen.getByRole('button', { name: '패널 닫기' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // The tracker tab lives in the right drawer.
+    await user.click(screen.getByRole('button', { name: '루트 패널' }));
+    await user.click(screen.getByRole('tab', { name: '추적기' }));
+    expect(screen.getByTestId('tracker')).toBeInTheDocument();
+    expect(useApp.getState().ui.rightTab).toBe('tracker');
+  });
+
+  it('keeps both panels beside the stage on a desktop and folds them from the header', async () => {
+    stubMatchMedia(true);
+    const user = userEvent.setup();
+    renderShell();
+    expect(screen.getByTestId('panel-left')).toBeInTheDocument();
+    expect(screen.getByTestId('panel-right')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const left = screen.getByRole('button', { name: '설정 패널' });
+    expect(left).toHaveAttribute('aria-expanded', 'true');
+    expect(left).toHaveAttribute('aria-controls', 'panel-left');
+    await user.click(left);
+    expect(screen.queryByTestId('panel-left')).toBeNull();
+    expect(useApp.getState().ui.leftOpen).toBe(false);
+    await user.click(left);
+    expect(screen.getByTestId('panel-left')).toBeInTheDocument();
+  });
+});
+
+describe('RunStage', () => {
+  const renderStage = (withPlan = false) =>
+    renderPlanned(
+      <>
+        <RunStage onOpenGifts={() => undefined} />
+        {withPlan ? <RoutePlanPanel /> : null}
+      </>,
+    );
+  const header = () => screen.getByTestId('floor-header');
+  const skipFloor = async (user: ReturnType<typeof userEvent.setup>) => user.click(within(header()).getByRole('button', { name: '입장하지 않음' }));
+
+  it('asks for goals first, then walks to the recommended pack, enters it, marks its gifts and takes it back', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    const { unmount } = renderStage();
+    expect(screen.getByText('아직 목표 기프트가 없습니다.')).toBeInTheDocument();
+    unmount();
+    useApp.getState().toggleWanted(9267); // 화왕지절 (1402), Hard 4-5
+    renderStage();
+    expect(screen.getByTestId('stage-floor')).toHaveTextContent('1');
+    expect(screen.queryByTestId('stage-pack')).toBeNull();
+    expect(screen.getByText(/이 층에 계획된 팩이 없습니다/)).toBeInTheDocument();
+    expect(screen.getByTestId('skip-card')).toBeInTheDocument();
+    for (let i = 0; i < 3; i += 1) await skipFloor(user);
+    expect(screen.getByTestId('stage-floor')).toHaveTextContent('4');
+    expect(useApp.getState().run).toMatchObject({ currentFloor: 4, stageFloor: 4 });
+    // The route's pack for this floor comes first, marked as the suggestion; the other floors read as skipped.
+    const card = screen.getByTestId('stage-pack');
+    expect(card).toHaveAttribute('data-pack', '1402');
+    expect(card).toHaveAttribute('data-recommended');
+    expect(card).toHaveTextContent('추천');
+    expect(screen.getAllByTestId('floor-cell').filter((c) => c.getAttribute('data-state') === 'skipped')).toHaveLength(3);
+    await user.click(within(card).getByRole('button', { name: '화왕지절 입장' }));
+    expect(useApp.getState().run).toMatchObject({ visits: { 4: 1402 }, currentFloor: 5, stageFloor: 4 });
+    // The entered view: the pack on the left, its exclusive drops on the right, goals first and ringed.
+    expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'entered');
+    const entered = screen.getByTestId('entered-pack');
+    expect(entered).toHaveAttribute('data-pack', '1402');
+    expect(entered).toHaveTextContent('4층에 입장');
+    const tiles = within(screen.getByTestId('exclusive-gifts')).getAllByTestId('gift-tile');
+    expect(tiles.length).toBeGreaterThan(1);
+    expect(tiles[0]).toHaveAttribute('data-gift', '9267');
+    expect(tiles[0]).toHaveAttribute('data-wanted');
+    expect(tiles[0]).toHaveAttribute('aria-pressed', 'false');
+    expect(tiles[1]).not.toHaveAttribute('data-wanted');
+    await user.click(tiles[0]!);
+    expect(useApp.getState().run.giftStatus).toMatchObject({ 9267: 'got' });
+    expect(tiles[0]).toHaveAttribute('aria-pressed', 'true');
+    expect(tiles[0]).toHaveAttribute('data-status', 'got');
+    await user.click(tiles[0]!);
+    expect(useApp.getState().run.giftStatus[9267]).toBeUndefined();
+    // Looking ahead and back keeps the record; undoing the entry reopens the floor.
+    await user.click(within(header()).getByRole('button', { name: '다음 층' }));
+    expect(screen.getByTestId('stage-floor')).toHaveTextContent('5');
+    expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'undecided');
+    await user.click(within(header()).getByRole('button', { name: '이전 층' }));
+    expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'entered');
+    await user.click(screen.getByRole('button', { name: '화왕지절 입장 취소' }));
+    expect(useApp.getState().run).toMatchObject({ visits: {}, currentFloor: 4, stageFloor: 4 });
+    expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'undecided');
+  });
+
+  it('enters a pack by dragging its card down into the drop zone, but not by a tap or a sideways move', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
     useApp.getState().toggleWanted(9267);
-    renderRoute();
-    expect(screen.queryByTestId('ahead-packs')).toBeNull();
-    await user.click(screen.getByRole('button', { name: '런 시작' }));
-    const ahead = screen.getByTestId('ahead-packs');
-    expect(within(ahead).getAllByRole('tab')).toHaveLength(3);
-    await user.type(within(ahead).getByRole('searchbox', { name: '팩 · 기프트 검색' }), '2호선');
-    const cards = within(ahead).getAllByTestId('ahead-pack');
-    expect(cards).toHaveLength(1);
-    expect(cards[0]).toHaveAttribute('data-pack', '1109');
-    await user.click(within(cards[0]!).getByRole('button', { name: '2호선' }));
+    renderStage();
+    for (let i = 0; i < 3; i += 1) await skipFloor(user);
+    const card = screen.getByTestId('stage-pack');
+    const zone = screen.getByTestId('drop-zone');
+    vi.spyOn(zone, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 300, right: 400, bottom: 400, width: 400, height: 100, x: 0, y: 300, toJSON: () => ({}) });
+    const pointer = { pointerId: 1, button: 0, clientX: 60, clientY: 60 };
+    // A tap: down and up without moving is not a drag.
+    fireEvent.pointerDown(card, pointer);
+    fireEvent.pointerUp(window, pointer);
+    expect(useApp.getState().run.visits).toEqual({});
+    // A sideways move scrolls the row instead of starting a drag.
+    fireEvent.pointerDown(card, pointer);
+    fireEvent.pointerMove(window, { ...pointer, clientX: 160, clientY: 70 });
+    expect(screen.queryByTestId('drag-ghost')).toBeNull();
+    fireEvent.pointerUp(window, { ...pointer, clientX: 160, clientY: 70 });
+    // A small vertical move stays under the threshold; a real one shows the ghost and lights the zone.
+    fireEvent.pointerDown(card, pointer);
+    fireEvent.pointerMove(window, { ...pointer, clientY: 65 });
+    expect(screen.queryByTestId('drag-ghost')).toBeNull();
+    fireEvent.pointerMove(window, { ...pointer, clientY: 200 });
+    expect(screen.getByTestId('drag-ghost')).toHaveTextContent('화왕지절 · 놓으면 입장');
+    expect(zone).not.toHaveAttribute('data-over');
+    fireEvent.pointerMove(window, { ...pointer, clientY: 350 });
+    expect(zone).toHaveAttribute('data-over');
+    fireEvent.pointerUp(window, { ...pointer, clientY: 350 });
+    expect(useApp.getState().run).toMatchObject({ visits: { 4: 1402 }, currentFloor: 5, stageFloor: 4 });
+    expect(screen.queryByTestId('drag-ghost')).toBeNull();
+  });
+
+  it('skips a floor by dropping the empty card, and misses the unmarked goals of an entered pack on leaving it', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267);
+    renderStage(true);
+    const zone = screen.getByTestId('drop-zone');
+    vi.spyOn(zone, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 300, right: 400, bottom: 400, width: 400, height: 100, x: 0, y: 300, toJSON: () => ({}) });
+    const pointer = { pointerId: 2, button: 0, clientX: 60, clientY: 60 };
+    fireEvent.pointerDown(screen.getByTestId('skip-card'), pointer);
+    fireEvent.pointerMove(window, { ...pointer, clientY: 350 });
+    expect(screen.getByTestId('drag-ghost')).toHaveTextContent('입장하지 않음 · 놓으면 입장');
+    fireEvent.pointerUp(window, { ...pointer, clientY: 350 });
+    expect(useApp.getState().run).toMatchObject({ currentFloor: 2, stageFloor: 2, visits: {} });
+    for (let i = 0; i < 2; i += 1) await skipFloor(user);
+    await user.click(screen.getByRole('button', { name: '화왕지절 입장' }));
+    expect(screen.getByTestId('route-summary')).not.toHaveTextContent('실패');
+    // Leaving the entered floor without marking the goal counts it as missed, and the plan reports it.
+    await user.click(within(header()).getByRole('button', { name: '다음 층' }));
+    expect(useApp.getState().run.giftStatus).toMatchObject({ 9267: 'failed' });
+    expect(screen.getByTestId('route-summary')).toHaveTextContent('실패 1');
+    expect(screen.getByTestId('unresolved-row')).toHaveTextContent('수집 실패');
+    expect(screen.getByText(/^확보/).parentElement).toHaveTextContent('0/1');
+    // Back on the floor, the missed tile reads as such and a press turns it into got.
+    await user.click(within(header()).getByRole('button', { name: '이전 층' }));
+    const tile = within(screen.getByTestId('exclusive-gifts')).getAllByTestId('gift-tile')[0]!;
+    expect(tile).toHaveAttribute('data-status', 'failed');
+    await user.click(tile);
+    expect(useApp.getState().run.giftStatus).toMatchObject({ 9267: 'got' });
+    expect(screen.getByText(/^확보/).parentElement).toHaveTextContent('1/1');
+  });
+
+  it('collects the observed gift on the first move off floor 1 and shows played floors as history', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    for (const id of [9267, 9423]) useApp.getState().toggleWanted(id); // 깨진 안경 is observable and recommended
+    renderStage();
+    expect(useApp.getState().run.giftStatus).toEqual({});
+    await skipFloor(user);
+    expect(useApp.getState().run.giftStatus).toEqual({ 9423: 'got' });
+    await user.click(within(header()).getByRole('button', { name: '이전 층' }));
+    // Stepping back onto the skip right before the frontier reopens that floor.
+    expect(useApp.getState().run).toMatchObject({ currentFloor: 1, stageFloor: 1 });
+    expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'undecided');
+    await skipFloor(user);
+    await skipFloor(user);
+    await user.click(screen.getByRole('button', { name: '1층' }));
+    expect(useApp.getState().run).toMatchObject({ currentFloor: 3, stageFloor: 1 });
+    expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'skipped');
+    expect(screen.getByText(/지나간 층 · 다시 입장하면 기록이 바뀝니다/)).toBeInTheDocument();
+    expect(screen.queryByTestId('skip-card')).toBeNull();
+  });
+
+  it('finds any other pack of the floor by name and adds a gift from it as a goal', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267);
+    renderStage();
+    for (let i = 0; i < 3; i += 1) await skipFloor(user);
+    const others = screen.getByTestId('other-packs');
+    await user.type(within(others).getByRole('searchbox', { name: '이 층의 팩 검색' }), '2호선');
+    const packs = within(others).getAllByTestId('other-pack');
+    expect(packs).toHaveLength(1);
+    expect(packs[0]).toHaveAttribute('data-pack', '1109');
+    await user.click(within(packs[0]!).getByRole('button', { name: '2호선' }));
     await user.click(screen.getByRole('button', { name: '굴레 목표에 추가' }));
     expect(useApp.getState().wanted).toEqual([9267, 9754]);
-    expect(within(screen.getByTestId('ahead-packs')).getAllByTestId('ahead-pack')[0]).toHaveTextContent('원함 1');
-    // From floor 6 on, the Hard band is behind the player.
-    act(() => useApp.getState().setCurrentFloor(6));
-    expect(within(screen.getByTestId('ahead-packs')).getAllByRole('tab')).toHaveLength(2);
+    // 2호선 sits on Hard 4-5 too, so it joins the floor's route packs.
+    expect(screen.getAllByTestId('stage-pack').map((c) => c.getAttribute('data-pack'))).toContain('1109');
+    await user.click(screen.getByRole('button', { name: '닫기' }));
+    // It left the "other packs" list for the route row, and enters from there.
+    expect(within(others).queryByTestId('other-pack')).toBeNull();
+    await user.click(screen.getByRole('button', { name: '2호선 입장' }));
+    expect(useApp.getState().run.visits).toEqual({ 4: 1109 });
+  });
+
+  it('closes the run after floor 15 and offers a new one', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267);
+    renderStage();
+    for (let i = 0; i < 15; i += 1) await user.click(within(header()).getByRole('button', { name: /입장하지 않음|다음 층/ }));
+    expect(useApp.getState().run).toMatchObject({ currentFloor: 16, stageFloor: 15 });
+    expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'done');
+    expect(within(header()).queryByRole('button', { name: /입장하지 않음|다음 층/ })).toBeNull();
+    await user.click(within(screen.getByTestId('stage-done')).getByRole('button', { name: '새 런' }));
+    expect(useApp.getState().run).toEqual(emptyRun());
+  });
+});
+
+describe('Tracker', () => {
+  const tile = (id: number) => screen.getAllByTestId('gift-tile').find((el) => el.getAttribute('data-gift') === String(id))!;
+
+  it('lists the twenty-five pack-independent T4 gifts in five groups and marks them by a press', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    renderPlanned(<Tracker />);
+    for (const group of ['keyword', 'shard', 'memory', 'attack', 'plain']) expect(screen.getByTestId(`tracker-${group}`)).toBeInTheDocument();
+    expect(screen.getAllByTestId('gift-tile')).toHaveLength(25);
+    expect(screen.getByTestId('tracker-keyword')).toHaveTextContent('0/7');
+    await user.click(screen.getByRole('button', { name: '불꽃의 편린 획득 표시' }));
+    expect(useApp.getState().run.giftStatus).toEqual({ 9045: 'got' });
+    expect(tile(9045)).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('tracker-keyword')).toHaveTextContent('1/7');
+    expect(screen.queryByTestId('fusion-notice')).toBeNull();
+  });
+
+  it('reminds the player to unmark the ingredients 달의 기억 consumed, and lets them do it in place', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().setGiftStatus(9105, 'got'); // 업화 조각
+    useApp.getState().setGiftStatus(9142, 'got'); // 잘려나간 기억
+    renderPlanned(<Tracker />);
+    await user.click(tile(9083));
+    const notice = screen.getByTestId('fusion-notice');
+    expect(notice).toHaveTextContent('합성으로 소모한 조각 2개·기억 3개는 미획득으로 표시하세요.');
+    expect(within(notice).getAllByRole('listitem')).toHaveLength(3); // the heading and the two held ingredients
+    await user.click(within(notice).getByRole('button', { name: '업화 조각 미획득으로' }));
+    expect(useApp.getState().run.giftStatus).toEqual({ 9142: 'got', 9083: 'got' });
+    expect(within(notice).queryByRole('button', { name: '업화 조각 미획득으로' })).toBeNull();
+    // Unmarking 달의 기억 closes the reminder.
+    await user.click(tile(9083));
+    expect(screen.queryByTestId('fusion-notice')).toBeNull();
+    expect(useApp.getState().run.giftStatus).toEqual({ 9142: 'got' });
   });
 });

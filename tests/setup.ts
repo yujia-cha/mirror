@@ -23,6 +23,10 @@ if (typeof globalThis.PointerEvent === 'undefined') {
     }
   }
   Object.defineProperty(globalThis, 'PointerEvent', { value: PointerEventPolyfill, configurable: true, writable: true });
+  // Testing Library builds events from `window[EventType]`, which is a separate object in vitest's jsdom.
+  if (typeof window !== 'undefined' && typeof window.PointerEvent === 'undefined') {
+    Object.defineProperty(window, 'PointerEvent', { value: PointerEventPolyfill, configurable: true, writable: true });
+  }
 }
 for (const name of ['setPointerCapture', 'releasePointerCapture'] as const) {
   if (typeof Element.prototype[name] !== 'function') {
