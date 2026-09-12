@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { loadGameDataFromDisk } from '../../core/data/node.ts';
 import { buildIndexes, defaultOptions, planRoute } from '../../core/index.ts';
-import { assignLanes, segmentsFor, suggestedOrder } from '../lib/metro.ts';
+import { assignLanes, segmentsFor, stackBlocks, suggestedOrder } from '../lib/metro.ts';
 
 const data = loadGameDataFromDisk();
 const indexes = buildIndexes(data);
@@ -63,6 +63,13 @@ describe('metro segments', () => {
     ]);
     expect(metro.segments.every((s) => !s.partial)).toBe(true);
     expect(metro.freeRuns).toEqual([{ from: 1, to: 4 }]);
+  });
+
+  it('stacks a card only over the cards it overlaps, by their height', () => {
+    // A tall two-row card (250) climbs over the first; the third overlaps the tall one and so
+    // climbs above it, while the card past its end stays on the baseline.
+    const blocks: [number, number, number][] = [[0, 100, 140], [90, 200, 250], [150, 220, 140], [230, 300, 140]];
+    expect(stackBlocks(blocks, (b) => [b[0], b[1]], (b) => b[2], 8)).toEqual([0, 148, 406, 0]);
   });
 
   it('assigns lanes first-fit over any extent', () => {

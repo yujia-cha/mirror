@@ -5,12 +5,12 @@
  * planner's suggested stops marked. Each segment carries a label card with its packs (card and
  * name) and their pickups; a pack card opens the pack's gift list.
  */
-import { useRef, useState, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Eye, Star } from 'lucide-react';
 import type { ObservedGift, RoutePlan } from '../../core/types.ts';
 import { pick, t, type Lang } from '../i18n.ts';
 import { MAX_FLOOR } from '../lib/timetable.ts';
-import { assignLanes, segmentsFor, suggestedOrder, type Segment } from '../lib/metro.ts';
+import { segmentsFor, stackBlocks, suggestedOrder, type Segment } from '../lib/metro.ts';
 import { useElementWidth } from '../lib/useElementWidth.ts';
 import { DetailSurface, ObservedDetailBody, type DetailMode } from './BlockDetail.tsx';
 import { GiftIcon } from './GiftIcon.tsx';
@@ -31,6 +31,8 @@ const BANDS: [number, number][] = [
   [11, 15],
 ];
 const BAND_KEY = ['optionBandHard', 'optionBandParallel', 'optionBandExtreme'] as const;
+/** A one-row label card, until it has been measured. */
+const EST_CARD_H = 141;
 
 function bandFill(band: 0 | 1 | 2): string {
   return band === 2 ? 'url(#metro-hatch)' : band === 1 ? 'var(--color-surface-2)' : 'transparent';
@@ -168,6 +170,19 @@ export function MetroMap({ plan, ctx, keywordLabel }: MetroMapProps) {
   // ---- desktop: horizontal line ----
   const deskRef = useRef<HTMLDivElement>(null);
   const W = useElementWidth(deskRef, 1160);
+  const cardRefs = useRef(new Map<string, HTMLDivElement>());
+  const [cardHeights, setCardHeights] = useState<Record<string, number>>({});
+  useLayoutEffect(() => {
+    const next: Record<string, number> = {};
+    for (const [key, el] of cardRefs.current) {
+      const h = Math.round(el.getBoundingClientRect().height);
+      if (h > 0) next[key] = h;
+    }
+    setCardHeights((prev) => {
+      const keys = Object.keys(next);
+      return keys.length === Object.keys(prev).length && keys.every((k) => prev[k] === next[k]) ? prev : next;
+    });
+  }, [plan, W]);
   const LEFT = 60;
   const st = (W - LEFT - 20) / MAX_FLOOR;
   const x = (f: number): number => LEFT + (f - 1) * st + st / 2;
@@ -180,10 +195,20 @@ export function MetroMap({ plan, ctx, keywordLabel }: MetroMapProps) {
     if (cl + cw > W - 8) cl = W - 8 - cw;
     return { segment, cl, cw };
   });
-  const deskLanes = assignLanes(cards, (c) => [c.cl, c.cl + c.cw], 8);
-  const laneCount = Math.max(1, ...deskLanes.map((l) => l + 1));
-  const LANE_H = 150;
-  const LINE_Y = 40 + laneCount * LANE_H;
+  // Label cards stack like a skyline: a card only climbs over the cards it overlaps horizontally,
+  // by their measured height, so a two-row card in one place does not lift the whole map.
+  const heightOf = (key: string): number => cardHeights[key] ?? EST_CARD_H;
+  // Wide cards take the baseline first so a one-floor card climbs over them, not the reverse.
+  const order = cards.map((_, i) => i).sort((a, b) => cards[b]!.cw - cards[a]!.cw || cards[a]!.segment.from - cards[b]!.segment.from);
+  const stacked = stackBlocks(order.map((i) => cards[i]!), (c) => [c.cl, c.cl + c.cw], (c) => heightOf(c.segment.key), 8);
+  const offsets = cards.map(() => 0);
+  order.forEach((cardIndex, k) => {
+    offsets[cardIndex] = stacked[k]!;
+  });
+  const ranks = [...new Set(offsets)].sort((a, b) => a - b);
+  const deskLanes = offsets.map((o) => ranks.indexOf(o));
+  const skyline = Math.max(EST_CARD_H, ...cards.map((c, i) => offsets[i]! + heightOf(c.segment.key)));
+  const LINE_Y = 40 + skyline + 42;
   const H = LINE_Y + 46;
   const desktop = (
     <div className="hidden lg:block" data-testid="metro-columns">
@@ -217,7 +242,7 @@ export function MetroMap({ plan, ctx, keywordLabel }: MetroMapProps) {
             </g>
           ))}
           {cards.map(({ segment }, i) => {
-            const y = LINE_Y - 28 - deskLanes[i]! * LANE_H;
+            const y = LINE_Y - 28 - offsets[i]!;
             const x1 = x(segment.from);
             const x2 = x(segment.to);
             return (
@@ -240,10 +265,14 @@ export function MetroMap({ plan, ctx, keywordLabel }: MetroMapProps) {
           })}
         </svg>
         {cards.map(({ segment, cl, cw }, i) => {
-          const y = LINE_Y - 28 - deskLanes[i]! * LANE_H;
+          const y = LINE_Y - 28 - offsets[i]!;
           return (
             <div
               key={segment.key}
+              ref={(el) => {
+                if (el) cardRefs.current.set(segment.key, el);
+                else cardRefs.current.delete(segment.key);
+              }}
               className={`absolute flex flex-col gap-1.5 rounded-md bg-surface px-2 py-1.5 shadow-card ${segment.fixed ? 'border border-ink' : 'border-[1.5px] border-dashed border-fg-2'}`}
               style={{ left: cl, width: cw, bottom: H - y + 14 }}
               data-testid="segment"

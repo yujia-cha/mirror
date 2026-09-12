@@ -52,6 +52,22 @@ export function assignLanes<T>(items: T[], extent: (item: T) => [number, number]
   });
 }
 
+/**
+ * Skyline packing for blocks that hang above one baseline: each block goes as low as it can
+ * without touching a block already placed that it overlaps horizontally (with `gap` around it).
+ * Returns the distance from the baseline to each block's bottom edge.
+ */
+export function stackBlocks<T>(items: T[], extent: (item: T) => [number, number], height: (item: T) => number, gap = 0): number[] {
+  const placed: { start: number; end: number; top: number }[] = [];
+  return items.map((item) => {
+    const [start, end] = extent(item);
+    let offset = 0;
+    for (const p of placed) if (start <= p.end + gap && p.start <= end + gap) offset = Math.max(offset, p.top + gap);
+    placed.push({ start, end, top: offset + height(item) });
+    return offset;
+  });
+}
+
 export function segmentsFor(plan: RoutePlan): Metro {
   const groups = new Map<string, Segment>();
   for (const floor of plan.floors) {

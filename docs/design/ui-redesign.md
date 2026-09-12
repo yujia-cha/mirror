@@ -252,3 +252,18 @@
 - **시작 칸**: 타일은 가로 랩(아이콘 32 + 눈 배지 + 「지정/추천」 태그, 이름 없음 — 툴팁 「{이름} · 관측 · {사유}」). 데스크톱 84px 열에서 2열로 감긴다.
 - 문구 키(M10 추가): `priorityMust/Normal/Skip`, `priorityOf`, `prioritySetMust/Normal/Skip`, `priorityRestore`, `routeSkipped`, `routeSkippedList`, `routeAllPlanned`, `unresolvedMissing`, `routeWindowCompact`, `routePick`, `routeFixedFloor`, `routeGiftCount`, `routeDetail`, `routeMore`, `routeCandidates`, `routeClose`. 삭제: `optionFloorRange`, `optionBandNormal`, `optionDifficulty`, `optionHardSwitch`, `optionHardLocked`, `optionHardAuto`, `actionExtendFloors`, `actionSwitchHard`, `routeOutOfRange`.
 
+
+## M11 추가 규칙 (노선도 · 팩 카드 · 팩 충돌 카드)
+
+시안: https://claude.ai/code/artifact/6a034f01-67dd-4106-af5d-8d53dd439184 (v2, 1페이지 「B+E 확정안」). 시간표(M10)를 노선도(B)로, 미해결 카드를 팩 충돌 카드(E)로 바꿨다.
+
+- **세그먼트**(`src/app/lib/metro.ts` `segmentsFor`): 루트의 팩을 **창(`window`)이 같은 것끼리** 한 세그먼트로 묶는다. 창이 없는 팩은 그 층에 고정(`fixed`). 세그먼트 제목: 고정 「{k}층 고정」 / 1팩 「{a}~{b}층 중 한 층」 / n팩 「{a}~{b}층 · {n}팩 · 어느 층이든」 / 부분 겹침 「{a}~{b}층 · 추천 {order}」. **추천 층은 부분 겹침에서만** 보인다 — 창 안 어디든 되는 팩에 추천은 없다.
+- **부분 겹침**(`partial`): 같은 밴드에서 창이 교차하되 같지 않은 세그먼트끼리. 둘은 다른 레인에 그리고, 플래너가 배정한 층에 추천 점(`data-testid=suggested`), 두 창이 모두 덮는 역은 반쪽 원(`data-overlap`, 범례 「둘 중 한 팩만」). 창은 「상대 팩이 옮겨 준다」는 가정이라 2~3 vs 3~4 처럼 겹친다.
+- **데스크톱**(`metro-columns`): 가로 SVG 선, 시작 원 + 역 15개, 밴드 배경(평행중첩 회색, EXTREME 빗금). 세그먼트는 선 위의 점선(고정은 검은 블록)이고 그 위에 HTML 라벨 카드(`data-testid=segment`, `data-from/to/partial/lane`)가 절대 배치된다. 카드 너비 = 층 열 폭 × 층 수(최소 110px). 카드는 **스카이라인 적층**(`stackBlocks`): 넓은 카드부터 기준선에 놓고, 가로로 겹치는 카드만 그 카드의 **측정 높이**만큼 위로 올린다(2행 카드 하나가 지도 전체를 밀어 올리지 않는다). 첫 렌더는 141px로 추정하고 `useLayoutEffect`로 재측정.
+- **폰**(`metro-rows`): 세로 선(층 행 64px), 밴드 라벨은 세로 회전, 세그먼트는 선 옆 레인(18px)의 점선과 오른쪽 카드(높이 = 64 × 층 수 − 8). 부분 겹침은 카드 폭을 열로 나눈다. 1층 카드는 compact(팩 카드 20 + 이름 한 줄).
+- **팩 카드**(`PackCard`): 게임 테마팩 비율 8:15 세로 이미지(20/28/48/64/96px 폭) + **아래 이름**(`caption`, `break-keep` 2줄). `onOpen`이 있으면 `button`(`aria-haspopup=dialog`, `aria-label`=팩 이름). 포함 지정한 팩은 링. 이미지는 `packImageUrl`, 실패·없음은 플레이스홀더.
+- **팩 시트**(`PackSheet`, 껍데기는 `DetailSurface`): 팩 카드 96 + 이름 + 「Normal 3 · Hard 2~3」식 층 제한 + 상태 배지(「포함 · {k}층」 / 「포함 지정」 / 「루트에 없음」 / 「포기한 팩」) + 「이 팩으로」「이 팩 포기」(포기한 팩은 「되돌리기」) + 「이 팩의 기프트 n」 = 전용 기프트 전부 + 원하는 풀 기프트(전용/원함/반드시 배지, 조건 문장, 관측 적격이면 「관측」). 데스크톱은 팝오버(320px), 폰은 바텀 시트. 반드시 기프트의 유일 팩을 포기할 때 `window.confirm`.
+- **팩 충돌 카드**(`PackConflicts`): `conflictGroups`(core)의 그룹마다 「{a}~{b}층 · 자리 {slots}개에 팩 {packs}개」 + 후보 카드(`pack-conflict-card`, `data-included`): 팩 카드 64 + 이름 + 상태 배지 + 가져올 기프트 + 「이 팩으로」/「이 팩 포기」. 포함된 팩은 실선, 미포함은 점선. 그 외 미해결은 M10 행(별/포기/관측). 아래 `<details>` 「포기한 팩 n · 포기한 기프트 m」에 되돌리기. 「이 팩으로」는 `preferredPacks`(플래너가 반드시 넣음), 「이 팩 포기」는 `bannedPacks`; 둘은 배타이고 공유 링크 옵션에 실린다.
+- **시작 행**: 키워드 + 관측 타일(데스크톱은 클릭으로 지정 토글, 폰은 시트). 범례 4개: 「이 층 고정」「이 중 한 층」「추천 역 (창이 부분적으로 겹칠 때만)」「둘 중 한 팩만」.
+- **텍스트 복사**: 세그먼트 단위 — 「2~3F (어느 층이든): 마주하지 않는 · 낙화」, 「2~3F (2~3층 · 추천 2 → 3): …」, 「4F: 2호선」, 「4~15F: 자유」, 픽업 「  - 불결함 (마주하지 않는)」, 마지막에 「포기한 팩: …」「포기: …」.
+- 문구 키(M11 추가): `routeAnyFloor`, `routeSegmentOne`, `routeSegmentMany`, `routeSuggestOrder`, `routeOverlapHint`, `routeSegmentLabel`, `legendSuggest`, `legendOverlap`, `packInclude`, `packIncluded`, `packPreferred`, `packExcluded`, `packNotInRoute`, `packBan`, `packBanned`, `packRestore`, `packGifts`, `packFloors`, `packOpen`, `giftExclusive`, `giftWanted`, `routeConflicts`, `conflictHeader`, `conflictHint`, `routeOtherUnresolved`, `routeBannedList`, `packBanConfirm`, `unresolvedBanned`. 삭제: `routeWindow`, `routeWindowCompact`, `routePick`, `routeGiftCount`, `routeDetail`, `routeMore`, `routeCandidates`.
