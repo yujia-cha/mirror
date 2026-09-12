@@ -67,6 +67,8 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
   const toggleObserved = useApp((s) => s.toggleObserved);
   const priority = useApp((s) => s.priority);
   const setPriority = useApp((s) => s.setPriority);
+  const fusionGoal = useApp((s) => s.fusionGoal);
+  const setFusionGoal = useApp((s) => s.setFusionGoal);
   const setStep = useApp((s) => s.setStep);
   const observeMax = data.rules.giftObservation.max;
 
@@ -233,6 +235,18 @@ export function GiftsStep({ data, indexes, stats, lang }: Props) {
                     {giftName(id)}
                   </span>
                 ))}
+                {selected ? (
+                  <label className="ml-auto inline-flex items-center gap-1.5 text-fg" title={t('fusionGoalHint', lang)}>
+                    <input
+                      type="checkbox"
+                      checked={fusionGoal[gift.id] !== 'resultOnly'}
+                      onChange={(event) => setFusionGoal(gift.id, event.target.checked ? 'withIngredients' : 'resultOnly')}
+                      aria-label={`${pick(gift.name, lang)} ${t('fusionGoalIngredients', lang)}`}
+                      className="h-[14px] w-[14px] accent-[var(--color-ink)]"
+                    />
+                    {t('fusionGoalIngredients', lang)}
+                  </label>
+                ) : null}
               </div>
             ) : null}
           </div>

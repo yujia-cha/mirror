@@ -25,6 +25,8 @@ export interface Segment {
   partial: boolean;
   /** Row on which the segment is drawn so overlapping ones do not collide (floor-based). */
   lane: number;
+  /** A pack already entered on a played floor (run in progress). */
+  passed: boolean;
 }
 
 export interface Metro {
@@ -32,8 +34,8 @@ export interface Metro {
   /** Stations inside two or more partially overlapping windows: only one of those packs fits. */
   overlap: Set<number>;
   lanes: number;
-  /** Floors nothing is planned on, as contiguous runs. */
-  freeRuns: { from: number; to: number }[];
+  /** Floors nothing is planned on, as contiguous runs; played ones are marked. */
+  freeRuns: { from: number; to: number; passed: boolean }[];
 }
 
 const floorsOf = (s: { from: number; to: number }): number[] => Array.from({ length: s.to - s.from + 1 }, (_, i) => s.from + i);
@@ -75,7 +77,7 @@ export function segmentsFor(plan: RoutePlan): Metro {
     const from = floor.window?.from ?? floor.floor;
     const to = floor.window?.to ?? floor.floor;
     const key = `${from}-${to}`;
-    const segment = groups.get(key) ?? { key, from, to, fixed: from === to, packs: [], partial: false, lane: 0 };
+    const segment = groups.get(key) ?? { key, from, to, fixed: from === to, packs: [], partial: false, lane: 0, passed: floor.passed };
     segment.packs.push({
       packId: floor.packId,
       floor: floor.floor,
@@ -104,12 +106,12 @@ export function segmentsFor(plan: RoutePlan): Metro {
   const overlap = new Set([...counts].filter(([, n]) => n >= 2).map(([f]) => f));
 
   const covered = new Set(segments.flatMap(floorsOf));
-  const freeRuns: { from: number; to: number }[] = [];
+  const freeRuns: { from: number; to: number; passed: boolean }[] = [];
   for (const floor of plan.floors) {
     if (covered.has(floor.floor)) continue;
     const last = freeRuns[freeRuns.length - 1];
-    if (last && last.to === floor.floor - 1) last.to = floor.floor;
-    else freeRuns.push({ from: floor.floor, to: floor.floor });
+    if (last && last.to === floor.floor - 1 && last.passed === floor.passed) last.to = floor.floor;
+    else freeRuns.push({ from: floor.floor, to: floor.floor, passed: floor.passed });
   }
   return { segments, overlap, lanes: Math.max(1, ...lanes.map((l) => l + 1)), freeRuns };
 }

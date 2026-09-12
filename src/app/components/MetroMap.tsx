@@ -5,8 +5,8 @@
  * planner's suggested stops marked. Each segment carries a label card with its packs (card and
  * name) and their pickups; a pack card opens the pack's gift list.
  */
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { Eye, Star } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { Eye, MapPin, Star, X } from 'lucide-react';
 import type { ObservedGift, RoutePlan } from '../../core/types.ts';
 import { pick, t, type Lang } from '../i18n.ts';
 import { MAX_FLOOR } from '../lib/timetable.ts';
@@ -16,11 +16,22 @@ import { DetailSurface, ObservedDetailBody, type DetailMode } from './BlockDetai
 import { GiftIcon } from './GiftIcon.tsx';
 import { PackCard } from './PackCard.tsx';
 import { PackSheetBody, type PackContext } from './PackSheet.tsx';
+import { Button } from './ui.tsx';
+
+/** The run in progress as the map draws it, plus the floor pick for a pack being recorded. */
+export interface MetroRun {
+  currentFloor: number;
+  /** The pack whose entry floor is being chosen on the stations, or null. */
+  selecting: number | null;
+  onSelectFloor: (floor: number) => void;
+  onCancel: () => void;
+}
 
 export interface MetroMapProps {
   plan: RoutePlan;
   ctx: PackContext;
   keywordLabel: (id: NonNullable<RoutePlan['start']['keyword']>) => string;
+  run?: MetroRun;
 }
 
 type Open = { kind: 'pack'; packId: number; key: string; mode: DetailMode } | { kind: 'observed'; giftId: number; mode: DetailMode };
@@ -39,6 +50,7 @@ function bandFill(band: 0 | 1 | 2): string {
 }
 
 function segmentTitle(segment: Segment, lang: Lang): string {
+  if (segment.passed) return t('runVisited', lang, { floor: segment.from });
   if (segment.fixed) return t('routeFixedFloor', lang, { floor: segment.from });
   if (segment.partial) return t('routeSuggestOrder', lang, { from: segment.from, to: segment.to, order: suggestedOrder(segment).join(' → ') });
   return segment.packs.length > 1
@@ -46,13 +58,59 @@ function segmentTitle(segment: Segment, lang: Lang): string {
     : t('routeSegmentOne', lang, { from: segment.from, to: segment.to });
 }
 
-function Station({ cx, cy, r, half, floor }: { cx: number; cy: number; r: number; half: boolean; floor: number }) {
+function Station({
+  cx,
+  cy,
+  r,
+  half,
+  floor,
+  passed = false,
+  current = false,
+  selectable = false,
+  selectLabel,
+  onSelect,
+}: {
+  cx: number;
+  cy: number;
+  r: number;
+  half: boolean;
+  floor: number;
+  /** Run progress: already played, or the floor about to be entered. */
+  passed?: boolean;
+  current?: boolean;
+  /** A pack's entry floor is being chosen and this floor can take it. */
+  selectable?: boolean;
+  selectLabel?: string;
+  onSelect?: () => void;
+}) {
+  const interactive = selectable && onSelect !== undefined;
   return (
-    <g data-testid="station" data-floor={floor} data-overlap={half || undefined}>
-      <circle cx={cx} cy={cy} r={r} fill="var(--color-surface)" stroke="var(--color-fg)" strokeWidth={2} />
-      {half ? <path d={`M${cx} ${cy - r} A${r} ${r} 0 0 0 ${cx} ${cy + r} Z`} fill="var(--color-fg)" /> : null}
+    <g
+      data-testid="station"
+      data-floor={floor}
+      data-overlap={half || undefined}
+      data-passed={passed || undefined}
+      data-current={current || undefined}
+      data-selectable={selectable || undefined}
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      aria-label={interactive ? selectLabel : undefined}
+      onClick={interactive ? onSelect : undefined}
+      onKeyDown={interactive ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(); } } : undefined}
+      className={interactive ? 'cursor-pointer outline-none focus-visible:[&>circle:first-child]:stroke-[3]' : undefined}
+    >
+      {interactive ? <circle cx={cx} cy={cy} r={r + 7} fill="var(--color-ink)" fillOpacity={0.12} stroke="var(--color-ink)" strokeWidth={1.5} strokeDasharray="3 2" /> : null}
+      {current && !interactive ? <circle cx={cx} cy={cy} r={r + 4} fill="none" stroke="var(--color-fg)" strokeWidth={1.5} /> : null}
+      <circle cx={cx} cy={cy} r={r} fill={passed ? 'var(--color-fg)' : 'var(--color-surface)'} stroke="var(--color-fg)" strokeWidth={2} />
+      {half && !passed ? <path d={`M${cx} ${cy - r} A${r} ${r} 0 0 0 ${cx} ${cy + r} Z`} fill="var(--color-fg)" /> : null}
+      {passed ? <path d={`M${cx - 3.5} ${cy} l2.5 2.5 l4.5 -5`} fill="none" stroke="var(--color-surface)" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" /> : null}
     </g>
   );
+}
+
+/** The app plays floors 1-5 on Hard, 6-10 in 평행중첩 and 11-15 on EXTREME. */
+function bandMode(floor: number): 'hard' | 'parallel' | 'extreme' {
+  return floor >= 11 ? 'extreme' : floor >= 6 ? 'parallel' : 'hard';
 }
 
 function ObservedTile({ entry, ctx, onPress }: { entry: ObservedGift; ctx: PackContext; onPress?: () => void }) {
@@ -89,11 +147,42 @@ function ObservedTile({ entry, ctx, onPress }: { entry: ObservedGift; ctx: PackC
   );
 }
 
-export function MetroMap({ plan, ctx, keywordLabel }: MetroMapProps) {
+export function MetroMap({ plan, ctx, keywordLabel, run }: MetroMapProps) {
   const { lang } = ctx;
   const metro = segmentsFor(plan);
   const [open, setOpen] = useState<Open | null>(null);
   const close = (): void => setOpen(null);
+
+  // Choosing a pack's entry floor: only stations that offer the pack respond; Escape cancels.
+  const selecting = run?.selecting ?? null;
+  const selectable = (floor: number): boolean =>
+    selecting !== null && (ctx.indexes.packsByFloor[bandMode(floor)].get(floor) ?? []).includes(selecting);
+  useEffect(() => {
+    if (selecting === null || !run) return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') run.onCancel();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [selecting, run]);
+  const stationProps = (floor: number) => ({
+    passed: run !== undefined && floor < run.currentFloor,
+    current: run !== undefined && floor === run.currentFloor,
+    selectable: selectable(floor),
+    selectLabel: selecting !== null ? t('runSelectFloor', lang, { floor, pack: ctx.packName(selecting) }) : undefined,
+    onSelect: run ? () => run.onSelectFloor(floor) : undefined,
+  });
+  const selectBanner =
+    run && selecting !== null ? (
+      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface-2 px-3 py-2 text-xs" data-testid="select-banner" role="status">
+        <MapPin size={13} aria-hidden />
+        <span className="font-medium">{t('runSelecting', lang, { pack: ctx.packName(selecting) })}</span>
+        <Button size="sm" variant="ghost" className="ml-auto" onClick={run.onCancel}>
+          <X size={12} aria-hidden />
+          {t('runSelectCancel', lang)}
+        </Button>
+      </div>
+    ) : null;
   const detailFor = (key: string, mode: DetailMode): ReactNode => {
     if (!open || open.mode !== mode) return null;
     if (open.kind === 'pack' && open.key === key) {
@@ -213,7 +302,7 @@ export function MetroMap({ plan, ctx, keywordLabel }: MetroMapProps) {
   const desktop = (
     <div className="hidden lg:block" data-testid="metro-columns">
       <div ref={deskRef} className="relative w-full" style={{ height: H }}>
-        <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="absolute left-0 top-0" aria-hidden>
+        <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="absolute left-0 top-0" aria-hidden={selecting === null}>
           <defs>
             <pattern id="metro-hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(135)">
               <rect width="7" height="7" fill="var(--color-surface)" />
@@ -235,8 +324,8 @@ export function MetroMap({ plan, ctx, keywordLabel }: MetroMapProps) {
           </text>
           {Array.from({ length: MAX_FLOOR }, (_, i) => i + 1).map((f) => (
             <g key={f}>
-              <Station cx={x(f)} cy={LINE_Y} r={7} half={metro.overlap.has(f)} floor={f} />
-              <text x={x(f)} y={LINE_Y + 24} textAnchor="middle" fontSize={12} fontFamily="var(--font-mono)" fill="var(--color-fg)">
+              <Station cx={x(f)} cy={LINE_Y} r={7} half={metro.overlap.has(f)} floor={f} {...stationProps(f)} />
+              <text x={x(f)} y={LINE_Y + 24} textAnchor="middle" fontSize={12} fontFamily="var(--font-mono)" fill="var(--color-fg)" fontWeight={run && f === run.currentFloor ? 700 : undefined}>
                 {f}
               </text>
             </g>
@@ -273,12 +362,13 @@ export function MetroMap({ plan, ctx, keywordLabel }: MetroMapProps) {
                 if (el) cardRefs.current.set(segment.key, el);
                 else cardRefs.current.delete(segment.key);
               }}
-              className={`absolute flex flex-col gap-1.5 rounded-md bg-surface px-2 py-1.5 shadow-card ${segment.fixed ? 'border border-ink' : 'border-[1.5px] border-dashed border-fg-2'}`}
+              className={`absolute flex flex-col gap-1.5 rounded-md px-2 py-1.5 shadow-card ${segment.passed ? 'border border-ink bg-surface-2' : segment.fixed ? 'border border-ink bg-surface' : 'border-[1.5px] border-dashed border-fg-2 bg-surface'}`}
               style={{ left: cl, width: cw, bottom: H - y + 14 }}
               data-testid="segment"
               data-from={segment.from}
               data-to={segment.to}
               data-partial={segment.partial || undefined}
+              data-passed={segment.passed || undefined}
               data-lane={deskLanes[i]}
             >
               <div className="truncate text-xs text-fg-2">{segmentTitle(segment, lang)}</div>
@@ -307,7 +397,7 @@ export function MetroMap({ plan, ctx, keywordLabel }: MetroMapProps) {
     <div className="lg:hidden" data-testid="metro-rows">
       {startRow('sheet')}
       <div ref={phoneRef} className="relative w-full" style={{ height: PH }}>
-        <svg width={PW} height={PH} viewBox={`0 0 ${PW} ${PH}`} className="absolute left-0 top-0" aria-hidden>
+        <svg width={PW} height={PH} viewBox={`0 0 ${PW} ${PH}`} className="absolute left-0 top-0" aria-hidden={selecting === null}>
           <defs>
             <pattern id="metro-hatch-m" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(135)">
               <rect width="7" height="7" fill="var(--color-surface)" />
@@ -328,8 +418,8 @@ export function MetroMap({ plan, ctx, keywordLabel }: MetroMapProps) {
           <line x1={LX} y1={y(1) - 20} x2={LX} y2={y(MAX_FLOOR) + 20} stroke="var(--color-line-strong)" strokeWidth={4} />
           {Array.from({ length: MAX_FLOOR }, (_, i) => i + 1).map((f) => (
             <g key={f}>
-              <Station cx={LX} cy={y(f)} r={7} half={metro.overlap.has(f)} floor={f} />
-              <text x={LX - 16} y={y(f) + 4} textAnchor="end" fontSize={12} fontFamily="var(--font-mono)" fill="var(--color-fg)">
+              <Station cx={LX} cy={y(f)} r={7} half={metro.overlap.has(f)} floor={f} {...stationProps(f)} />
+              <text x={LX - 16} y={y(f) + 4} textAnchor="end" fontSize={12} fontFamily="var(--font-mono)" fill="var(--color-fg)" fontWeight={run && f === run.currentFloor ? 700 : undefined}>
                 {f}
               </text>
             </g>
@@ -364,12 +454,13 @@ export function MetroMap({ plan, ctx, keywordLabel }: MetroMapProps) {
           return (
             <div
               key={segment.key}
-              className={`absolute flex flex-col gap-1 overflow-hidden rounded-md bg-surface px-1.5 py-1 shadow-card ${segment.fixed ? 'border border-ink' : 'border-[1.5px] border-dashed border-fg-2'}`}
+              className={`absolute flex flex-col gap-1 overflow-hidden rounded-md px-1.5 py-1 shadow-card ${segment.passed ? 'border border-ink bg-surface-2' : segment.fixed ? 'border border-ink bg-surface' : 'border-[1.5px] border-dashed border-fg-2 bg-surface'}`}
               style={{ left: cl, top: y(segment.from) - SP / 2 + 4, width: cw, height: SP * span - 8 }}
               data-testid="segment"
               data-from={segment.from}
               data-to={segment.to}
               data-partial={segment.partial || undefined}
+              data-passed={segment.passed || undefined}
               data-lane={segment.lane}
             >
               <div className="truncate text-[10px] leading-3 text-fg-2">{segmentTitle(segment, lang)}</div>
@@ -399,11 +490,26 @@ export function MetroMap({ plan, ctx, keywordLabel }: MetroMapProps) {
         <span className="h-2.5 w-2.5 rounded-full border-[1.5px] border-fg" style={{ background: 'linear-gradient(90deg, var(--color-fg) 50%, var(--color-surface) 50%)' }} />
         {t('legendOverlap', lang)}
       </span>
+      {run ? (
+        <>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-fg" />
+            {t('legendPassed', lang)}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-3 w-3 rounded-full border-[1.5px] border-fg p-px">
+              <span className="block h-full w-full rounded-full border border-fg" />
+            </span>
+            {t('legendCurrent', lang)}
+          </span>
+        </>
+      ) : null}
     </div>
   );
 
   return (
     <div className="rounded-md border border-line bg-surface shadow-card">
+      {selectBanner}
       {desktop}
       {phone}
       {legend}

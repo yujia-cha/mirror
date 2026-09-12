@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Ban, ChevronLeft, Copy, Hourglass, RefreshCw, Star } from 'lucide-react';
+import { Ban, ChevronLeft, Copy, Hourglass, Play, RefreshCw, Square, Star } from 'lucide-react';
 import type { GameData, Keyword } from '../../core/schema.ts';
 import { conflictGroups, observable, planAlternatives, planRoute } from '../../core/index.ts';
 import type { DeckStats, GameIndexes } from '../../core/types.ts';
@@ -14,8 +14,10 @@ import { planInputFor, priorityOf, skippedGifts } from '../lib/plan-input.ts';
 import { Badge, Button, Card, Notice, SectionTitle, Toast } from '../components/ui.tsx';
 import { MetroMap } from '../components/MetroMap.tsx';
 import { PackConflicts } from '../components/PackConflicts.tsx';
+import { AheadPacks } from '../components/AheadPacks.tsx';
 import type { PackContext } from '../components/PackSheet.tsx';
 import { GiftIcon } from '../components/GiftIcon.tsx';
+import { APP_LAST_FLOOR } from '../store.ts';
 
 interface Props {
   data: GameData;
@@ -46,13 +48,27 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
   const banPack = useApp((s) => s.banPack);
   const restorePack = useApp((s) => s.restorePack);
   const toggleObserved = useApp((s) => s.toggleObserved);
+  const toggleWanted = useApp((s) => s.toggleWanted);
+  const fusionGoal = useApp((s) => s.fusionGoal);
+  const run = useApp((s) => s.run);
+  const startRun = useApp((s) => s.startRun);
+  const endRun = useApp((s) => s.endRun);
+  const setCurrentFloor = useApp((s) => s.setCurrentFloor);
+  const visitPack = useApp((s) => s.visitPack);
+  const unvisitPack = useApp((s) => s.unvisitPack);
+  const setGiftStatus = useApp((s) => s.setGiftStatus);
   const setStep = useApp((s) => s.setStep);
   const [copied, setCopied] = useState(false);
   const [variantIndex, setVariantIndex] = useState(0);
+  // The pack whose entry floor is being picked on the map, while a run is tracked.
+  const [selecting, setSelecting] = useState<number | null>(null);
   const tabsRef = useRef<HTMLDivElement | null>(null);
 
   // Given-up gifts stay selected but leave the plan; must-have ones are what the search keeps first.
-  const input = useMemo(() => planInputFor({ deck, deployed, wanted, priority, options }), [deck, deployed, wanted, priority, options]);
+  const input = useMemo(
+    () => planInputFor({ deck, deployed, wanted, priority, options, fusionGoal, run }),
+    [deck, deployed, wanted, priority, options, fusionGoal, run],
+  );
   const skipped = skippedGifts(wanted, priority);
   const plan = useMemo(() => (input.wanted.length === 0 ? null : planRoute(input, data, indexes)), [input, data, indexes]);
   // Alternatives only exist when packs collide, so this is free on the common path.
@@ -85,10 +101,54 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
         </select>
       </div>
       <span className="text-xs text-fg-3">{t('routeAllPlanned', lang)}</span>
+      {run.active ? (
+        <span className="flex flex-wrap items-end gap-2" data-testid="run-bar">
+          <Badge tone="sure">{t('runActive', lang)}</Badge>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-fg-3">{t('runCurrentFloor', lang)}</span>
+            <select
+              aria-label={t('runCurrentFloor', lang)}
+              value={run.currentFloor}
+              onChange={(event) => setCurrentFloor(Number(event.target.value))}
+              className="h-[30px] rounded-full border border-line bg-surface-2 px-2.5 font-mono text-xs text-fg-2"
+            >
+              {Array.from({ length: APP_LAST_FLOOR }, (_, i) => i + 1).map((floor) => (
+                <option key={floor} value={floor}>
+                  {floor}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              if (typeof window.confirm !== 'function' || window.confirm(t('runEndConfirm', lang))) {
+                setSelecting(null);
+                endRun();
+              }
+            }}
+          >
+            <Square size={12} aria-hidden />
+            {t('runEnd', lang)}
+          </Button>
+        </span>
+      ) : (
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={() => startRun([...(plan?.start.observed.map((o) => o.giftId) ?? []), ...(plan?.start.startGift ? [plan.start.startGift] : [])])}
+          disabled={!plan}
+        >
+          <Play size={12} aria-hidden />
+          {t('runStart', lang)}
+        </Button>
+      )}
       <Button variant="ghost" size="sm" onClick={resetOptions} className="ml-auto">
         <RefreshCw size={12} aria-hidden />
         {t('optionReset', lang)}
       </Button>
+      {run.active ? <span className="basis-full text-xs text-fg-3">{t('runHint', lang)}</span> : null}
     </Card>
   );
 
@@ -127,12 +187,14 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
         must: wanted.filter((id) => priorityOf(priority, id) === 'must'),
         skipped,
         bannedPacks: options.bannedPacks,
+        ...(run.active ? { run: { currentFloor: run.currentFloor, visits: run.visits } } : {}),
       }),
     );
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
   };
 
+  const failedCount = run.active ? wanted.filter((id) => run.giftStatus[id] === 'failed').length : 0;
   const summary = (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
       {(
@@ -147,6 +209,7 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
         </span>
       ))}
       {skipped.length > 0 ? <span className="text-xs text-fg-3">{t('routeSkipped', lang, { n: skipped.length })}</span> : null}
+      {failedCount > 0 ? <Badge tone="alert">{t('runFailedCount', lang, { n: failedCount })}</Badge> : null}
       {capped ? <Badge tone="approx">{t('routeApprox', lang)}</Badge> : null}
       <Button variant="ghost" size="sm" className="ml-auto" onClick={copy} ariaLabel={t('routeCopy', lang)}>
         <Copy size={13} aria-hidden />
@@ -272,8 +335,34 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
     onBan: variant ? undefined : banPack,
     onRestore: variant ? undefined : restorePack,
     onToggleObserved: variant ? undefined : (giftId) => toggleObserved(giftId, data.rules.giftObservation.max),
+    onToggleWanted: variant ? undefined : (giftId) => toggleWanted(giftId),
+    run:
+      run.active && !variant
+        ? {
+            currentFloor: run.currentFloor,
+            visitedAt: (packId) => {
+              const entry = Object.entries(run.visits).find(([, id]) => id === packId);
+              return entry ? Number(entry[0]) : null;
+            },
+            giftStatus: (giftId) => run.giftStatus[giftId] ?? null,
+            onVisit: (packId) => setSelecting(packId),
+            onUnvisit: unvisitPack,
+            onGiftStatus: setGiftStatus,
+          }
+        : undefined,
     lang,
   };
+  const metroRun = run.active
+    ? {
+        currentFloor: run.currentFloor,
+        selecting,
+        onSelectFloor: (floor: number) => {
+          if (selecting !== null) visitPack(selecting, floor);
+          setSelecting(null);
+        },
+        onCancel: () => setSelecting(null),
+      }
+    : undefined;
 
   const unresolved = (
     <PackConflicts
@@ -313,9 +402,14 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
       {variantTabs ? <div className="order-2 lg:order-none">{variantTabs}</div> : null}
       {cappedBanner ? <div className="order-2 lg:order-none">{cappedBanner}</div> : null}
       <div className="order-6 lg:order-none">
-        <MetroMap plan={shown} ctx={packCtx} keywordLabel={(id) => keywordName(id, data.enums, lang)} />
+        <MetroMap plan={shown} ctx={packCtx} keywordLabel={(id) => keywordName(id, data.enums, lang)} run={metroRun} />
       </div>
       <div className="order-2 lg:order-none">{unresolved}</div>
+      {run.active && !variant ? (
+        <div className="order-6 lg:order-none">
+          <AheadPacks ctx={packCtx} currentFloor={run.currentFloor} />
+        </div>
+      ) : null}
       <div className="order-7 grid grid-cols-1 gap-3 pb-4 lg:order-none lg:grid-cols-2">
         {conditions}
         {notes}

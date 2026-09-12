@@ -55,10 +55,13 @@ export function PackConflicts({ groups, others, skippedGifts, ctx, priorityOf, s
       {icon}
     </button>
   );
-  const detailText = (entry: Unresolved): string =>
-    entry.reason === 'fusion-ingredient-unresolved' && entry.missing && entry.missing.length > 0
-      ? t('unresolvedMissing', lang, { names: entry.missing.map(ctx.giftName).join(', ') })
-      : pick(entry.detail, lang);
+  const detailText = (entry: Unresolved): string => {
+    if (entry.reason !== 'fusion-ingredient-unresolved' || !entry.missing || entry.missing.length === 0) return pick(entry.detail, lang);
+    const missing = t('unresolvedMissing', lang, { names: entry.missing.map(ctx.giftName).join(', ') });
+    return entry.droppedIngredients && entry.droppedIngredients.length > 0
+      ? `${missing} ${t('unresolvedDropped', lang, { names: entry.droppedIngredients.map(ctx.giftName).join(', ') })}`
+      : missing;
+  };
 
   const packSheet = (packId: number): ReactNode =>
     openPack === packId ? (
