@@ -5,9 +5,11 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { Star } from 'lucide-react';
-import { t } from '../i18n.ts';
 import { useApp } from '../store.ts';
 import { enterablePacks, packsOfferedOn } from '../lib/stage.ts';
+import { pick, t } from '../i18n.ts';
+import { DetailSurface } from '../components/BlockDetail.tsx';
+import { PackSheetBody } from '../components/PackSheet.tsx';
 import { Button, Card, Notice } from '../components/ui.tsx';
 import { usePlan } from '../shell/PlanContext.tsx';
 import { OtherEntryCard, OtherPacks, StagePackCard } from './EnterablePacks.tsx';
@@ -28,6 +30,8 @@ export function RunStage({ onOpenGifts }: { onOpenGifts: () => void }) {
 
   // When the entry on the stage floor is taken back, the area stays a moment to fold away.
   const [closing, setClosing] = useState<number | null>(null);
+  // The pack sheet opened from a card's title; rendered here so no pulled card's transform contains it.
+  const [detail, setDetail] = useState<number | null>(null);
   const previous = useRef<{ floor: number; entered: number | undefined }>({ floor, entered });
   useEffect(() => {
     const before = previous.current;
@@ -71,11 +75,16 @@ export function RunStage({ onOpenGifts }: { onOpenGifts: () => void }) {
         <div className="flex flex-wrap items-start gap-2.5 pb-3" data-testid="stage-packs">
           {routePacks.map(({ packId, recommended }) => {
             const pack = indexes.packById.get(packId);
-            return pack ? <StagePackCard key={packId} pack={pack} recommended={recommended} ctx={ctx} exclusivesOf={exclusivesOf} onEnter={enter} /> : null;
+            return pack ? <StagePackCard key={packId} pack={pack} recommended={recommended} ctx={ctx} exclusivesOf={exclusivesOf} onEnter={enter} onOpen={setDetail} /> : null;
           })}
           {stageMode === 'undecided' ? <OtherEntryCard onSkip={next} lang={lang} /> : null}
         </div>
         <OtherPacks offered={offered} exclude={new Set(routePacks.map((p) => p.packId))} ctx={ctx} exclusivesOf={exclusivesOf} onEnter={enter} />
+        {detail !== null ? (
+          <DetailSurface mode="sheet" label={pick(indexes.packById.get(detail)?.name, lang)} closeLabel={t('routeClose', lang)} onClose={() => setDetail(null)}>
+            <PackSheetBody packId={detail} ctx={ctx} />
+          </DetailSurface>
+        ) : null}
       </div>
     );
   }

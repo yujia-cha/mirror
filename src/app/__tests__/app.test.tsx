@@ -955,12 +955,14 @@ describe('RunStage', () => {
     fireEvent.pointerDown(card, pointer);
     fireEvent.pointerUp(window, pointer);
     expect(useApp.getState().run.visits).toEqual({});
-    // A press that starts on the card's own button never becomes a pull, so the click reaches the button.
-    fireEvent.pointerDown(within(card).getByRole('button', { name: '화왕지절 입장' }), pointer);
-    fireEvent.pointerMove(window, { ...pointer, clientY: 300 });
-    expect(card).not.toHaveAttribute('data-pulling');
-    fireEvent.pointerUp(window, { ...pointer, clientY: 300 });
+    // A press on the card's title (a button) that does not move is a click: the sheet opens, nothing enters.
+    const title = within(card).getByRole('button', { name: '화왕지절 자세히' });
+    fireEvent.pointerDown(title, pointer);
+    fireEvent.pointerUp(window, pointer);
+    await user.click(title);
+    expect(screen.getByTestId('block-sheet')).toBeInTheDocument();
     expect(useApp.getState().run.visits).toEqual({});
+    await user.click(screen.getByRole('button', { name: '닫기' }));
     // A sideways move scrolls instead of starting a pull.
     fireEvent.pointerDown(card, pointer);
     fireEvent.pointerMove(window, { ...pointer, clientX: 160, clientY: 210 });
@@ -977,7 +979,7 @@ describe('RunStage', () => {
     expect(within(card).getByRole('button', { name: '화왕지절 입장' })).toHaveTextContent('입장');
     fireEvent.pointerUp(window, { ...pointer, clientY: 240 });
     expect(useApp.getState().run.visits).toEqual({});
-    expect(card.style.transform).toBe('translateY(0px)');
+    expect(card.style.transform).toBe(''); // at rest the card carries no transform (a fixed sheet inside must stay fixed)
     fireEvent.pointerDown(card, pointer);
     fireEvent.pointerMove(window, { ...pointer, clientY: 290 });
     expect(card).toHaveAttribute('data-past', 'down');
@@ -989,6 +991,14 @@ describe('RunStage', () => {
     fireEvent.pointerMove(window, { ...pointer, clientY: 290 });
     fireEvent.pointerUp(window, { ...pointer, clientY: 290 });
     expect(useApp.getState().run).toMatchObject({ visits: { 4: 1402 }, currentFloor: 5, stageFloor: 4 });
+    // A pull may start on a handle button and end over it (the area moves with the pointer): the
+    // click the browser fires afterwards is swallowed, so the floor advances once, not twice.
+    const nextHandle = screen.getByTestId('area-next');
+    fireEvent.pointerDown(nextHandle, pointer);
+    fireEvent.pointerMove(window, { ...pointer, clientY: 290 });
+    fireEvent.pointerUp(window, { ...pointer, clientY: 290 });
+    fireEvent.click(nextHandle);
+    expect(useApp.getState().run).toMatchObject({ currentFloor: 5, stageFloor: 5 });
   });
 
   it('passes a floor by pulling the dashed card, and the pack area moves on down and goes back up', async () => {

@@ -2,11 +2,14 @@
  * Pull a card or panel vertically to commit an action: down to enter a pack or move on, up to go
  * back. Built on pointer events without a library: listeners go on `window` so the gesture
  * survives leaving the element, and only a mostly-vertical move past `start` begins a pull, so a
- * tap stays a click and a sideways swipe still scrolls the card row. A press that starts on a
- * control inside the element (a button, a link, an input) is never a pull: the click must reach
- * it. Releasing past `threshold` commits; short of it the element springs back (the CSS
- * transition is the caller's, applied while `pulling` is false). A direction the caller does not
- * allow moves with resistance and never commits.
+ * tap stays a click and a sideways swipe still scrolls the card row. A pull may start on a button
+ * (the handles and the card's foot are buttons, and a tap on them still clicks), but never on a
+ * link, an input or a `<details>` summary. The pointer is not captured, so a plain click reaches
+ * its button; the click a browser fires after a committed pull is swallowed once, since the
+ * element moves with the pointer and would otherwise act twice. Releasing past `threshold`
+ * commits; short of it the element springs back (the CSS transition is the caller's, applied
+ * while `pulling` is false). A direction the caller does not allow moves with resistance and
+ * never commits.
  */
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 
@@ -25,7 +28,20 @@ export interface PullHandlers {
   onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
 }
 
-const CONTROLS = 'button, a, input, select, textarea, summary, [role="button"]';
+const NEVER_PULL = 'a, input, select, textarea, summary';
+
+/** Swallow the click the browser fires right after a committed pull (same target under a moved pointer). */
+function swallowNextClick(): void {
+  const onClick = (event: MouseEvent): void => {
+    event.stopPropagation();
+    event.preventDefault();
+    window.removeEventListener('click', onClick, true);
+    window.clearTimeout(timer);
+  };
+  // The browser dispatches that click in the same task as the pointerup, so the guard need not outlive it.
+  const timer = window.setTimeout(() => window.removeEventListener('click', onClick, true), 0);
+  window.addEventListener('click', onClick, true);
+}
 
 export function usePullGesture({
   onCommit,
@@ -41,23 +57,15 @@ export function usePullGesture({
   resistance?: number;
 }): PullState & { handlers: PullHandlers } {
   const [state, setState] = useState<PullState>({ offset: 0, pulling: false, past: null });
-  const pending = useRef<{ pointerId: number; x: number; y: number; element: HTMLElement; dragging: boolean; past: PullDirection | null } | null>(null);
+  const pending = useRef<{ pointerId: number; x: number; y: number; dragging: boolean; past: PullDirection | null } | null>(null);
   const commitRef = useRef(onCommit);
   commitRef.current = onCommit;
   const directionsRef = useRef(directions);
   directionsRef.current = directions;
 
   const finish = useCallback((): void => {
-    const current = pending.current;
     pending.current = null;
     setState({ offset: 0, pulling: false, past: null });
-    if (current && typeof current.element.releasePointerCapture === 'function') {
-      try {
-        current.element.releasePointerCapture(current.pointerId);
-      } catch {
-        // Capture may already be gone; nothing to release.
-      }
-    }
   }, []);
 
   useEffect(() => {
@@ -82,7 +90,10 @@ export function usePullGesture({
       if (!current || event.pointerId !== current.pointerId) return;
       const past = current.dragging ? current.past : null;
       finish();
-      if (past) commitRef.current(past);
+      if (past) {
+        swallowNextClick();
+        commitRef.current(past);
+      }
     };
     const onCancel = (event: PointerEvent): void => {
       if (pending.current && event.pointerId === pending.current.pointerId) finish();
@@ -100,16 +111,8 @@ export function usePullGesture({
   const handlers: PullHandlers = {
     onPointerDown: (event) => {
       if (event.button !== 0 || pending.current) return;
-      if (event.target instanceof Element && event.target.closest(CONTROLS)) return;
-      const element = event.currentTarget;
-      pending.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, element, dragging: false, past: null };
-      if (typeof element.setPointerCapture === 'function') {
-        try {
-          element.setPointerCapture(event.pointerId);
-        } catch {
-          // Some engines refuse capture for synthetic pointers; the window listeners still work.
-        }
-      }
+      if (event.target instanceof Element && event.target.closest(NEVER_PULL)) return;
+      pending.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, dragging: false, past: null };
     },
   };
 
@@ -118,6 +121,9 @@ export function usePullGesture({
 
 /** The transform a pulled element carries, springing back when the pointer lets go short of the threshold. */
 export function pullStyle(state: PullState): CSSProperties {
+  // No transform at rest: a transformed ancestor would turn a fixed-position sheet inside into an
+  // absolutely positioned one.
+  if (!state.pulling && state.offset === 0) return { touchAction: 'pan-x', transition: 'transform 180ms ease-out' };
   return {
     touchAction: 'pan-x',
     transform: `translateY(${state.offset}px)`,

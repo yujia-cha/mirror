@@ -26,15 +26,17 @@ export function StagePackCard({
   ctx,
   exclusivesOf,
   onEnter,
+  onOpen,
 }: {
   pack: ThemePack;
   recommended: boolean;
   ctx: PackContext;
   exclusivesOf: (packId: number) => number[];
   onEnter: (packId: number) => void;
+  /** Open the pack's sheet; it is rendered by the caller, outside the card the pull transforms. */
+  onOpen: (packId: number) => void;
 }) {
   const { lang } = ctx;
-  const [open, setOpen] = useState(false);
   const pull = usePullGesture({ directions: ['down'], onCommit: () => onEnter(pack.id) });
   const exclusives = exclusivesOf(pack.id);
   const shown = exclusives.slice(0, MAX_ICONS);
@@ -53,7 +55,7 @@ export function StagePackCard({
     >
       <div className="flex h-5 items-center">{recommended ? <Badge tone="sure">{t('stageRecommended', lang)}</Badge> : <PackStateBadge packId={pack.id} ctx={ctx} />}</div>
       <PackCard pack={pack} size={96} lang={lang} />
-      <button type="button" onClick={() => setOpen(true)} aria-haspopup="dialog" aria-label={t('stagePackDetail', lang, { name })} className="line-clamp-2 w-full break-keep text-center text-xs font-medium leading-tight text-fg underline-offset-2 hover:underline">
+      <button type="button" onClick={() => onOpen(pack.id)} aria-haspopup="dialog" aria-label={t('stagePackDetail', lang, { name })} className="line-clamp-2 w-full break-keep text-center text-xs font-medium leading-tight text-fg underline-offset-2 hover:underline">
         {name}
       </button>
       <div className="flex min-h-5 flex-wrap justify-center gap-[3px]" data-testid="stage-pack-gifts">
@@ -78,11 +80,6 @@ export function StagePackCard({
         {pull.past ? t('stageReleaseEnter', lang) : t('stageEnter', lang)}
         <ChevronsDown size={14} aria-hidden />
       </button>
-      {open ? (
-        <DetailSurface mode="sheet" label={name} closeLabel={t('routeClose', lang)} onClose={() => setOpen(false)}>
-          <PackSheetBody packId={pack.id} ctx={ctx} />
-        </DetailSurface>
-      ) : null}
     </div>
   );
 }
