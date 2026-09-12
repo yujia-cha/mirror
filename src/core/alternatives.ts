@@ -7,9 +7,8 @@
  */
 import type { GameData } from './schema.ts';
 import type { GameIndexes, PlanInput, RoutePlan } from './types.ts';
-import { analyseDeck } from './deck.ts';
+import { wantedRoots } from './conflicts.ts';
 import { planRoute } from './index.ts';
-import { expandRequirements } from './requirements.ts';
 import { modeForFloor } from './search.ts';
 
 export interface RouteVariant {
@@ -43,16 +42,7 @@ export function planAlternatives(
   const options = base.floors.length > 0 ? { ...input.options, lastFloor: base.floors[base.floors.length - 1]!.floor } : input.options;
 
   // A fusion ingredient that lost its floor drops the wanted result it feeds, not itself.
-  const stats = analyseDeck(input.deck, indexes, data.rules.deployment, options.deployed);
-  const requirements = expandRequirements(input.wanted, indexes, stats, data.rules.fusion.maxShopSlots).requirements;
-  const roots = (giftId: number, seen = new Set<number>()): number[] => {
-    if (wantedIds.has(giftId)) return [giftId];
-    if (seen.has(giftId)) return [];
-    seen.add(giftId);
-    return requirements
-      .filter((r) => r.giftId === giftId && r.neededFor !== null)
-      .flatMap((r) => roots(r.neededFor!, seen));
-  };
+  const roots = wantedRoots({ ...input, options }, data, indexes);
 
   // Floors a conflicting gift's pack could have taken, honouring pins and bans.
   const banned = new Set(options.bannedPacks);

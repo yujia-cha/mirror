@@ -38,6 +38,11 @@ export interface PlanOptions {
   pinnedPacks: Record<number, number>;
   /** Packs to keep out of the plan. */
   bannedPacks: number[];
+  /**
+   * Packs the plan must include somewhere the pack is offered; the floor is left to the planner
+   * so the pack keeps its window. A pack that is also banned is dropped with a warning.
+   */
+  preferredPacks: number[];
 }
 
 export interface PlanInput {
@@ -146,7 +151,9 @@ export type UnresolvedReason =
   | 'hard-only'
   /** Only a random hidden-battle reward; no route can guarantee it. */
   | 'chance-only'
-  | 'observation-budget';
+  | 'observation-budget'
+  /** Every pack that supplies it is one the user gave up. */
+  | 'pack-banned';
 
 export interface Unresolved {
   giftId: number;
@@ -167,12 +174,15 @@ export type WarningCode =
   | 'identity-keywords-unknown'
   | 'gift-observation-unverified'
   /** Pinned observations that were dropped: unknown, not observable, or over the limit. */
-  | 'observation-trimmed';
+  | 'observation-trimmed'
+  /** A pinned, banned or preferred pack that could not be honoured: unknown, not offered there, contradictory, or no floor left. */
+  | 'pack-option-dropped';
 
 export interface PlanWarning {
   code: WarningCode;
   detail: { ko: string; en: string };
   giftIds?: number[];
+  packIds?: number[];
 }
 
 export interface ObservedGift {
