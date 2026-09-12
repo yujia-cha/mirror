@@ -8,7 +8,8 @@
  * Flags: --deck, --want, --floors, --difficulty normal|hard, --hard-from N,
  *        --must gift,gift (these are required; the rest are best-effort),
  *        --observe gift,gift (pin these for 기프트 관측), --no-observe (planner may not observe),
- *        --pin floor:pack,…, --ban pack,…, --alternatives, --json, --explain, --trace
+ *        --pin floor:pack,…, --ban pack,…, --prefer pack,… (must be included somewhere),
+ *        --alternatives, --json, --explain, --trace
  */
 // lz-string ships CommonJS, so under Node's ESM loader it only has a default export.
 import lzString from 'lz-string';
@@ -88,6 +89,7 @@ const input: PlanInput = share
         observedGifts: numbers(flagValue('--observe')),
         pinnedPacks: parsePins(flagValue('--pin')),
         bannedPacks: numbers(flagValue('--ban')),
+        preferredPacks: numbers(flagValue('--prefer')),
       },
     };
 

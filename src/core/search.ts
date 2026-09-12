@@ -31,12 +31,16 @@ export interface SearchResult {
   /** giftId -> the floor that supplies it. */
   supplier: Map<number, number>;
   unresolvedGiftIds: number[];
+  /** Preferred packs the search found no floor for. */
+  unplacedPacks: number[];
   nodes: number;
   capped: boolean;
 }
 
+/** A gift to supply, or a preferred pack to place somewhere (`giftId` null). */
 interface Candidate {
-  giftId: number;
+  giftId: number | null;
+  packId: number | null;
   required: boolean;
   slots: Slot[];
 }
@@ -70,6 +74,22 @@ export function assignPacks(input: SearchInput): SearchResult {
   // Slots per requirement, skipping gifts that need no routing at all.
   const candidates: Candidate[] = [];
   const unresolvedGiftIds: number[] = [];
+  const unplacedPacks: number[] = [];
+
+  // A preferred pack is a requirement of its own: some floor that offers it, no gift attached.
+  for (const packId of options.preferredPacks ?? []) {
+    if (banned.has(packId)) continue;
+    const slots: Slot[] = [];
+    for (const floor of floors) {
+      const mode = modeForFloor(floor, options);
+      if (!(indexes.packsByFloor[mode].get(floor) ?? []).includes(packId)) continue;
+      const pinnedHere = pinned.get(floor);
+      if (pinnedHere !== undefined && pinnedHere !== packId) continue;
+      slots.push({ floor, mode, packId });
+    }
+    if (slots.length === 0) unplacedPacks.push(packId);
+    else candidates.push({ giftId: null, packId, required: true, slots });
+  }
 
   for (const requirement of requirements) {
     if (requirement.via !== 'route') continue;
@@ -90,13 +110,14 @@ export function assignPacks(input: SearchInput): SearchResult {
       unresolvedGiftIds.push(requirement.giftId);
       continue;
     }
-    candidates.push({ giftId: requirement.giftId, required: requirement.required, slots });
+    candidates.push({ giftId: requirement.giftId, packId: null, required: requirement.required, slots });
   }
 
   // Most constrained first: fewest slots, required before optional, then id for determinism.
+  const order = (c: Candidate): number => c.giftId ?? c.packId ?? 0;
   candidates.sort(
     (a, b) =>
-      Number(b.required) - Number(a.required) || a.slots.length - b.slots.length || a.giftId - b.giftId,
+      Number(b.required) - Number(a.required) || a.slots.length - b.slots.length || order(a) - order(b),
   );
 
   const best = {
@@ -107,6 +128,7 @@ export function assignPacks(input: SearchInput): SearchResult {
     assignment: new Map<number, number>(),
     supplier: new Map<number, number>(),
     missed: [] as number[],
+    missedPacks: [] as number[],
   };
 
   let nodes = 0;
@@ -116,6 +138,7 @@ export function assignPacks(input: SearchInput): SearchResult {
   const usedPacks = new Set<number>(pinned.values());
   const supplier = new Map<number, number>();
   const missed: number[] = [];
+  const missedPacks: number[] = [];
 
   // Counters kept in step with the DFS stack: recomputing them per node was the hot spot.
   let missedRequired = 0;
@@ -147,6 +170,7 @@ export function assignPacks(input: SearchInput): SearchResult {
     best.assignment = new Map(assignment);
     best.supplier = new Map(supplier);
     best.missed = [...missed];
+    best.missedPacks = [...missedPacks];
   };
 
   const dfs = (index: number): void => {
@@ -193,9 +217,9 @@ export function assignPacks(input: SearchInput): SearchResult {
         usedPacks.add(slot.packId);
         floorSum += slot.floor;
       }
-      supplier.set(candidate.giftId, slot.floor);
+      if (candidate.giftId !== null) supplier.set(candidate.giftId, slot.floor);
       dfs(index + 1);
-      supplier.delete(candidate.giftId);
+      if (candidate.giftId !== null) supplier.delete(candidate.giftId);
       if (openedFloor) {
         assignment.delete(slot.floor);
         usedPacks.delete(slot.packId);
@@ -205,13 +229,15 @@ export function assignPacks(input: SearchInput): SearchResult {
     }
 
     // Giving up on this gift is also a branch: two exclusives can be mutually exclusive.
-    missed.push(candidate.giftId);
+    if (candidate.giftId !== null) missed.push(candidate.giftId);
+    else missedPacks.push(candidate.packId!);
     if (candidate.required) missedRequired += 1;
     else missedOptional += 1;
     dfs(index + 1);
     if (candidate.required) missedRequired -= 1;
     else missedOptional -= 1;
-    missed.pop();
+    if (candidate.giftId !== null) missed.pop();
+    else missedPacks.pop();
   };
 
   dfs(0);
@@ -220,6 +246,7 @@ export function assignPacks(input: SearchInput): SearchResult {
     assignment: best.assignment,
     supplier: best.supplier,
     unresolvedGiftIds: [...unresolvedGiftIds, ...best.missed].sort((a, b) => a - b),
+    unplacedPacks: [...unplacedPacks, ...best.missedPacks].sort((a, b) => a - b),
     nodes,
     capped,
   };

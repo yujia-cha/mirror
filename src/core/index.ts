@@ -24,6 +24,8 @@ import { chooseStart, observable } from './starting.ts';
 
 export { planAlternatives } from './alternatives.ts';
 export type { RouteVariant, AlternativeOptions } from './alternatives.ts';
+export { conflictGroups, wantedRoots } from './conflicts.ts';
+export type { ConflictGroup, ConflictCandidate } from './conflicts.ts';
 export { buildIndexes } from './data/indexes.ts';
 export { analyseDeck, dominantKeyword, evaluateConditions } from './deck.ts';
 export { expandRequirements, scarcity } from './requirements.ts';
@@ -42,6 +44,7 @@ export function defaultOptions(): PlanOptions {
     assumeUnvisitedPacks: false,
     pinnedPacks: {},
     bannedPacks: [],
+    preferredPacks: [],
   };
 }
 
@@ -85,6 +88,37 @@ function normaliseOptions(
     const deployed = [...new Set(next.deployed)].filter((id) => inDeck.has(id)).slice(0, data.rules.deployment.max);
     next = { ...next, deployed };
   }
+
+  // Pack choices: known packs only, no contradiction between a ban and a preference, and a pin
+  // only on a floor that actually offers the pack in that floor's mode.
+  const known = (id: unknown): id is number => typeof id === 'number' && indexes.packById.has(id);
+  const bannedPacks = [...new Set((next.bannedPacks ?? []).filter(known))];
+  const bannedSet = new Set(bannedPacks);
+  const preferredPacks = [...new Set((next.preferredPacks ?? []).filter(known))].filter((id) => !bannedSet.has(id));
+  const pinnedPacks: Record<number, number> = {};
+  const dropped: number[] = [];
+  for (const [floorText, packId] of Object.entries(next.pinnedPacks ?? {})) {
+    const floor = Number(floorText);
+    const offered = Number.isInteger(floor) && floor >= 1 && floor <= lastFloor
+      ? (indexes.packsByFloor[modeForFloor(floor, { ...next, lastFloor })].get(floor) ?? [])
+      : [];
+    if (known(packId) && offered.includes(packId) && !bannedSet.has(packId)) pinnedPacks[floor] = packId;
+    else if (typeof packId === 'number') dropped.push(packId);
+  }
+  const preferredDropped = (next.preferredPacks ?? []).filter((id) => !preferredPacks.includes(id));
+  const bannedDropped = (next.bannedPacks ?? []).filter((id) => !bannedPacks.includes(id));
+  const droppedAll = [...new Set([...dropped, ...preferredDropped, ...bannedDropped])];
+  if (droppedAll.length > 0) {
+    warnings.push({
+      code: 'pack-option-dropped',
+      packIds: droppedAll,
+      detail: {
+        ko: '알 수 없거나 그 층에 나오지 않거나 서로 모순되는 팩 지정은 제외했습니다.',
+        en: 'Pack choices that are unknown, not offered on that floor, or contradictory were dropped.',
+      },
+    });
+  }
+  next = { ...next, bannedPacks, preferredPacks, pinnedPacks };
 
   if (next.lastFloor > 5 && data.rules.difficulty.parallelRequiresAllHard && next.hardFromFloor !== 1) {
     next = { ...next, hardFromFloor: 1 };
@@ -311,7 +345,7 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
   // c) flexibility: free a forced pack whose only job is one observable gift
   while (observed.length < budget) {
     const forced = [...search.assignment.entries()]
-      .filter(([floor]) => options.pinnedPacks[floor] === undefined)
+      .filter(([floor, packId]) => options.pinnedPacks[floor] === undefined && !options.preferredPacks.includes(packId))
       .map(([floor, packId]) => {
         const pickups = requirements.filter((r) => r.via === 'route' && search.supplier.get(r.giftId) === floor);
         return { floor, packId, pickups };
@@ -340,26 +374,41 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
   const startObserved = [...observed].sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.giftId - b.giftId);
   const startStarlight = observed.length === 0 ? 0 : (data.rules.giftObservation.costTable[observed.length - 1] ?? 0);
 
+  const bannedPacks = new Set(options.bannedPacks);
   for (const giftId of search.unresolvedGiftIds) {
     const gift = indexes.giftById.get(giftId);
     const packs = indexes.packsByGift.get(giftId) ?? [];
-    const anySlot = packs.some((packId) =>
-      floors.some((floor) =>
-        (indexes.packsByFloor[modeForFloor(floor, options)].get(floor) ?? []).includes(packId),
-      ),
-    );
+    const offeredSomewhere = (packId: number): boolean =>
+      floors.some((floor) => (indexes.packsByFloor[modeForFloor(floor, options)].get(floor) ?? []).includes(packId));
+    const anySlot = packs.some((packId) => !bannedPacks.has(packId) && offeredSomewhere(packId));
+    const onlyBanned = !anySlot && packs.length > 0 && packs.some(offeredSomewhere);
     unresolved.push({
       giftId,
-      reason: anySlot ? 'pack-conflict' : 'no-pack-in-range',
+      reason: anySlot ? 'pack-conflict' : onlyBanned ? 'pack-banned' : 'no-pack-in-range',
       detail: anySlot
         ? {
             ko: '다른 전용 기프트와 층이 겹쳐 한 런에 같이 넣을 수 없습니다.',
             en: 'Its pack competes for the same floor as another wanted exclusive.',
           }
-        : {
-            ko: `${gift?.name.ko ?? giftId}를 주는 팩이 계획한 층 범위에 없습니다.`,
-            en: 'No pack that supplies it appears within the planned floors.',
-          },
+        : onlyBanned
+          ? {
+              ko: '이 기프트를 주는 팩을 모두 포기했습니다.',
+              en: 'Every pack that supplies it has been given up.',
+            }
+          : {
+              ko: `${gift?.name.ko ?? giftId}를 주는 팩이 계획한 층 범위에 없습니다.`,
+              en: 'No pack that supplies it appears within the planned floors.',
+            },
+    });
+  }
+  if (search.unplacedPacks.length > 0) {
+    warnings.push({
+      code: 'pack-option-dropped',
+      packIds: search.unplacedPacks,
+      detail: {
+        ko: '포함하기로 한 팩 중 남은 층에 넣을 수 없는 것이 있습니다.',
+        en: 'Some packs you chose to include have no floor left in the plan.',
+      },
     });
   }
 
@@ -406,7 +455,7 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
     const alternatives =
       pickups.length > 0
         ? (indexes.packsByFloor[mode].get(floor) ?? [])
-            .filter((candidate) => candidate !== packId)
+            .filter((candidate) => candidate !== packId && !bannedPacks.has(candidate))
             .filter((candidate) => {
               const pack = indexes.packById.get(candidate);
               return pack ? pickups.every((p) => pack.giftPool.includes(p.giftId)) : false;

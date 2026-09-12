@@ -36,6 +36,10 @@ interface AppState extends SharedState {
   toggleObserved: (giftId: number, max: number) => void;
   /** 반드시 / 보통 / 포기 for a wanted gift. */
   setPriority: (giftId: number, priority: Priority) => void;
+  /** Pack-level choices: include somewhere (the planner picks the floor), give up, or neither. */
+  preferPack: (packId: number) => void;
+  banPack: (packId: number) => void;
+  restorePack: (packId: number) => void;
   setOptions: (patch: Partial<PlanOptions>) => void;
   resetOptions: () => void;
   setStep: (step: Step) => void;
@@ -79,6 +83,17 @@ export function sanitizeOptions(raw: unknown): PlanOptions {
   if ('deployed' in source) out.deployed = source.deployed;
   const observed = Array.isArray(out.observedGifts) ? out.observedGifts : [];
   out.observedGifts = [...new Set(observed.filter((n): n is number => typeof n === 'number'))];
+  const ids = (value: unknown): number[] => (Array.isArray(value) ? [...new Set(value.filter((n): n is number => typeof n === 'number'))] : []);
+  const bannedPacks = ids(out.bannedPacks);
+  out.bannedPacks = bannedPacks;
+  out.preferredPacks = ids(out.preferredPacks).filter((id) => !bannedPacks.includes(id));
+  const pins: Record<number, number> = {};
+  if (out.pinnedPacks && typeof out.pinnedPacks === 'object') {
+    for (const [floor, packId] of Object.entries(out.pinnedPacks as Record<string, unknown>)) {
+      if (Number.isInteger(Number(floor)) && typeof packId === 'number') pins[Number(floor)] = packId;
+    }
+  }
+  out.pinnedPacks = pins;
   out.lastFloor = APP_LAST_FLOOR;
   out.hardFromFloor = 1;
   return out as unknown as PlanOptions;
@@ -197,6 +212,31 @@ export const useApp = create<AppState>()(
               : state.options;
           return { priority: next, options };
         }),
+
+      preferPack: (packId) =>
+        set((state) => ({
+          options: {
+            ...state.options,
+            preferredPacks: [...new Set([...state.options.preferredPacks, packId])],
+            bannedPacks: state.options.bannedPacks.filter((id) => id !== packId),
+          },
+        })),
+      banPack: (packId) =>
+        set((state) => ({
+          options: {
+            ...state.options,
+            bannedPacks: [...new Set([...state.options.bannedPacks, packId])],
+            preferredPacks: state.options.preferredPacks.filter((id) => id !== packId),
+          },
+        })),
+      restorePack: (packId) =>
+        set((state) => ({
+          options: {
+            ...state.options,
+            bannedPacks: state.options.bannedPacks.filter((id) => id !== packId),
+            preferredPacks: state.options.preferredPacks.filter((id) => id !== packId),
+          },
+        })),
 
       toggleObserved: (giftId, max) =>
         set((state) => {

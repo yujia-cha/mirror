@@ -48,6 +48,7 @@ npm run route -- --deck 10101,... --want 9088,... --floors 1-5 --difficulty hard
 - 정적 파일 참조는 항상 `import.meta.env.BASE_URL`을 붙인다(GitHub Pages 예비 경로가 하위 경로라서).
 - 게임 이미지는 저장소에 두지 않는다. 아이콘·팩 이미지는 플레이스홀더이고 `VITE_ASSET_BASE`가 있을 때만 외부에서 불러온다.
 - 계획이 불가능한 요구는 조용히 버리지 않고 `unresolved`에 이유와 함께 남긴다.
+- 팩 단위 선택(`preferredPacks`·`bannedPacks`·`pinnedPacks`)은 core 옵션이다. UI는 팩 충돌 그룹(`conflictGroups`)에서 팩째로 포함·포기를 고르고, 루트는 노선도(세그먼트 = 같은 창의 팩 묶음)로 그린다.
 
 ## 에이전트와 스킬
 

@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { loadGameDataFromDisk } from '../data/node.ts';
-import { buildIndexes, defaultOptions, planAlternatives, planRoute } from '../index.ts';
+import { buildIndexes, conflictGroups, defaultOptions, planAlternatives, planRoute, wantedRoots } from '../index.ts';
 import { analyseDeck, dominantKeyword } from '../deck.ts';
 import { expandRequirements } from '../requirements.ts';
 import { modeForFloor, observationCost } from '../search.ts';
@@ -640,5 +640,75 @@ describe('alternative routes', () => {
     expect(JSON.stringify(first.map((v) => ({ d: v.dropped, f: v.plan.floors.map((x) => x.packId) })))).toBe(
       JSON.stringify(second.map((v) => ({ d: v.dropped, f: v.plan.floors.map((x) => x.packId) }))),
     );
+  });
+});
+
+describe('pack choices', () => {
+  it('includes a preferred pack somewhere in its window and never observes it away', () => {
+    // 깨진 안경 is observable, so without a preference the planner observes it and needs no pack.
+    const free = plan({ wanted: want(9423), options: options({ hardFromFloor: 1, lastFloor: 15 }) });
+    expect(free.stats.requiredPacks).toBe(0);
+    const kept = plan({ wanted: want(9423), options: options({ hardFromFloor: 1, lastFloor: 15, preferredPacks: [1012] }) });
+    const floor = kept.floors.find((f) => f.packId === 1012)!;
+    expect(floor).toBeDefined();
+    expect(floor.reason).toBe('required');
+    expect(floor.window).toEqual({ from: 4, to: 5 });
+    expect(floor.pickups.map((p) => p.giftId)).toEqual([9423]);
+    expect(kept.start.observed).toEqual([]);
+  });
+
+  it('places a preferred pack even when no wanted gift needs it', () => {
+    const result = planWithout({ wanted: [], options: options({ hardFromFloor: 1, lastFloor: 15, preferredPacks: [1402] }) });
+    expect(result.floors.filter((f) => f.packId === 1402)).toHaveLength(1);
+    expect(result.warnings.map((w) => w.code)).not.toContain('pack-option-dropped');
+  });
+
+  it('reports pack-banned when every pack that supplies a gift was given up', () => {
+    const result = planWithout({ wanted: want(9754), options: options({ hardFromFloor: 1, lastFloor: 15, bannedPacks: [1109] }) });
+    expect(result.unresolved).toEqual([expect.objectContaining({ giftId: 9754, reason: 'pack-banned' })]);
+    expect(result.floors.every((f) => f.packId !== 1109)).toBe(true);
+  });
+
+  it('drops a pin on a floor that does not offer the pack, and a preference that is also a ban', () => {
+    const result = planWithout({
+      wanted: want(9754),
+      options: options({ hardFromFloor: 1, lastFloor: 15, pinnedPacks: { 1: 1402 }, preferredPacks: [1109], bannedPacks: [1109] }),
+    });
+    const warning = result.warnings.find((w) => w.code === 'pack-option-dropped');
+    expect(warning?.packIds).toEqual([1402, 1109]);
+    expect(result.floors[0]!.reason).toBe('free');
+    expect(result.unresolved.map((u) => u.reason)).toEqual(['pack-banned']);
+  });
+
+  it('leaves banned packs out of a floor\'s alternative packs', () => {
+    // 달궈진 놋쇠 comes from 해방된 분노 or 화왕지절; ban one and it must not be listed as an alternative.
+    const result = planWithout({ wanted: want(9267), options: options({ hardFromFloor: 1, lastFloor: 15, bannedPacks: [1302] }) });
+    const floor = result.floors.find((f) => f.packId === 1402)!;
+    expect(floor.alternatives).not.toContain(1302);
+  });
+});
+
+describe('conflict groups', () => {
+  it('groups the contested floors with every pack competing for them', () => {
+    const input = { deck: BLADE_LINEAGE_DECK, wanted: want(9250, 9251, 9252, 9253, 9254, 9255), options: options({ lastFloor: 15 }) };
+    const result = planRoute(input, data, indexes);
+    const groups = conflictGroups(result, input, data, indexes);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.floors).toEqual([11, 12, 13, 14, 15]);
+    const candidates = groups[0]!.candidates;
+    expect(candidates).toHaveLength(6);
+    expect(candidates.filter((c) => c.assignedAt !== null)).toHaveLength(5);
+    const left = candidates.find((c) => c.assignedAt === null)!;
+    expect(left.gifts).toEqual([9255]);
+    expect(left.floors).toEqual([11, 12, 13, 14, 15]);
+    expect(candidates.every((c) => c.gifts.length === 1)).toBe(true);
+  });
+
+  it('is empty without a pack conflict and maps a fusion ingredient back to its wanted result', () => {
+    const input = { deck: MIXED_DECK, wanted: want(9249), options: options({ hardFromFloor: 1, lastFloor: 5 }) };
+    expect(conflictGroups(planRoute(input, noObservation, indexes), input, noObservation, indexes)).toEqual([]);
+    const roots = wantedRoots(input, noObservation, indexes);
+    expect(roots(9706)).toEqual([9249]);
+    expect(roots(9249)).toEqual([9249]);
   });
 });
