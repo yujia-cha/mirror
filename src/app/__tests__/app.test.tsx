@@ -146,13 +146,48 @@ describe('run store', () => {
     expect(planInputFor(useApp.getState()).options).toMatchObject({ currentFloor: 1, ownedGifts: [], pinnedPacks: {} });
   });
 
+  it('walks the floors: entering, skipping, looking back, and taking a decision back', () => {
+    useApp.getState().startRun();
+    const run = () => useApp.getState().run;
+    // Floor 1 undecided → skipped; the frontier moves with the stage.
+    useApp.getState().nextFloor({ got: [9423] });
+    expect(run()).toMatchObject({ currentFloor: 2, stageFloor: 2, giftStatus: { 9423: 'got' } });
+    // Entering keeps the stage on the entered floor so its gifts can be marked.
+    useApp.getState().visitPack(1008, 2, { got: [9415] });
+    expect(run()).toMatchObject({ currentFloor: 3, stageFloor: 2, visits: { 2: 1008 }, giftStatus: { 9423: 'got', 9415: 'got' } });
+    // Leaving an entered floor never skips: the frontier is already past it; a recorded gift is never overridden by a miss.
+    useApp.getState().nextFloor({ failed: [9415, 9419] });
+    expect(run()).toMatchObject({ currentFloor: 3, stageFloor: 3, giftStatus: { 9423: 'got', 9415: 'got', 9419: 'failed' } });
+    useApp.getState().nextFloor();
+    expect(run()).toMatchObject({ currentFloor: 4, stageFloor: 4 });
+    // Looking back one floor takes back the skip right before the frontier, but not an older one.
+    useApp.getState().prevFloor();
+    expect(run()).toMatchObject({ currentFloor: 3, stageFloor: 3 });
+    useApp.getState().prevFloor();
+    expect(run()).toMatchObject({ currentFloor: 3, stageFloor: 2 });
+    useApp.getState().setStageFloor(9); // never past the frontier
+    expect(run().stageFloor).toBe(3);
+    // Undoing the last decided visit reopens that floor; undoing an older one leaves a skip.
+    useApp.getState().visitPack(1402, 3);
+    useApp.getState().visitPack(1109, 4);
+    expect(run()).toMatchObject({ currentFloor: 5, stageFloor: 3 });
+    useApp.getState().unvisitPack(1109);
+    expect(run()).toMatchObject({ currentFloor: 4, visits: { 2: 1008, 3: 1402 } });
+    useApp.getState().unvisitPack(1008);
+    expect(run()).toMatchObject({ currentFloor: 4, visits: { 3: 1402 } });
+    useApp.getState().resetRun();
+    expect(run()).toMatchObject({ currentFloor: 1, stageFloor: 1, visits: {}, giftStatus: {} });
+  });
+
   it('keeps a saved run only where it still makes sense', () => {
-    expect(sanitizeRun({ active: true, visits: { 2: 1102, 5: 1102, 99: 1016, x: 1 }, giftStatus: { 9431: 'failed', 9706: 'odd' }, currentFloor: 1 })).toEqual({
+    expect(sanitizeRun({ active: true, visits: { 2: 1102, 5: 1102, 99: 1016, x: 1 }, giftStatus: { 9431: 'failed', 9706: 'odd' }, currentFloor: 1, stageFloor: 7 })).toEqual({
       active: true,
       currentFloor: 3,
+      stageFloor: 3,
       visits: { 2: 1102 },
       giftStatus: { 9431: 'failed' },
     });
+    expect(sanitizeRun({ active: true, currentFloor: 20, stageFloor: 20, visits: {}, giftStatus: {} })).toMatchObject({ currentFloor: 16, stageFloor: 15 });
     expect(sanitizeRun({ active: false, visits: { 2: 1102 } })).toEqual(emptyRun());
     expect(sanitizeRun(null)).toEqual(emptyRun());
   });

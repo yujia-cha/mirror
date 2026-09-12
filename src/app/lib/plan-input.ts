@@ -15,8 +15,13 @@ export type GiftStatus = 'got' | 'failed';
 /** The run being played, as the player reports it. */
 export interface RunState {
   active: boolean;
-  /** The floor about to be entered. */
+  /**
+   * The planner's frontier: the first floor still to plan = the floor after the last one entered
+   * or skipped. 1..16 (16 = the run is over). A floor below it with no visit was skipped.
+   */
   currentFloor: number;
+  /** The floor shown on the stage, 1..min(currentFloor, 15): the player can look back at history. */
+  stageFloor: number;
   /** floor -> pack entered there. */
   visits: Record<number, number>;
   giftStatus: Record<number, GiftStatus>;

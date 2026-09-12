@@ -50,9 +50,19 @@ interface AppState extends SharedState {
   startRun: (alreadyOwned?: number[]) => void;
   endRun: () => void;
   setCurrentFloor: (floor: number) => void;
-  /** Record that `packId` was entered on `floor`; a pack is visited once, so an earlier floor for it is replaced. */
-  visitPack: (packId: number, floor: number) => void;
+  /**
+   * Record that `packId` was entered on `floor`; a pack is visited once, so an earlier floor for it
+   * is replaced. `settle.got` marks gifts collected in the same update (the start-of-run gifts).
+   */
+  visitPack: (packId: number, floor: number, settle?: { got?: number[] }) => void;
+  /** Drop the record; when it was the last decided floor, that floor becomes undecided again. */
   unvisitPack: (packId: number) => void;
+  /** Leave the stage floor: an undecided floor is skipped; `settle` applies collected / missed gifts first. */
+  nextFloor: (settle?: { got?: number[]; failed?: number[] }) => void;
+  /** Look back one floor; a skip right before the frontier is taken back so the floor is decided again. */
+  prevFloor: () => void;
+  setStageFloor: (floor: number) => void;
+  resetRun: () => void;
   setGiftStatus: (giftId: number, status: 'got' | 'failed' | null) => void;
   setOptions: (patch: Partial<PlanOptions>) => void;
   resetOptions: () => void;
@@ -129,8 +139,11 @@ export function sanitizeFusionGoal(raw: unknown, wanted: number[]): FusionGoalMa
 }
 
 export function emptyRun(): RunState {
-  return { active: false, currentFloor: 1, visits: {}, giftStatus: {} };
+  return { active: false, currentFloor: 1, stageFloor: 1, visits: {}, giftStatus: {} };
 }
+
+/** The floor after the run: `currentFloor` reaches it once floor 15 is decided. */
+export const RUN_DONE_FLOOR = APP_LAST_FLOOR + 1;
 
 /** A saved run, kept only when it still makes sense: integer floors within the run, one floor per pack. */
 export function sanitizeRun(raw: unknown): RunState {
@@ -154,8 +167,25 @@ export function sanitizeRun(raw: unknown): RunState {
     }
   }
   const floor = typeof source.currentFloor === 'number' ? Math.round(source.currentFloor) : 1;
-  out.currentFloor = Math.min(APP_LAST_FLOOR, Math.max(1, floor, ...Object.keys(out.visits).map((f) => Number(f) + 1)));
+  out.currentFloor = Math.min(RUN_DONE_FLOOR, Math.max(1, floor, ...Object.keys(out.visits).map((f) => Number(f) + 1)));
+  const stage = typeof source.stageFloor === 'number' ? Math.round(source.stageFloor) : out.currentFloor;
+  out.stageFloor = Math.min(APP_LAST_FLOOR, out.currentFloor, Math.max(1, stage));
   return out;
+}
+
+function withoutPack(visits: Record<number, number>, packId: number): Record<number, number> {
+  const out: Record<number, number> = {};
+  for (const [f, id] of Object.entries(visits)) if (id !== packId) out[Number(f)] = id;
+  return out;
+}
+
+function withStatus(giftStatus: RunState['giftStatus'], settle?: { got?: number[]; failed?: number[] }): RunState['giftStatus'] {
+  if (!settle) return giftStatus;
+  const next = { ...giftStatus };
+  for (const id of settle.got ?? []) next[id] = 'got';
+  // A miss never overrides what the player already recorded.
+  for (const id of settle.failed ?? []) if (next[id] === undefined) next[id] = 'failed';
+  return next;
 }
 
 /** Priorities only for the gifts in `wanted`, with the two non-default values. */
@@ -293,22 +323,57 @@ export const useApp = create<AppState>()(
         set((state) => {
           if (!state.run.active || !Number.isInteger(floor)) return {};
           const visited = Object.keys(state.run.visits).map((f) => Number(f) + 1);
-          return { run: { ...state.run, currentFloor: Math.min(APP_LAST_FLOOR, Math.max(1, floor, ...visited)) } };
+          const currentFloor = Math.min(APP_LAST_FLOOR, Math.max(1, floor, ...visited));
+          return { run: { ...state.run, currentFloor, stageFloor: Math.min(state.run.stageFloor, currentFloor) } };
         }),
-      visitPack: (packId, floor) =>
+      visitPack: (packId, floor, settle) =>
         set((state) => {
-          if (!state.run.active || !Number.isInteger(floor) || floor < 1 || floor > APP_LAST_FLOOR) return {};
-          const visits: Record<number, number> = {};
-          for (const [f, id] of Object.entries(state.run.visits)) if (id !== packId) visits[Number(f)] = id;
+          if (!Number.isInteger(floor) || floor < 1 || floor > APP_LAST_FLOOR) return {};
+          const visits = withoutPack(state.run.visits, packId);
           visits[floor] = packId;
-          return { run: { ...state.run, visits, currentFloor: Math.max(state.run.currentFloor, floor + 1) } };
+          return {
+            run: {
+              ...state.run,
+              visits,
+              currentFloor: Math.max(state.run.currentFloor, floor + 1),
+              giftStatus: withStatus(state.run.giftStatus, settle),
+            },
+          };
         }),
       unvisitPack: (packId) =>
         set((state) => {
-          const visits: Record<number, number> = {};
-          for (const [f, id] of Object.entries(state.run.visits)) if (id !== packId) visits[Number(f)] = id;
-          return { run: { ...state.run, visits } };
+          const entry = Object.entries(state.run.visits).find(([, id]) => id === packId);
+          if (!entry) return {};
+          const floor = Number(entry[0]);
+          const visits = withoutPack(state.run.visits, packId);
+          // The last decided floor becomes undecided again; an older one turns into a skip.
+          const currentFloor = floor === state.run.currentFloor - 1 ? floor : state.run.currentFloor;
+          return { run: { ...state.run, visits, currentFloor, stageFloor: Math.min(state.run.stageFloor, currentFloor) } };
         }),
+      nextFloor: (settle) =>
+        set((state) => {
+          const { run } = state;
+          if (run.currentFloor >= RUN_DONE_FLOOR && run.stageFloor >= APP_LAST_FLOOR) return {};
+          const skipping = run.stageFloor === run.currentFloor;
+          const currentFloor = skipping ? run.currentFloor + 1 : run.currentFloor;
+          const stageFloor = Math.min(APP_LAST_FLOOR, run.stageFloor + 1);
+          return { run: { ...run, currentFloor, stageFloor, giftStatus: withStatus(run.giftStatus, settle) } };
+        }),
+      prevFloor: () =>
+        set((state) => {
+          const { run } = state;
+          if (run.stageFloor <= 1) return {};
+          const stageFloor = run.stageFloor - 1;
+          // A skip right before the frontier holds no record, so it is simply taken back.
+          const currentFloor = stageFloor === run.currentFloor - 1 && run.visits[stageFloor] === undefined ? stageFloor : run.currentFloor;
+          return { run: { ...run, stageFloor, currentFloor } };
+        }),
+      setStageFloor: (floor) =>
+        set((state) => {
+          if (!Number.isInteger(floor)) return {};
+          return { run: { ...state.run, stageFloor: Math.min(APP_LAST_FLOOR, state.run.currentFloor, Math.max(1, floor)) } };
+        }),
+      resetRun: () => set((state) => ({ run: { ...emptyRun(), active: state.run.active } })),
       setGiftStatus: (giftId, status) =>
         set((state) => {
           if (!state.run.active) return {};
