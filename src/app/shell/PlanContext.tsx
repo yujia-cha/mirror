@@ -50,7 +50,6 @@ export interface PlanState {
   next: () => void;
   /** Go back from an entered pack: the entry and every status recorded for that pack's own drops are cleared. */
   leave: (packId: number) => void;
-  prev: () => void;
 }
 
 const PlanCtx = createContext<PlanState | null>(null);
@@ -78,7 +77,6 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
   const unvisitPack = useApp((s) => s.unvisitPack);
   const setGiftStatus = useApp((s) => s.setGiftStatus);
   const nextFloor = useApp((s) => s.nextFloor);
-  const prevFloor = useApp((s) => s.prevFloor);
   const [variantIndex, setVariantIndex] = useState(0);
 
   const input = useMemo(
@@ -175,7 +173,6 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
       stageMode: stageModeFor(run, run.stageFloor),
       enter,
       next,
-      prev: prevFloor,
       leave,
     };
   }, [
@@ -203,7 +200,6 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
     unvisitPack,
     setGiftStatus,
     nextFloor,
-    prevFloor,
   ]);
 
   return <PlanCtx.Provider value={value}>{children}</PlanCtx.Provider>;

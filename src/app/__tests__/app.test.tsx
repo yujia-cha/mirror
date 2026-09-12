@@ -14,6 +14,7 @@ import { conditionText, josa, reachedTierText } from '../condition-text.ts';
 import { appDefaultOptions, decodeShared, defaultUi, emptyRun, encodeShared, sanitizeOptions, sanitizeRun, sinnerOf, useApp } from '../store.ts';
 import { planInputFor } from '../lib/plan-input.ts';
 import { classifyGift, prioritiseGifts } from '../lib/gift-priority.ts';
+import { defaultDeck } from '../lib/default-deck.ts';
 import { DeckStep } from '../steps/DeckStep.tsx';
 import { GiftsStep } from '../steps/GiftsStep.tsx';
 import { App } from '../App.tsx';
@@ -186,10 +187,10 @@ describe('run store', () => {
     expect(run()).toMatchObject({ currentFloor: 3, stageFloor: 3, giftStatus: { 9423: 'got', 9415: 'got', 9419: 'failed' } });
     useApp.getState().nextFloor();
     expect(run()).toMatchObject({ currentFloor: 4, stageFloor: 4 });
-    // Looking back one floor takes back the skip right before the frontier, but not an older one.
-    useApp.getState().prevFloor();
+    // Stepping back onto the skip right before the frontier takes it back, but not an older one.
+    useApp.getState().setStageFloor(3);
     expect(run()).toMatchObject({ currentFloor: 3, stageFloor: 3 });
-    useApp.getState().prevFloor();
+    useApp.getState().setStageFloor(2);
     expect(run()).toMatchObject({ currentFloor: 3, stageFloor: 2 });
     useApp.getState().setStageFloor(9); // never past the frontier
     expect(run().stageFloor).toBe(3);
@@ -335,9 +336,15 @@ describe('DeckStep', () => {
     return render(<DeckStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
   };
 
-  it('shows twelve empty slots to start with', () => {
+  it('shows twelve empty slots to start with and fills them with the LCB deck on request', async () => {
+    const user = userEvent.setup();
     renderDeck();
     expect(screen.getAllByText('인격 선택')).toHaveLength(12);
+    await user.click(screen.getByRole('button', { name: '기본 덱' }));
+    expect(useApp.getState().deck).toEqual(defaultDeck(data));
+    expect(useApp.getState().deck).toHaveLength(12);
+    expect(useApp.getState().deployed).toHaveLength(6);
+    expect(new Set(useApp.getState().deck.map((id) => indexes.identityById.get(id)!.title.ko))).toEqual(new Set(['LCB 수감자']));
   });
 
   it('finds identities across every sinner from the global search', async () => {
@@ -353,17 +360,33 @@ describe('DeckStep', () => {
     expect(useApp.getState().deck).toHaveLength(1);
   });
 
-  it('walks the search results with the keyboard and closes on Escape', async () => {
+  it('walks the search results with the keyboard, keeps the list up while picking, and closes on Escape', async () => {
     const user = userEvent.setup();
     renderDeck();
     const input = screen.getByRole('combobox', { name: /전체 인격 검색/ });
     await user.type(input, '리우{ArrowDown}{Enter}');
     expect(useApp.getState().deck).toHaveLength(1);
-    expect(screen.queryByRole('listbox')).toBeNull();
-    await user.type(input, '리우');
+    // The query and the list survive a pick, so the next one is a click away.
+    expect((input as HTMLInputElement).value).toBe('리우');
     expect(screen.getByRole('listbox')).toBeInTheDocument();
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('takes several identities from one search and drops one by pressing it again', async () => {
+    const user = userEvent.setup();
+    renderDeck();
+    await user.type(screen.getByLabelText(/전체 인격 검색/), 'LCB');
+    const options = () => within(screen.getByRole('listbox')).getAllByRole('option');
+    expect(options()).toHaveLength(12);
+    for (const i of [0, 1, 2]) await user.click(options()[i]!);
+    expect(useApp.getState().deck).toHaveLength(3);
+    expect(screen.getByText('덱에 3명')).toBeInTheDocument();
+    expect(options()[0]).toHaveAttribute('aria-pressed', 'true');
+    expect(options()[3]).toHaveAttribute('aria-pressed', 'false');
+    await user.click(options()[0]!);
+    expect(useApp.getState().deck).toHaveLength(2);
+    expect(options()[0]).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('refuses an eighth deployed identity', () => {
@@ -871,7 +894,9 @@ describe('RunStage', () => {
       </>,
     );
   const header = () => screen.getByTestId('floor-header');
-  const skipFloor = async (user: ReturnType<typeof userEvent.setup>) => user.click(within(header()).getByRole('button', { name: '입장하지 않음' }));
+  const skipFloor = async (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole('button', { name: '다른 팩 입장' }));
+  const lookBack = async (user: ReturnType<typeof userEvent.setup>, floor: number) =>
+    user.click(within(header()).getAllByTestId('floor-cell').find((cell) => cell.getAttribute('data-floor') === String(floor))!);
   const pointer = { pointerId: 1, button: 0, clientX: 60, clientY: 200 };
   /** Pull an element vertically by `dy` and let go. */
   const pull = (el: HTMLElement, dy: number) => {
@@ -931,7 +956,7 @@ describe('RunStage', () => {
     await user.click(within(entered).getByTestId('area-next'));
     expect(screen.getByTestId('stage-floor')).toHaveTextContent('5');
     expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'undecided');
-    await user.click(within(header()).getByRole('button', { name: '이전 층' }));
+    await lookBack(user, 4);
     expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'entered');
     expect(useApp.getState().run.giftStatus).toMatchObject({ 9267: 'got' });
     await user.click(screen.getByRole('button', { name: '화왕지절 돌아가기' }));
@@ -1024,7 +1049,7 @@ describe('RunStage', () => {
     expect(screen.getByTestId('unresolved-row')).toHaveTextContent('수집 실패');
     expect(screen.getByText(/^확보/).parentElement).toHaveTextContent('0/1');
     // Back on the floor, the missed tile reads as such and a press turns it into got.
-    await user.click(within(header()).getByRole('button', { name: '이전 층' }));
+    await lookBack(user, 4);
     const tile = within(screen.getByTestId('exclusive-gifts')).getAllByTestId('gift-tile')[0]!;
     expect(tile).toHaveAttribute('data-status', 'failed');
     await user.click(tile);
@@ -1054,7 +1079,7 @@ describe('RunStage', () => {
     expect(useApp.getState().run.giftStatus).toEqual({});
     await skipFloor(user);
     expect(useApp.getState().run.giftStatus).toEqual({ 9423: 'got' });
-    await user.click(within(header()).getByRole('button', { name: '이전 층' }));
+    await lookBack(user, 1);
     // Stepping back onto the skip right before the frontier reopens that floor.
     expect(useApp.getState().run).toMatchObject({ currentFloor: 1, stageFloor: 1 });
     expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'undecided');
@@ -1095,10 +1120,12 @@ describe('RunStage', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
     useApp.getState().toggleWanted(9267);
     renderStage();
-    for (let i = 0; i < 15; i += 1) await user.click(within(header()).getByRole('button', { name: /입장하지 않음|다음 층/ }));
+    for (let i = 0; i < 15; i += 1) await skipFloor(user);
     expect(useApp.getState().run).toMatchObject({ currentFloor: 16, stageFloor: 15 });
     expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'done');
-    expect(within(header()).queryByRole('button', { name: /입장하지 않음|다음 층/ })).toBeNull();
+    // Nothing in the header moves the run any more: the cards and the pack area do.
+    expect(within(header()).queryByRole('button', { name: /다른 팩 입장|다음 층|이전 층/ })).toBeNull();
+    expect(screen.queryByTestId('other-entry-card')).toBeNull();
     await user.click(within(screen.getByTestId('stage-done')).getByRole('button', { name: '새 런' }));
     expect(useApp.getState().run).toEqual(emptyRun());
   });

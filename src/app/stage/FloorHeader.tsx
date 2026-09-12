@@ -3,11 +3,10 @@
  * controls, and a strip of the fifteen floors that mirrors the route (planned or entered pack,
  * played, skipped, the frontier) and lets the player look back at a played floor.
  */
-import { ChevronLeft, ChevronRight, LogIn } from 'lucide-react';
 import { t, type Lang } from '../i18n.ts';
 import { APP_LAST_FLOOR, useApp } from '../store.ts';
 import { bandMode, stageModeFor, type StageMode } from '../lib/stage.ts';
-import { Badge, Button } from '../components/ui.tsx';
+import { Badge } from '../components/ui.tsx';
 import { usePlan } from '../shell/PlanContext.tsx';
 
 const BAND_KEY = { hard: 'optionBandHard', parallel: 'optionBandParallel', extreme: 'optionBandExtreme' } as const;
@@ -20,13 +19,12 @@ function modeBadge(mode: StageMode, lang: Lang) {
 }
 
 export function FloorHeader({ mode }: { mode: StageMode }) {
-  const { lang, shown, packName, next, prev } = usePlan();
+  const { lang, shown, packName } = usePlan();
   const run = useApp((s) => s.run);
   const setStageFloor = useApp((s) => s.setStageFloor);
   const floor = run.stageFloor;
   const entered = run.visits[floor];
   const floors = Array.from({ length: APP_LAST_FLOOR }, (_, i) => i + 1);
-  const nextLabel = mode === 'undecided' ? t('stageSkip', lang) : t('stageNext', lang);
 
   return (
     <div className="flex flex-col gap-3" data-testid="floor-header">
@@ -39,19 +37,6 @@ export function FloorHeader({ mode }: { mode: StageMode }) {
           <span className="text-sm text-fg-2">{t(BAND_KEY[bandMode(floor)], lang)}</span>
         </div>
         {entered !== undefined ? <Badge tone="sure">{packName(entered)}</Badge> : modeBadge(mode, lang)}
-        <div className="ml-auto flex gap-1.5">
-          <Button size="sm" variant="ghost" onClick={prev} disabled={floor <= 1} ariaLabel={t('stagePrev', lang)}>
-            <ChevronLeft size={13} aria-hidden />
-            {t('stagePrev', lang)}
-          </Button>
-          {mode !== 'done' ? (
-            <Button size="sm" variant={mode === 'undecided' ? 'secondary' : 'primary'} onClick={next} ariaLabel={nextLabel}>
-              {mode === 'undecided' ? null : <LogIn size={13} aria-hidden className="rotate-180" />}
-              {nextLabel}
-              <ChevronRight size={13} aria-hidden />
-            </Button>
-          ) : null}
-        </div>
       </div>
       <ol className="flex gap-1" aria-label={t('tabRoutePlan', lang)} data-testid="floor-strip">
         {floors.map((f) => {
