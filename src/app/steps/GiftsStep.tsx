@@ -210,7 +210,7 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
             {pick(gift.name, lang)}
           </button>
           <span className="font-mono text-xs text-fg-3">T{gift.tier ?? '?'}</span>
-          <span className="hidden text-xs text-fg-2 sm:inline">{keywordName(gift.keyword, data.enums, lang)}</span>
+          <span className="hidden text-xs text-fg-2 @md:inline">{keywordName(gift.keyword, data.enums, lang)}</span>
           <Badge tone={badge}>{t(label, lang)}</Badge>
           {gift.hardOnly ? <Badge tone="hard">{t('hardOnly', lang)}</Badge> : null}
           {lack && lackName && lack.have !== null && lack.need !== null ? (
@@ -218,8 +218,8 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
           ) : null}
           {row.entry.reports[0] ? (
             <>
-              <span className="font-mono text-xs text-fg-3 sm:hidden">{progressNumber(row.entry.lack ?? row.entry.reports[0])}</span>
-              <span className="hidden sm:flex">
+              <span className="font-mono text-xs text-fg-3 @sm:hidden">{progressNumber(row.entry.lack ?? row.entry.reports[0])}</span>
+              <span className="hidden @sm:flex">
                 <Progress report={row.entry.lack ?? row.entry.reports[0]} lang={lang} enums={data.enums} />
               </span>
             </>
@@ -355,7 +355,7 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
           className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-fg-3"
         />
       </label>
-      <div className="scroll-x -mx-4 flex gap-1.5 px-4 lg:mx-0 lg:flex-wrap lg:px-0">
+      <div className="flex flex-wrap gap-1.5">
         <FilterSelect label={t('filterKeyword', lang)} value={keyword} options={keywordOptions} onChange={setKeyword} allLabel={t('filterAll', lang)} />
         <FilterSelect label={t('filterTier', lang)} value={tier} options={(['1', '2', '3', '4', '5', 'EX'] as TierFilter[]).map((v) => ({ value: v, label: `T${v}` }))} onChange={setTier} allLabel={t('filterAll', lang)} />
         <FilterSelect label={t('filterAcquisition', lang)} value={acquisition} options={acqOptions} onChange={setAcquisition} allLabel={t('filterAll', lang)} />

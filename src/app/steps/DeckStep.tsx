@@ -143,7 +143,7 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
         </span>
         <Button onClick={() => setImportOpen((v) => !v)} ariaLabel={t('deckImport', lang)} className="h-9">
           <Copy size={14} aria-hidden />
-          <span className="hidden sm:inline">{t('deckImport', lang)}</span>
+          <span className="hidden @sm:inline">{t('deckImport', lang)}</span>
         </Button>
         {listOpen ? (
           <div
@@ -171,7 +171,7 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
                   {pick(identity.title, lang)}
                   <span className="text-xs text-fg-3"> · {t('deckRank', lang, { n: identity.rank })}</span>
                 </span>
-                <span className="hidden gap-1 sm:flex">
+                <span className="hidden gap-1 @sm:flex">
                   <KeywordChips identity={identity} data={data} lang={lang} />
                 </span>
               </button>
@@ -202,7 +202,7 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
         </form>
       ) : null}
 
-      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4" aria-label={t('tabDeck', lang)}>
+      <ul className="grid grid-cols-1 gap-2 @min-[300px]:grid-cols-2 @min-[640px]:grid-cols-4" aria-label={t('tabDeck', lang)}>
         {data.enums.sinners.map((sinner) => {
           const id = bySinner.get(sinner.id) ?? null;
           const identity = id !== null ? indexes.identityById.get(id) : undefined;
@@ -341,7 +341,7 @@ function SinnerPicker({
   return (
     <div
       ref={ref}
-      className="mt-1 flex flex-col overflow-hidden rounded-md border border-line-strong bg-surface shadow-pop sm:absolute sm:left-0 sm:top-full sm:z-20 sm:mt-0 sm:w-[340px] sm:max-w-[calc(100vw-32px)]"
+      className="mt-1 flex flex-col overflow-hidden rounded-md border border-line-strong bg-surface shadow-pop @sm:absolute @sm:left-0 @sm:top-full @sm:z-20 @sm:mt-0 @sm:w-[340px]"
       data-testid="sinner-picker"
     >
       <div className="flex items-center gap-2 border-b border-line px-2.5 py-2">

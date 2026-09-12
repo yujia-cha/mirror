@@ -404,7 +404,7 @@ export function MetroMap({ plan, ctx, keywordLabel, run, variant = 'auto', detai
           return (
             <div
               key={segment.key}
-              className={`absolute flex flex-col gap-1 overflow-hidden rounded-md px-1.5 py-1 shadow-card ${segment.passed ? 'border border-ink bg-surface-2' : segment.fixed ? 'border border-ink bg-surface' : 'border-[1.5px] border-dashed border-fg-2 bg-surface'}`}
+              className={`absolute flex ${compact ? 'flex-row items-center gap-2' : 'flex-col gap-1'} overflow-hidden rounded-md px-1.5 py-1 shadow-card ${segment.passed ? 'border border-ink bg-surface-2' : segment.fixed ? 'border border-ink bg-surface' : 'border-[1.5px] border-dashed border-fg-2 bg-surface'}`}
               style={{ left: cl, top: y(segment.from) - SP / 2 + 4, width: cw, height: SP * span - 8 }}
               data-testid="segment"
               data-from={segment.from}
@@ -413,8 +413,9 @@ export function MetroMap({ plan, ctx, keywordLabel, run, variant = 'auto', detai
               data-passed={segment.passed || undefined}
               data-lane={segment.lane}
             >
-              <div className="truncate text-[10px] leading-3 text-fg-2">{segmentTitle(segment, lang)}</div>
-              <div className={`flex ${compact ? 'flex-col gap-1' : 'flex-wrap items-start gap-x-2 gap-y-1'}`}>{segment.packs.map((p) => packEntry(segment, p, phoneMode, compact))}</div>
+              {/* One floor is 56px tall: the label sits beside the pack there, above it otherwise. */}
+              <div className={`truncate text-[10px] leading-3 text-fg-2 ${compact ? 'shrink-0' : ''}`}>{segmentTitle(segment, lang)}</div>
+              <div className={`flex min-w-0 ${compact ? 'flex-wrap items-center gap-x-2 gap-y-1' : 'flex-wrap items-start gap-x-2 gap-y-1'}`}>{segment.packs.map((p) => packEntry(segment, p, phoneMode, compact))}</div>
             </div>
           );
         })}

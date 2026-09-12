@@ -91,6 +91,9 @@ export function useDragEnter<Id>({
     (id: Id): DragHandlers => ({
       onPointerDown: (event) => {
         if (event.button !== 0 || pending.current) return;
+        // A press on a control inside the card is a click, not a drag: capturing the pointer here
+        // would retarget the click away from the button.
+        if (event.target instanceof Element && event.target.closest('button, a, input, select, textarea, summary')) return;
         const element = event.currentTarget;
         pending.current = { id, pointerId: event.pointerId, x: event.clientX, y: event.clientY, rect: element.getBoundingClientRect(), element, dragging: false };
         if (typeof element.setPointerCapture === 'function') {

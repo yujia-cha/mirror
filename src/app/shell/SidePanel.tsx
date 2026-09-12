@@ -77,7 +77,7 @@ export function SidePanel<Id extends string>({
         className={`sticky top-14 flex h-[calc(100dvh-56px)] w-[336px] flex-none flex-col overflow-hidden bg-surface ${side === 'left' ? 'border-r' : 'border-l'} border-line`}
       >
         {bar}
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">{children}</div>
+        <div className="@container min-h-0 flex-1 overflow-y-auto px-3 py-3">{children}</div>
       </aside>
     );
   }
@@ -99,7 +99,7 @@ export function SidePanel<Id extends string>({
           </button>
         </div>
         {bar}
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">{children}</div>
+        <div className="@container min-h-0 flex-1 overflow-y-auto px-3 py-3">{children}</div>
       </div>
     </div>
   );

@@ -50,6 +50,7 @@ npm run route -- --deck 10101,... --want 9088,... --floors 1-5 --difficulty hard
 - 계획이 불가능한 요구는 조용히 버리지 않고 `unresolved`에 이유와 함께 남긴다.
 - 팩 단위 선택(`preferredPacks`·`bannedPacks`·`pinnedPacks`)은 core 옵션이다. UI는 팩 충돌 그룹(`conflictGroups`)에서 팩째로 포함·포기를 고르고, 루트는 노선도(세그먼트 = 같은 창의 팩 묶음)로 그린다.
 - 런 진행 상태(`currentFloor`·`ownedGifts`·`unobtainableGifts`, `WantedGift.ingredientsAsGoals`)도 core 옵션이다. 앱은 `run` 슬라이스(기기에만 저장, 공유 링크 제외)와 `fusionGoal`(공유 링크 포함)에서 `planInputFor`로 만든다. 지나간 층은 `FloorPlan.passed`로만 남고 그 층의 `pinnedPacks`가 방문한 팩이다.
+- 앱은 **항상 런 화면**이다(단계 없음). `run.currentFloor`는 아직 결정하지 않은 첫 층(프런티어), `run.stageFloor`는 무대에 보이는 층이고, **건너뜀 = 지난 층에 방문 없음**(가짜 팩 id를 쓰지 않는다). 패널 열림·탭은 `ui` 슬라이스(기기 저장). 층을 떠날 때의 획득/실패 정리(`settle`)는 `PlanContext`의 `enter`/`next`가 한다.
 
 ## 에이전트와 스킬
 

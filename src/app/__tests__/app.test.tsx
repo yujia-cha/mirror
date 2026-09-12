@@ -935,6 +935,12 @@ describe('RunStage', () => {
     fireEvent.pointerDown(card, pointer);
     fireEvent.pointerUp(window, pointer);
     expect(useApp.getState().run.visits).toEqual({});
+    // A press that starts on the card's own button never becomes a drag, so the click reaches the button.
+    fireEvent.pointerDown(within(card).getByRole('button', { name: '화왕지절 입장' }), pointer);
+    fireEvent.pointerMove(window, { ...pointer, clientY: 350 });
+    expect(screen.queryByTestId('drag-ghost')).toBeNull();
+    fireEvent.pointerUp(window, { ...pointer, clientY: 350 });
+    expect(useApp.getState().run.visits).toEqual({});
     // A sideways move scrolls the row instead of starting a drag.
     fireEvent.pointerDown(card, pointer);
     fireEvent.pointerMove(window, { ...pointer, clientX: 160, clientY: 70 });
