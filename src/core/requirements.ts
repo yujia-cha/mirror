@@ -36,7 +36,7 @@ export function scarcity(giftId: number, indexes: GameIndexes): number {
  * shop has, and the game's own hint is to fuse the sub-ingredient first — so a recipe that fits the
  * shop wins, then the one with fewer nested fusions, then the more widely available ingredients.
  */
-function chooseRecipe(gift: Gift, indexes: GameIndexes, maxShopSlots: number): number[] | null {
+export function chooseRecipe(gift: Gift, indexes: GameIndexes, maxShopSlots: number): number[] | null {
   const recipes = gift.fusion?.recipes ?? [];
   if (recipes.length === 0) return null;
   const scored = recipes.map((recipe) => {

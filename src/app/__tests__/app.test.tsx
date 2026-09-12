@@ -411,32 +411,90 @@ describe('DeckStep', () => {
 });
 
 describe('GiftsStep', () => {
-  it('folds 요리 비법 전서 under 진혼, lets it be chosen alone, and marks it included once 진혼 is chosen', async () => {
+  const renderGifts = () => {
+    const { deck, deployed } = useApp.getState();
+    return render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
+  };
+  const tile = (id: number) => screen.getAllByTestId('gift-tile').find((el) => el.getAttribute('data-gift') === String(id))!;
+
+  it('folds 요리 비법 전서 under 진혼, lets it be chosen alone, and locks it once 진혼 is chosen', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
-    const { deck, deployed } = useApp.getState();
-    render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
-    // 진혼 is active with this deck, so it sits in the first section with its child underneath.
-    const findChild = () => screen.getAllByTestId('gift-child').find((el) => el.textContent?.includes('요리 비법 전서'))!;
-    expect(findChild()).toBeDefined();
-    // The child carries its own acquisition badge and can be wanted on its own.
-    expect(findChild()).toHaveTextContent('조합');
-    await user.click(within(findChild()).getByRole('checkbox', { name: '요리 비법 전서' }));
+    renderGifts();
+    // 진혼 is active with this deck, so it sits in the first section with its child right after it.
+    expect(tile(9157)).toBeDefined();
+    const order = screen.getAllByTestId('gift-tile').map((el) => el.getAttribute('data-gift'));
+    expect(order.indexOf('9157')).toBeGreaterThan(order.indexOf('9088'));
+    await user.click(within(tile(9157)).getByRole('button', { name: '요리 비법 전서' }));
     expect(useApp.getState().wanted).toEqual([9157]);
-    // Choosing the parent absorbs the child: it drops from the list and its box locks as "included".
-    await user.click(screen.getByRole('checkbox', { name: '진혼' }));
+    // Choosing the parent absorbs the child: its tile locks and reads as chosen.
+    await user.click(within(tile(9088)).getByRole('button', { name: '진혼' }));
     expect(useApp.getState().wanted).toEqual([9088]);
-    expect(findChild()).toHaveTextContent('포함');
-    expect(within(findChild()).getByRole('checkbox')).toBeDisabled();
+    expect(tile(9157)).toHaveAttribute('data-locked');
+    const childButton = within(tile(9157)).getByRole('button', { name: '요리 비법 전서' });
+    expect(childButton).toBeDisabled();
+    expect(childButton).toHaveAttribute('aria-pressed', 'true');
+    // The tiles carry no acquisition badges or tier text any more; the tier stays on the icon.
+    expect(within(tile(9088)).queryByText('조합')).toBeNull();
+    expect(within(tile(9157)).queryByText('포함')).toBeNull();
+    const tiers = within(tile(9088)).getAllByText('T4'); // the tier survives only as the icon's corner chip
+    expect(tiers).toHaveLength(1);
+    expect(within(tile(9088)).getByTestId('gift-icon')).toContainElement(tiers[0]!);
   });
 
-  it('counts rows, not the whole catalogue, in the virtual list label', async () => {
+  it('shows the deciding condition as a count and folds every section', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
-    const { deck, deployed } = useApp.getState();
-    render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
-    await user.click(screen.getByRole('button', { name: /기타/ }));
-    expect(screen.getByText(/행 중 1~/)).not.toHaveTextContent(String(data.gifts.length));
+    renderGifts();
+    // 진혼 needs 5 화상 identities and the burn deck has 7; 연성진동 wants 5 진동 and is short.
+    expect(tile(9088)).toHaveTextContent('화상 7/5');
+    expect(tile(9092)).toHaveTextContent('진동 3/5');
+    // Every header folds, not just 「기타」 (which starts folded).
+    for (const name of [/지금 덱으로 활성/, /거의 활성/]) {
+      const header = screen.getByRole('button', { name, expanded: true });
+      await user.click(header);
+      expect(screen.getByRole('button', { name, expanded: false })).toBeInTheDocument();
+    }
+    expect(screen.queryByTestId('gift-tile')).toBeNull();
+    await user.click(screen.getByRole('button', { name: /기타/, expanded: false }));
+    expect(tile(9717)).toBeDefined();
+  });
+
+  it('marks two goals that eat the same ingredient as 얽힘 and names it in the sheet', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    // 장관 and 부동 are both fused from 녹슨 칼자루, so the shop cannot serve both from one pickup.
+    for (const id of [9717, 9718]) useApp.getState().toggleWanted(id);
+    renderGifts();
+    await user.click(screen.getByRole('button', { name: /기타/, expanded: false }));
+    expect(tile(9717)).toHaveAttribute('data-entangled');
+    expect(tile(9718)).toHaveAttribute('data-entangled');
+    await user.click(within(tile(9717)).getByRole('button', { name: '장관 자세히' }));
+    expect(screen.getByTestId('gift-entangled')).toHaveTextContent('부동');
+    expect(screen.getByTestId('gift-entangled')).toHaveTextContent('녹슨 칼자루');
+  });
+
+  it('opens a gift sheet with its effect, conditions and a recipe that starts folded', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    renderGifts();
+    await user.click(within(tile(9088)).getByRole('button', { name: '진혼 자세히' }));
+    const sheet = screen.getByTestId('gift-detail');
+    expect(sheet).toHaveTextContent('조합');
+    expect(within(sheet).getByTestId('gift-conditions')).toHaveTextContent('화상 7/5');
+    expect(within(sheet).getByTestId('gift-conditions')).toHaveTextContent('부여하는 공격 스킬 보유 인격');
+    // The recipe is behind a fold, and opening it lists the ingredients the planner would use.
+    const recipe = within(sheet).getByTestId('gift-recipe');
+    expect(recipe).not.toHaveAttribute('open'); // folded until asked for
+    await user.click(within(recipe).getByText('조합식'));
+    expect(recipe).toHaveAttribute('open');
+    expect(within(recipe).getAllByTestId('recipe-item').length).toBeGreaterThan(1);
+    expect(recipe).toHaveTextContent('요리 비법 전서');
+    // The sheet can take the gift as a goal, and only then offers the ingredient question.
+    expect(within(sheet).queryByRole('checkbox')).toBeNull();
+    await user.click(within(sheet).getByRole('button', { name: '목표로 삼기' }));
+    expect(useApp.getState().wanted).toEqual([9088]);
+    expect(within(sheet).getByRole('checkbox', { name: /재료도 목표/ })).toBeChecked();
   });
 
   it('pins observations from the tray, up to the limit and only for observable gifts', async () => {
@@ -479,8 +537,9 @@ describe('GiftsStep', () => {
     const { deck, deployed } = useApp.getState();
     render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
     await user.type(screen.getByRole('textbox', { name: '기프트 검색' }), '조그맣고');
-    await user.click(screen.getByRole('button', { name: /기타/ }));
-    await user.click(screen.getByRole('button', { name: '조그맣고 근사한 바이올린', expanded: false }));
+    await user.click(screen.getByRole('button', { name: /기타/, expanded: false }));
+    await user.click(screen.getByRole('button', { name: '조그맣고 근사한 바이올린 자세히' }));
+    await user.click(within(screen.getByTestId('gift-recipe')).getByText('조합식'));
     const box = screen.getByRole('checkbox', { name: '조그맣고 근사한 바이올린 재료도 목표' });
     expect(box).toBeChecked();
     await user.click(box);
