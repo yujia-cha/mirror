@@ -155,6 +155,9 @@ export function MetroMap({ plan, ctx, keywordLabel, run }: MetroMapProps) {
 
   // Choosing a pack's entry floor: only stations that offer the pack respond; Escape cancels.
   const selecting = run?.selecting ?? null;
+  useEffect(() => {
+    if (selecting !== null) setOpen(null);
+  }, [selecting]);
   const selectable = (floor: number): boolean =>
     selecting !== null && (ctx.indexes.packsByFloor[bandMode(floor)].get(floor) ?? []).includes(selecting);
   useEffect(() => {

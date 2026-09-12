@@ -49,6 +49,7 @@ npm run route -- --deck 10101,... --want 9088,... --floors 1-5 --difficulty hard
 - 게임 이미지는 저장소에 두지 않는다. 아이콘·팩 이미지는 플레이스홀더이고 `VITE_ASSET_BASE`가 있을 때만 외부에서 불러온다.
 - 계획이 불가능한 요구는 조용히 버리지 않고 `unresolved`에 이유와 함께 남긴다.
 - 팩 단위 선택(`preferredPacks`·`bannedPacks`·`pinnedPacks`)은 core 옵션이다. UI는 팩 충돌 그룹(`conflictGroups`)에서 팩째로 포함·포기를 고르고, 루트는 노선도(세그먼트 = 같은 창의 팩 묶음)로 그린다.
+- 런 진행 상태(`currentFloor`·`ownedGifts`·`unobtainableGifts`, `WantedGift.ingredientsAsGoals`)도 core 옵션이다. 앱은 `run` 슬라이스(기기에만 저장, 공유 링크 제외)와 `fusionGoal`(공유 링크 포함)에서 `planInputFor`로 만든다. 지나간 층은 `FloorPlan.passed`로만 남고 그 층의 `pinnedPacks`가 방문한 팩이다.
 
 ## 에이전트와 스킬
 

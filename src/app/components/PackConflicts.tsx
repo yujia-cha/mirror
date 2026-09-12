@@ -3,7 +3,7 @@
  * packs competing for them, each with the gifts it would bring, to keep or give up as a whole.
  * Gifts that fail for other reasons keep their per-gift controls underneath.
  */
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Ban, ChevronRight, Eye, RotateCcw, Star, TriangleAlert } from 'lucide-react';
 import type { ConflictGroup } from '../../core/conflicts.ts';
 import type { Unresolved } from '../../core/types.ts';
@@ -39,6 +39,11 @@ function isDesktop(): boolean {
 export function PackConflicts({ groups, others, skippedGifts, ctx, priorityOf, setPriority, observeAction, headerActions, onAction, onSeeVariants }: PackConflictsProps) {
   const { lang } = ctx;
   const [openPack, setOpenPack] = useState<number | null>(null);
+  // Choosing an entry floor happens on the map, so a sheet opened here gets out of the way.
+  const selecting = ctx.run?.selecting ?? null;
+  useEffect(() => {
+    if (selecting !== null) setOpenPack(null);
+  }, [selecting]);
   const banned = [...ctx.banned].sort((a, b) => a - b);
   const total = groups.reduce((n, g) => n + g.candidates.filter((c) => c.assignedAt === null).length, 0) + others.length;
   if (groups.length === 0 && others.length === 0 && skippedGifts.length === 0 && banned.length === 0) return null;

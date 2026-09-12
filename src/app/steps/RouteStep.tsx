@@ -340,6 +340,7 @@ export function RouteStep({ data, indexes, stats, lang }: Props) {
       run.active && !variant
         ? {
             currentFloor: run.currentFloor,
+            selecting,
             visitedAt: (packId) => {
               const entry = Object.entries(run.visits).find(([, id]) => id === packId);
               return entry ? Number(entry[0]) : null;

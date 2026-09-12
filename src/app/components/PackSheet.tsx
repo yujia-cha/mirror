@@ -16,6 +16,8 @@ import { Badge, Button, Segmented } from './ui.tsx';
 /** The run in progress, as the pack surfaces see it. */
 export interface RunContext {
   currentFloor: number;
+  /** The pack whose entry floor is being chosen on the map; open sheets close so the stations are reachable. */
+  selecting: number | null;
   /** The floor the pack was entered on, or null. */
   visitedAt: (packId: number) => number | null;
   giftStatus: (giftId: number) => GiftStatus | null;
@@ -140,17 +142,33 @@ function GiftRow({ giftId, exclusive, ctx }: { giftId: number; exclusive: boolea
   const condition = ctx.giftTitle(giftId);
   const status = ctx.run?.giftStatus(giftId) ?? null;
   return (
-    <li className="flex items-start gap-2.5 py-1.5" data-testid="pack-gift" data-gift={giftId} data-wanted={wanted || undefined} data-status={status ?? undefined}>
-      <GiftIcon gift={gift} size={44} judgement={ctx.judgements.get(giftId) ?? null} must={ctx.isMust(giftId)} status={status} lang={ctx.lang} />
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className={`text-sm ${wanted ? 'font-semibold' : 'font-medium text-fg-2'}`}>{name}</span>
-          {exclusive ? <Badge tone="sure">{t('giftExclusive', ctx.lang)}</Badge> : null}
-          {wanted ? <Badge tone="start">{t('giftWanted', ctx.lang)}</Badge> : null}
-          {ctx.isMust(giftId) ? <Badge tone="alert">{t('priorityMust', ctx.lang)}</Badge> : null}
+    <li className="flex flex-col gap-1.5 py-1.5" data-testid="pack-gift" data-gift={giftId} data-wanted={wanted || undefined} data-status={status ?? undefined}>
+      <div className="flex items-start gap-2.5">
+        <GiftIcon gift={gift} size={44} judgement={ctx.judgements.get(giftId) ?? null} must={ctx.isMust(giftId)} status={status} lang={ctx.lang} />
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className={`text-sm ${wanted ? 'font-semibold' : 'font-medium text-fg-2'}`}>{name}</span>
+            {exclusive ? <Badge tone="sure">{t('giftExclusive', ctx.lang)}</Badge> : null}
+            {wanted ? <Badge tone="start">{t('giftWanted', ctx.lang)}</Badge> : null}
+            {ctx.isMust(giftId) ? <Badge tone="alert">{t('priorityMust', ctx.lang)}</Badge> : null}
+          </div>
+          {condition ? <span className="text-xs text-fg-2">{condition}</span> : null}
         </div>
-        {condition ? <span className="text-xs text-fg-2">{condition}</span> : null}
-        {ctx.run && wanted ? (
+        {canObserve ? (
+          <Button size="sm" variant={pinned ? 'primary' : 'ghost'} onClick={() => ctx.onToggleObserved?.(giftId)} ariaLabel={t('routeObservedToggle', ctx.lang, { name })}>
+            <Eye size={12} aria-hidden />
+            {pinned ? t('routeObservedPinned', ctx.lang) : t('routeObserved', ctx.lang)}
+          </Button>
+        ) : null}
+        {ctx.onToggleWanted ? (
+          <Button size="sm" variant={wanted ? 'ghost' : 'secondary'} onClick={() => ctx.onToggleWanted?.(giftId)} ariaLabel={`${name} ${wanted ? t('giftRemoveGoal', ctx.lang) : t('giftAddGoal', ctx.lang)}`}>
+            {wanted ? <X size={12} aria-hidden /> : <Plus size={12} aria-hidden />}
+            {wanted ? t('giftRemoveGoal', ctx.lang) : t('giftAddGoal', ctx.lang)}
+          </Button>
+        ) : null}
+      </div>
+      {ctx.run && wanted ? (
+        <div className="pl-[54px]">
           <Segmented<'pending' | 'got' | 'failed'>
             label={t('giftStatusLabel', ctx.lang, { name })}
             value={status ?? 'pending'}
@@ -161,19 +179,7 @@ function GiftRow({ giftId, exclusive, ctx }: { giftId: number; exclusive: boolea
             ]}
             onChange={(value) => ctx.run?.onGiftStatus(giftId, value === 'pending' ? null : value)}
           />
-        ) : null}
-      </div>
-      {canObserve ? (
-        <Button size="sm" variant={pinned ? 'primary' : 'ghost'} onClick={() => ctx.onToggleObserved?.(giftId)} ariaLabel={t('routeObservedToggle', ctx.lang, { name })}>
-          <Eye size={12} aria-hidden />
-          {pinned ? t('routeObservedPinned', ctx.lang) : t('routeObserved', ctx.lang)}
-        </Button>
-      ) : null}
-      {ctx.onToggleWanted ? (
-        <Button size="sm" variant={wanted ? 'ghost' : 'secondary'} onClick={() => ctx.onToggleWanted?.(giftId)} ariaLabel={`${name} ${wanted ? t('giftRemoveGoal', ctx.lang) : t('giftAddGoal', ctx.lang)}`}>
-          {wanted ? <X size={12} aria-hidden /> : <Plus size={12} aria-hidden />}
-          {wanted ? t('giftRemoveGoal', ctx.lang) : t('giftAddGoal', ctx.lang)}
-        </Button>
+        </div>
       ) : null}
     </li>
   );

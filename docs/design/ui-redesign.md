@@ -267,3 +267,17 @@
 - **시작 행**: 키워드 + 관측 타일(데스크톱은 클릭으로 지정 토글, 폰은 시트). 범례 4개: 「이 층 고정」「이 중 한 층」「추천 역 (창이 부분적으로 겹칠 때만)」「둘 중 한 팩만」.
 - **텍스트 복사**: 세그먼트 단위 — 「2~3F (어느 층이든): 마주하지 않는 · 낙화」, 「2~3F (2~3층 · 추천 2 → 3): …」, 「4F: 2호선」, 「4~15F: 자유」, 픽업 「  - 불결함 (마주하지 않는)」, 마지막에 「포기한 팩: …」「포기: …」.
 - 문구 키(M11 추가): `routeAnyFloor`, `routeSegmentOne`, `routeSegmentMany`, `routeSuggestOrder`, `routeOverlapHint`, `routeSegmentLabel`, `legendSuggest`, `legendOverlap`, `packInclude`, `packIncluded`, `packPreferred`, `packExcluded`, `packNotInRoute`, `packBan`, `packBanned`, `packRestore`, `packGifts`, `packFloors`, `packOpen`, `giftExclusive`, `giftWanted`, `routeConflicts`, `conflictHeader`, `conflictHint`, `routeOtherUnresolved`, `routeBannedList`, `packBanConfirm`, `unresolvedBanned`. 삭제: `routeWindow`, `routeWindowCompact`, `routePick`, `routeGiftCount`, `routeDetail`, `routeMore`, `routeCandidates`.
+
+## M12 추가 규칙 (런 진행 모드)
+
+3단계 루트 화면 안의 토글이다. 런 상태는 **이 기기에만** 저장하고(persist v5의 `run`) 공유 링크에는 싣지 않는다. 조합 목표(`fusionGoal`)는 공유 링크 v4에 실린다.
+
+- **옵션 바**: 런 전에는 「런 시작」(관측 기프트·시작 기프트를 수집 완료로 둔다). 런 중에는 「진행 중」 배지 + 「현재 층」 select(1~15, 방문한 층보다 앞으로는 못 간다) + 「런 종료」(`window.confirm`, 기록 전부 삭제) + 안내 한 줄. `data-testid=run-bar`.
+- **팩 시트(런 중)**: 상태 배지 「방문 · {n}층」이 「포함 · {n}층」보다 우선. 「방문 층 지정」(`VisitActions`)을 누르면 열려 있던 시트·팝오버가 닫히고 노선도가 **선택 모드**가 된다: 상단 배너 「{팩} · 들어간 층을 누르세요 · 취소」(`select-banner`), 그 팩이 나오는 역만 `role=button`·`tabIndex=0`·`data-selectable`(점선 후광)이 되고 클릭/Enter/Space로 `visitPack`, Esc·취소로 해제. 「방문 취소」로 되돌린다. 팩은 런당 한 번 방문하므로 다른 층에 다시 지정하면 옮겨진다.
+- **기프트 상태(런 중)**: 원하는 기프트 행 아래 3단 `Segmented` 「수집 전 / 완료 / 실패」(`radiogroup` 「{이름} 수집 상태」). 완료는 아이콘 우상단 체크 배지, 실패는 아이콘 흐림 + X 배지(`GiftIcon` `status`, `data-status`). 런 중에는 관측 지정 버튼을 숨긴다(관측은 런 시작 전 일이다).
+- **노선도(런 중)**: 지나간 역은 채움 + 체크(`data-passed`), 현재 층 역은 이중 링(`data-current`)과 굵은 번호. 방문한 팩은 그 층의 세그먼트 「{n}층 방문」(`data-passed`, `bg-surface-2`, 실선 테두리)로 그리고 픽업(아직 안 받은 기프트)을 그대로 보인다. 자유 구간 중 지나간 것은 텍스트 복사에 「지남」. 범례에 「지나간 층」「현재 층」 추가.
+- **조합 목표**: 2단계 기프트 화면에서 조합 결과 행을 펼치면 재료 칩 옆 「재료도 목표」 체크박스(기본 켬). 끄면 그 결과가 조합 불가능해졌을 때(재료 실패·층 지남) 남은 재료만을 위한 방문을 취소하고 미해결 문구에 「나머지 재료(…)만을 위한 방문은 취소했습니다」를 덧붙인다.
+- **앞으로 갈 수 있는 팩**(`AheadPacks`, 런 중·대안 탭이 아닐 때): 현재 층이 속하거나 그 뒤인 밴드 탭 + 검색(팩 이름·전용 기프트 이름) + 팩 카드 48 그리드(`ahead-pack`: 상태 배지, 「전용 n」, 원하는 전용 기프트가 있으면 「원함 n」). 카드 클릭 → 팩 시트(기프트마다 「목표에 추가」/「목표에서 빼기」 = `toggleWanted`, 「이 팩으로」, 「방문 층 지정」).
+- **요약·복사**: 「확보」는 수집 완료를 포함(core가 `owned`로 센다), 실패한 기프트가 있으면 「실패 n」 배지. 텍스트 복사 첫 줄에 「진행 중 · 현재 층 nF · 4F 화왕지절, …」.
+- **저장**: persist v5 `run`·`fusionGoal`, `sanitizeRun`(정수 층·범위·팩당 한 층·상태 값 검사, `currentFloor`는 방문한 층 + 1 이상), `sanitizeOptions`는 런 옵션을 항상 초기화(옛 링크·저장값이 런을 끼워 넣지 못하게).
+- 문구 키(M12 추가): `runStart`, `runEnd`, `runEndConfirm`, `runActive`, `runCurrentFloor`, `runCurrentFloorHint`, `runHint`, `runVisited`, `runVisitedShort`, `runSetVisit`, `runSetVisitHint`, `runSelecting`, `runSelectCancel`, `runSelectFloor`, `runUnvisit`, `runPassed`, `runFailedCount`, `giftStatusLabel/Pending/Got/Failed`, `giftAddGoal`, `giftRemoveGoal`, `fusionGoalIngredients`, `fusionGoalHint`, `aheadPacks`, `aheadPacksHint`, `aheadSearch`, `aheadExclusives`, `aheadNone`, `legendPassed`, `legendCurrent`, `unresolvedFailed`, `unresolvedDropped`.

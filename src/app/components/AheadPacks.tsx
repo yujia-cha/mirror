@@ -3,7 +3,7 @@
  * band, each with its exclusive gifts. Opening one shows its gift list, where gifts can be added
  * as goals and the pack itself can be included in the route.
  */
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Search } from 'lucide-react';
 import type { ThemePack } from '../../core/schema.ts';
 import { pick, t } from '../i18n.ts';
@@ -28,6 +28,11 @@ export function AheadPacks({ ctx, currentFloor }: { ctx: PackContext; currentFlo
   const [bandIndex, setBandIndex] = useState(0);
   const [query, setQuery] = useState('');
   const [openPack, setOpenPack] = useState<number | null>(null);
+  // Choosing an entry floor happens on the map, so a sheet opened here gets out of the way.
+  const selecting = ctx.run?.selecting ?? null;
+  useEffect(() => {
+    if (selecting !== null) setOpenPack(null);
+  }, [selecting]);
   const band = bands[Math.min(bandIndex, bands.length - 1)];
 
   // Packs offered on at least one floor of the band that is still ahead.
