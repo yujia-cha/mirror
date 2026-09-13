@@ -7,7 +7,8 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { localizeList, readJson, repoPath, staticList } from './io.ts';
-import type { Sin } from '../../src/core/schema.ts';
+import type { Sin, StatusKeyword } from '../../src/core/schema.ts';
+import { STATUS_KEYWORD_BY_KO } from './derive.ts';
 
 export const STATIC_DIR = repoPath('data/raw/static');
 export const LOCALIZE_DIR = repoPath('data/raw/localize');
@@ -287,6 +288,26 @@ export function readFactionNames(lang: Lang): Map<string, string> {
   };
   for (const e of localizeFiles(lang, /^UnitKeyword.*\.json$/)) add(String(e.id), e.content ?? e.name);
   for (const e of localizeFile(lang, 'FormationNameEtcFilter.json')) add(String(e.id), e.content ?? e.name);
+  return out;
+}
+
+const SPECIAL_VARIANT_LINE = /^-?\s*특수 (화상|출혈|진동|파열|침잠|호흡|충전)\s*$/m;
+
+/**
+ * Buff ids the game declares as a 특수 variant of a status keyword, e.g. `ChargeBodyArt`
+ * (생체 재료 → 특수 충전) or `NailPersonality` (못 → 특수 출혈).
+ *
+ * The only machine-readable signal is a bullet in the buff's Korean description that reads
+ * exactly 「특수 충전」; buffs that merely *mention* a 특수 variant in a longer sentence are not
+ * variants themselves, which is why the line has to stand alone.
+ */
+export function readSpecialVariants(): Map<string, StatusKeyword> {
+  const out = new Map<string, StatusKeyword>();
+  for (const e of localizeFile('KR', 'BattleKeywords.json')) {
+    const m = typeof e.desc === 'string' ? SPECIAL_VARIANT_LINE.exec(e.desc) : null;
+    const keyword = m ? STATUS_KEYWORD_BY_KO[m[1]!] : undefined;
+    if (keyword) out.set(String(e.id), keyword);
+  }
   return out;
 }
 

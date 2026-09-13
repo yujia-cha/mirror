@@ -9,6 +9,7 @@ import {
   sinnerIdFromIdentityId,
   tierFromTags,
 } from './derive.ts';
+import type { StatusKeyword } from '../../src/core/schema.ts';
 import type { RawSkill } from './raw.ts';
 
 describe('availabilityFor', () => {
@@ -159,8 +160,8 @@ describe('deriveIdentityKeywords', () => {
         skills,
       ),
     ).toEqual({
-      Sinking: { skills: 2, special: false },
-      Charge: { skills: 1, special: false },
+      Sinking: { skills: 2, specialSkills: 0 },
+      Charge: { skills: 1, specialSkills: 0 },
     });
   });
 
@@ -179,6 +180,33 @@ describe('deriveIdentityKeywords', () => {
         new Map([[1, defensive]]),
       ),
     ).toEqual({});
+  });
+
+  it('counts a 특수 variant separately, whether it is a buffKeyword or only a script name', () => {
+    const variants = new Map<string, StatusKeyword>([
+      ['ChargeBodyArt', 'Charge'],
+      ['NailPersonality', 'Laceration'],
+    ]);
+    const bodyArt: RawSkill = {
+      id: 1,
+      skillType: 'SKILL',
+      skillData: [{ coinList: [{ abilityScriptList: [{ scriptName: 'MarkGiveChargeBodyArtTurn' }] }] }],
+    };
+    const skills = new Map<number, RawSkill>([
+      [1, bodyArt],
+      [2, skill(2, ['Charge', 'NailPersonality'])],
+      [3, skill(3, ['Laceration'])],
+    ]);
+    const attributeList = [1, 2, 3].map((skillId) => ({ skillId, number: 1 }));
+    expect(deriveIdentityKeywords({ id: 10215, attributeList }, skills, variants)).toEqual({
+      Laceration: { skills: 1, specialSkills: 1 },
+      Charge: { skills: 1, specialSkills: 1 },
+    });
+    // Without the variant table the special buffs are invisible, as before.
+    expect(deriveIdentityKeywords({ id: 10215, attributeList }, skills)).toEqual({
+      Laceration: { skills: 1, specialSkills: 0 },
+      Charge: { skills: 1, specialSkills: 0 },
+    });
   });
 
   it('returns an empty map when the skill data is missing', () => {

@@ -53,7 +53,9 @@ export function availabilityFor(pack: RawThemePack): Record<Difficulty, number[]
   return out;
 }
 
-const KEYWORD_BY_KO: Record<string, StatusKeyword> = {
+
+/** Korean keyword names as the game's own text writes them (pack dev names, 특수 variant lines). */
+export const STATUS_KEYWORD_BY_KO: Record<string, StatusKeyword> = {
   화상: 'Combustion',
   출혈: 'Laceration',
   진동: 'Vibration',
@@ -90,7 +92,7 @@ export function affinitiesFromDevName(devName: string): {
 } {
   const head = devName.replace(/[-\s]?\d+$/, '').replace(/약점$/, '');
   return {
-    keyword: KEYWORD_BY_KO[head] ?? null,
+    keyword: STATUS_KEYWORD_BY_KO[head] ?? null,
     sin: SIN_BY_KO[head] ?? null,
     attackType: ATTACK_BY_KO[head] ?? null,
   };
@@ -115,8 +117,23 @@ export function sinnerIdFromIdentityId(id: number): number {
 
 const STATUS_SET = new Set<string>(STATUS_KEYWORDS);
 
-function keywordsInSkill(skill: RawSkill): Set<StatusKeyword> {
-  const found = new Set<StatusKeyword>();
+export type IdentityKeywordCounts = Partial<Record<StatusKeyword, { skills: number; specialSkills: number }>>;
+
+/**
+ * Status keywords one skill inflicts, split into the base keyword (`buffKeyword: "Charge"`) and
+ * the 특수 variants.
+ *
+ * A variant shows up either as a `buffKeyword` of its own (`NailPersonality`, `DarkFlame`) or —
+ * for 생체 재료 (특수 충전) — only in the names of the ability scripts that grant and spend it
+ * (`MarkGiveChargeBodyArtTurn`, `MarkSubKeywordChargeBodyArt`), so a script name containing the
+ * buff id counts too. Variant ids come from `readSpecialVariants()`, never from a hard-coded list.
+ */
+function keywordsInSkill(
+  skill: RawSkill,
+  specialVariants: Map<string, StatusKeyword>,
+): { base: Set<StatusKeyword>; special: Set<StatusKeyword> } {
+  const base = new Set<StatusKeyword>();
+  const special = new Set<StatusKeyword>();
   const visit = (node: unknown): void => {
     if (Array.isArray(node)) {
       for (const item of node) visit(item);
@@ -125,12 +142,20 @@ function keywordsInSkill(skill: RawSkill): Set<StatusKeyword> {
     if (node && typeof node === 'object') {
       const obj = node as Record<string, unknown>;
       const kw = obj['buffKeyword'];
-      if (typeof kw === 'string' && STATUS_SET.has(kw)) found.add(kw as StatusKeyword);
+      if (typeof kw === 'string') {
+        if (STATUS_SET.has(kw)) base.add(kw as StatusKeyword);
+        const variant = specialVariants.get(kw);
+        if (variant) special.add(variant);
+      }
+      const script = obj['scriptName'];
+      if (typeof script === 'string') {
+        for (const [id, variant] of specialVariants) if (script.includes(id)) special.add(variant);
+      }
       for (const value of Object.values(obj)) visit(value);
     }
   };
   visit(skill.skillData ?? []);
-  return found;
+  return { base, special };
 }
 
 /**
@@ -139,26 +164,31 @@ function keywordsInSkill(skill: RawSkill): Set<StatusKeyword> {
  * `attributeList` holds exactly the identity's base attack skills, so this counts attack skills
  * only — which is the unit conditional gifts measure ("부여하는 공격 스킬을 보유한 인격").
  *
- * The "특수" variants (특수 화상 etc.) are identity-specific buff ids that cannot be told apart
- * reliably here, so `special` stays false and `data/curated/identity-keywords.json` corrects it.
+ * `skills` counts the base keyword, `specialSkills` the 특수 variant (see `keywordsInSkill`).
+ * The game's conditions treat them differently — 「[Charge] 횟수 또는 특수 충전을 획득하는」 counts
+ * both, 「[Laceration]을 부여하는」 only the base — so they are kept apart here and in the planner.
+ * `data/curated/identity-keywords.json` still overrides both when the derivation is wrong.
  */
 export function deriveIdentityKeywords(
   personality: RawPersonality,
   skills: Map<number, RawSkill>,
-): Partial<Record<StatusKeyword, { skills: number; special: boolean }>> {
-  const counts = new Map<StatusKeyword, number>();
+  specialVariants: Map<string, StatusKeyword> = new Map(),
+): IdentityKeywordCounts {
+  const baseCounts = new Map<StatusKeyword, number>();
+  const specialCounts = new Map<StatusKeyword, number>();
   for (const entry of personality.attributeList ?? []) {
     const skill = skills.get(entry.skillId);
     if (!skill) continue;
     if (skill.skillType && skill.skillType !== 'SKILL') continue;
-    for (const kw of keywordsInSkill(skill)) {
-      counts.set(kw, (counts.get(kw) ?? 0) + 1);
-    }
+    const found = keywordsInSkill(skill, specialVariants);
+    for (const kw of found.base) baseCounts.set(kw, (baseCounts.get(kw) ?? 0) + 1);
+    for (const kw of found.special) specialCounts.set(kw, (specialCounts.get(kw) ?? 0) + 1);
   }
-  const out: Partial<Record<StatusKeyword, { skills: number; special: boolean }>> = {};
+  const out: IdentityKeywordCounts = {};
   for (const kw of STATUS_KEYWORDS) {
-    const n = counts.get(kw);
-    if (n) out[kw] = { skills: n, special: false };
+    const n = baseCounts.get(kw) ?? 0;
+    const s = specialCounts.get(kw) ?? 0;
+    if (n + s > 0) out[kw] = { skills: n, specialSkills: s };
   }
   return out;
 }

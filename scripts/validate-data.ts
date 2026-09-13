@@ -333,6 +333,12 @@ function checkInvariants(
     );
   }
 
+  // The 특수 variants (특수 충전 …) are read off BattleKeywords.json; losing them all means the
+  // description format changed, not that the game dropped the mechanic.
+  if (!identities.some((i) => Object.values(i.keywords).some((k) => k.specialSkills > 0))) {
+    strict('invariant', 'no identity inflicts a 특수 keyword variant; check readSpecialVariants() against BattleKeywords.json');
+  }
+
   const noKeyword = identities.filter((i) => i.keywordSource === 'none');
   if (noKeyword.length > 20) {
     strict(

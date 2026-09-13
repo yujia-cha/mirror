@@ -74,6 +74,8 @@ Everything here was read out of the game's own static data; `docs/research/mecha
 
 **키워드 조건은 인격의 태그가 아니라 "해당 키워드를 부여하는 공격 스킬 보유 여부"로 센다.** 그래서 인격 키워드는 `skill/personality-skill-*.json`에서 도출한다. 소속 조건은 `personality-*.json`의 `associationList`로 센다(`unitKeywordList`가 아니다).
 
+**특수 변형**(특수 충전 = 생체 재료, 특수 출혈 = 못 …)은 별도 버프다. `BattleKeywords.json` 설명에 「- 특수 충전」 한 줄이 선 버프가 변형이고, 인격의 `keywords[K].specialSkills`로 따로 센다. 조건 문장에 「또는 특수 X」가 있으면(`includesSpecial`) 변형도 포함하고, 없으면 기본 키워드(`skills > 0`)만 센다.
+
 범위(scope) 구분:
 - `출격 인원 기준` / `대기 인원 제외` → 출격 6인만
 - `대기 인원 포함` / `편성된` → 편성 12인 전체
