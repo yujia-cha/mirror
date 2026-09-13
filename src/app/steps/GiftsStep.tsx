@@ -13,6 +13,7 @@ import { useApp } from '../store.ts';
 import { SIN_LABEL, badgeFor } from '../lib/labels.ts';
 import { prioritiseGifts, type GiftEntry, type GiftGroup } from '../lib/gift-priority.ts';
 import { entanglements } from '../lib/entangle.ts';
+import { upgradeChildren } from '../lib/upgrade-children.ts';
 import { judgementOf } from '../lib/judgement.ts';
 import { priorityOf, type Priority } from '../lib/plan-input.ts';
 import { Badge, Button, Card, FilterSelect } from '../components/ui.tsx';
@@ -83,14 +84,7 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
   }, [data, stats, indexes]);
 
   // 조합 계승: a child (upgradeOf) never stands alone; it hangs under its parent.
-  const childrenOf = useMemo(() => {
-    const map = new Map<number, Gift[]>();
-    for (const gift of data.gifts) {
-      if (gift.upgradeOf === null) continue;
-      map.set(gift.upgradeOf, [...(map.get(gift.upgradeOf) ?? []), gift]);
-    }
-    return map;
-  }, [data]);
+  const childrenOf = useMemo(() => upgradeChildren(data), [data]);
 
   // Two fusion goals can eat the same ingredient; both stay pickable but say so.
   const entangled = useMemo(() => entanglements(wanted, indexes, data.rules.fusion.maxShopSlots), [wanted, indexes, data]);

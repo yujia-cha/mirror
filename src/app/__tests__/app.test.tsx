@@ -1409,6 +1409,169 @@ describe('RunStage · start-of-run gifts', () => {
   });
 });
 
+describe('RoutePlanPanel · goals', () => {
+  const renderBoth = (override?: typeof data) =>
+    renderPlanned(
+      <>
+        <RunStage onOpenGifts={() => undefined} />
+        <RoutePlanPanel />
+      </>,
+      override,
+    );
+  const goals = () => screen.getByTestId('route-goals');
+  const tileIn = (root: HTMLElement, id: number) => within(root).getAllByTestId('gift-tile').find((el) => el.getAttribute('data-gift') === String(id))!;
+  const goalTile = (id: number) => tileIn(goals(), id);
+  const stageTile = (id: number) => tileIn(screen.getByTestId('exclusive-gifts'), id);
+  const skipFloor = async (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole('button', { name: '다른 팩 입장' }));
+  /** Walk to floor 4 and enter 화왕지절 (1402), whose exclusive 9267 is the goal. */
+  const enter1402 = async (user: ReturnType<typeof userEvent.setup>) => {
+    for (let i = 0; i < 3; i += 1) await skipFloor(user);
+    await user.click(screen.getByRole('button', { name: '화왕지절 입장' }));
+    expect(useApp.getState().run).toMatchObject({ visits: { 4: 1402 }, currentFloor: 5 });
+  };
+
+  it('lists every goal the player set, 포기 included, with the ingredients of a fusion goal', () => {
+    useApp.getState().setDeck(BURN_DECK, 7);
+    for (const id of [9267, 9283, 9410]) useApp.getState().toggleWanted(id);
+    useApp.getState().setPriority(9283, 'skip');
+    renderBoth();
+    const rows = within(goals()).getAllByTestId('route-goal');
+    expect(rows.map((r) => r.getAttribute('data-gift'))).toEqual(['9267', '9283', '9410']);
+    expect(goals()).toHaveTextContent('0/3');
+    expect(goalTile(9267)).toHaveAttribute('data-wanted');
+    expect(goalTile(9283)).not.toHaveAttribute('data-wanted');
+    expect(rows[1]).toHaveAttribute('data-priority', 'skip');
+    // A fusion goal shows what the packs actually drop: its ingredients, marked as the same record.
+    expect(within(rows[2]!).getAllByTestId('gift-tile').map((el) => el.getAttribute('data-gift'))).toEqual(['9410', '9408', '9409']);
+    expect(goalTile(9408)).not.toHaveAttribute('data-wanted');
+    expect(goalTile(9408)).toHaveAttribute('data-status', 'pending');
+  });
+
+  it('shares one record with the tiles of the entered pack, in both directions', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267);
+    renderBoth();
+    await enter1402(user);
+    // Panel → stage.
+    await user.click(goalTile(9267));
+    expect(useApp.getState().run.giftStatus).toEqual({ 9267: 'got' });
+    expect(stageTile(9267)).toHaveAttribute('aria-pressed', 'true');
+    expect(stageTile(9267)).toHaveAttribute('data-status', 'got');
+    expect(goals()).toHaveTextContent('1/1');
+    await user.click(goalTile(9267));
+    expect(useApp.getState().run.giftStatus).toEqual({});
+    expect(stageTile(9267)).toHaveAttribute('data-status', 'pending');
+    // Stage → panel, and going back clears both.
+    await user.click(stageTile(9267));
+    expect(goalTile(9267)).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByRole('button', { name: '화왕지절 돌아가기' }));
+    expect(useApp.getState().run.giftStatus).toEqual({});
+    expect(goalTile(9267)).toHaveAttribute('data-status', 'pending');
+    await waitFor(() => expect(screen.queryByTestId('pack-area-closing')).toBeNull());
+  });
+
+  it('feeds an ingredient marked in the panel back into the route', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9410); // 서릿발 발자국 ← 9408 (1004) + 9409 (1005), floors 1-2
+    // Observation off, or the planner would observe the ingredients instead of visiting.
+    const noObservation = { ...data, rules: { ...data.rules, giftObservation: { ...data.rules.giftObservation, max: 0 } } };
+    renderBoth(noObservation);
+    const packs = () => screen.getAllByTestId('stage-pack').map((c) => c.getAttribute('data-pack'));
+    expect(packs()).toEqual(['1004', '1005']);
+    await user.click(goalTile(9408));
+    expect(useApp.getState().run.giftStatus).toEqual({ 9408: 'got' });
+    expect(packs()).toEqual(['1005']);
+    expect(planRoute(planInputFor(useApp.getState()), noObservation, indexes).stats.requiredPacks).toBe(1);
+    expect(goalTile(9410)).toHaveAttribute('data-status', 'pending');
+  });
+
+  it('shows a goal the run marked as missed, and a press turns it into got', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267);
+    renderBoth();
+    await enter1402(user);
+    await user.click(screen.getByTestId('area-next'));
+    expect(useApp.getState().run.giftStatus).toEqual({ 9267: 'failed' });
+    expect(goalTile(9267)).toHaveAttribute('data-status', 'failed');
+    expect(screen.getByTestId('route-summary')).toHaveTextContent('실패 1');
+    await user.click(goalTile(9267));
+    expect(useApp.getState().run.giftStatus).toEqual({ 9267: 'got' });
+    expect(screen.getByTestId('route-summary')).not.toHaveTextContent('실패');
+  });
+
+  it('raises the 달의 기억 reminder from the goals grid too', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9083);
+    useApp.getState().setGiftStatus(9105, 'got'); // 업화 조각
+    renderBoth();
+    await user.click(goalTile(9083));
+    const notice = within(goals()).getByTestId('fusion-notice');
+    expect(notice).toHaveTextContent('합성으로 소모한 조각 2개·기억 3개는 미획득으로 표시하세요.');
+    await user.click(within(notice).getByRole('button', { name: '업화 조각 미획득으로' }));
+    expect(useApp.getState().run.giftStatus).toEqual({ 9083: 'got' });
+    await user.click(goalTile(9083));
+    expect(within(goals()).queryByTestId('fusion-notice')).toBeNull();
+  });
+
+  it('opens the gift details from a tile: a one-second hold, the corner button, or a right-click — a short press still toggles', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267);
+    renderBoth();
+    await enter1402(user);
+    const dialog = () => screen.queryByRole('dialog', { name: '달궈진 놋쇠' }); // the goal 9267, a drop of 화왕지절
+    const close = async () => {
+      await user.click(within(dialog()!).getByRole('button', { name: '닫기' }));
+      expect(dialog()).toBeNull();
+    };
+    vi.useFakeTimers();
+    try {
+      // A hold opens the sheet and the click on release does not toggle.
+      fireEvent.pointerDown(stageTile(9267), { button: 0 });
+      act(() => {
+        vi.advanceTimersByTime(999);
+      });
+      expect(dialog()).toBeNull();
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(dialog()).toBeInTheDocument();
+      fireEvent.pointerUp(stageTile(9267));
+      fireEvent.click(stageTile(9267));
+      expect(useApp.getState().run.giftStatus).toEqual({});
+      // A short press is a plain toggle.
+      fireEvent.click(within(dialog()!).getByRole('button', { name: '닫기' }));
+      expect(dialog()).toBeNull();
+      fireEvent.pointerDown(stageTile(9267), { button: 0 });
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      fireEvent.pointerUp(stageTile(9267));
+      fireEvent.click(stageTile(9267));
+      expect(useApp.getState().run.giftStatus).toEqual({ 9267: 'got' });
+      expect(dialog()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+    // The corner button and a right-click open the same sheet, which carries the items-tab controls.
+    await user.click(within(screen.getByTestId('exclusive-gifts')).getAllByTestId('gift-tile-info')[0]!);
+    expect(dialog()).toBeInTheDocument();
+    await user.click(within(dialog()!).getByRole('button', { name: '달궈진 놋쇠 우선순위: 보통' }));
+    expect(useApp.getState().priority).toEqual({ 9267: 'must' });
+    await close();
+    fireEvent.contextMenu(stageTile(9267));
+    expect(dialog()).toBeInTheDocument();
+    await close();
+    await user.click(within(goals()).getAllByTestId('gift-tile-info')[0]!);
+    expect(dialog()).toBeInTheDocument();
+    await close();
+  });
+});
+
 describe('Tracker', () => {
   const tile = (id: number) => screen.getAllByTestId('gift-tile').find((el) => el.getAttribute('data-gift') === String(id))!;
 

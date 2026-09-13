@@ -31,7 +31,7 @@ export interface PullHandlers {
 const NEVER_PULL = 'a, input, select, textarea, summary';
 
 /** Swallow the click the browser fires right after a committed pull (same target under a moved pointer). */
-function swallowNextClick(): void {
+export function swallowNextClick(): void {
   const onClick = (event: MouseEvent): void => {
     event.stopPropagation();
     event.preventDefault();
