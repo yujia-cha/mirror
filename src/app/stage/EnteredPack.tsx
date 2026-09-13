@@ -2,7 +2,8 @@
  * The area a pulled pack opens: the pack on the left, every gift only it drops on the right
  * (goals first, each a tile pressed when in hand), a handle above to go back and one below to
  * move on. Pulling the whole area down moves on; pushing it up goes back — the entry and every
- * status marked for this pack's drops are cleared and the area folds away.
+ * status marked for this pack's drops are cleared and the area folds away. Holding a tile (or its
+ * ⓘ) opens the gift's details.
  */
 import { useEffect, useState } from 'react';
 import { ChevronsDown, ChevronsUp } from 'lucide-react';
@@ -18,7 +19,7 @@ const HANDLE_CLASS = 'flex h-9 w-full items-center justify-center gap-1 text-sm 
 
 /** Opens from zero height on mount (`grid-template-rows` 0fr → 1fr) and folds the same way when `closing`. */
 export function PackArea({ packId, floor, closing = false }: { packId: number; floor: number; closing?: boolean }) {
-  const { indexes, lang, ctx, exclusivesOf, goals, next, leave } = usePlan();
+  const { indexes, lang, ctx, exclusivesOf, goals, next, leave, openGift } = usePlan();
   const giftStatus = useApp((s) => s.run.giftStatus);
   const setGiftStatus = useApp((s) => s.setGiftStatus);
   const [open, setOpen] = useState(false);
@@ -101,6 +102,7 @@ export function PackArea({ packId, floor, closing = false }: { packId: number; f
                         judgement={ctx.judgements.get(id) ?? null}
                         title={ctx.giftTitle(id)}
                         onToggle={(nextStatus) => setGiftStatus(id, nextStatus)}
+                        onOpen={() => openGift(id)}
                         lang={lang}
                       />
                     ) : null;

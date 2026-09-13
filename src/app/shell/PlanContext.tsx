@@ -4,6 +4,7 @@
  * context every pack surface takes and the run actions that settle gifts as floors are left.
  */
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { evaluateConditions } from '../../core/index.ts';
 import type { GameData, Keyword } from '../../core/schema.ts';
 import { observable, planAlternatives, planRoute } from '../../core/index.ts';
 import type { DeckStats, GameIndexes, PlanInput, RoutePlan } from '../../core/types.ts';
@@ -15,6 +16,9 @@ import { conditionText } from '../condition-text.ts';
 import { judgementsByGift, type Judgement } from '../lib/judgement.ts';
 import { planInputFor, priorityOf, skippedGifts } from '../lib/plan-input.ts';
 import { autoFailedFor, exclusivesIndex, stageModeFor, type StageMode } from '../lib/stage.ts';
+import { entanglements } from '../lib/entangle.ts';
+import { upgradeChildren } from '../lib/upgrade-children.ts';
+import { GiftDetailSheet } from '../components/GiftDetailSheet.tsx';
 import type { PackContext } from '../components/PackSheet.tsx';
 
 export interface PlanState {
@@ -53,6 +57,8 @@ export interface PlanState {
    * are cleared; when that reopens floor 1, the start-of-run gifts recorded on leaving it go too.
    */
   leave: (packId: number) => void;
+  /** Open the gift detail sheet (the same one the items tab uses) from anywhere in the shell. */
+  openGift: (giftId: number) => void;
 }
 
 const PlanCtx = createContext<PlanState | null>(null);
@@ -81,6 +87,7 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
   const setGiftStatus = useApp((s) => s.setGiftStatus);
   const nextFloor = useApp((s) => s.nextFloor);
   const [variantIndex, setVariantIndex] = useState(0);
+  const [detailGift, setDetailGift] = useState<number | null>(null);
 
   const input = useMemo(
     () => planInputFor({ deck, deployed, wanted, priority, options, fusionGoal, run }),
@@ -95,6 +102,8 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
   const variant = variantIndex > 0 ? variants[variantIndex - 1] : undefined;
   const shown = variant?.plan ?? plan;
   const exclusivesOf = useMemo(() => exclusivesIndex(data, indexes), [data, indexes]);
+  const childrenOf = useMemo(() => upgradeChildren(data), [data]);
+  const entangled = useMemo(() => entanglements(wanted, indexes, data.rules.fusion.maxShopSlots), [wanted, indexes, data]);
 
   const value = useMemo<PlanState>(() => {
     const giftName = (id: number): string => pick(indexes.giftById.get(id)?.name, lang);
@@ -178,6 +187,7 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
       enter,
       next,
       leave,
+      openGift: setDetailGift,
     };
   }, [
     data,
@@ -206,5 +216,24 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
     nextFloor,
   ]);
 
-  return <PlanCtx.Provider value={value}>{children}</PlanCtx.Provider>;
+  // The sheet is hosted once here so a tile on the stage, in the tracker or in the route panel
+  // opens the same details the items tab shows; it portals to the body like every sheet.
+  const sheetGift = detailGift !== null ? indexes.giftById.get(detailGift) : undefined;
+  return (
+    <PlanCtx.Provider value={value}>
+      {children}
+      {sheetGift ? (
+        <GiftDetailSheet
+          gift={sheetGift}
+          reports={evaluateConditions([sheetGift.id], stats, indexes)}
+          entangled={entangled.get(sheetGift.id) ?? []}
+          data={data}
+          indexes={indexes}
+          lang={lang}
+          onToggleWanted={(gift) => toggleWanted(gift.id, (childrenOf.get(gift.id) ?? []).map((g) => g.id))}
+          onClose={() => setDetailGift(null)}
+        />
+      ) : null}
+    </PlanCtx.Provider>
+  );
 }
