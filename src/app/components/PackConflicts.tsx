@@ -1,10 +1,11 @@
 /**
  * The unresolved card, decided the way the game is played: a run of contested floors and the
  * packs competing for them, each with the gifts it would bring, to keep or give up as a whole.
- * Gifts that fail for other reasons keep their per-gift controls underneath.
+ * Gifts that fail for other reasons keep their per-gift controls underneath; giving one up
+ * simply removes it from the selection.
  */
 import { useState, type ReactNode } from 'react';
-import { Ban, ChevronRight, Eye, RotateCcw, Star, TriangleAlert } from 'lucide-react';
+import { ChevronRight, Eye, Star, TriangleAlert, X } from 'lucide-react';
 import type { ConflictGroup } from '../../core/conflicts.ts';
 import type { Unresolved } from '../../core/types.ts';
 import { pick, t } from '../i18n.ts';
@@ -21,10 +22,11 @@ export interface PackConflictsProps {
   groups: ConflictGroup[];
   /** Unresolved entries that are not pack conflicts. */
   others: Unresolved[];
-  skippedGifts: number[];
   ctx: PackContext;
   priorityOf: (giftId: number) => Priority;
   setPriority: (giftId: number, priority: Priority) => void;
+  /** Giving a gift up removes it from the selection. */
+  removeWanted: (giftId: number) => void;
   /** Observation action for an entry, if one applies. */
   observeAction: (entry: Unresolved) => (UnresolvedAction & { label: string }) | undefined;
   headerActions: (UnresolvedAction & { label: string })[];
@@ -34,12 +36,12 @@ export interface PackConflictsProps {
   detailMode?: DetailMode;
 }
 
-export function PackConflicts({ groups, others, skippedGifts, ctx, priorityOf, setPriority, observeAction, headerActions, onAction, onSeeVariants, detailMode = 'sheet' }: PackConflictsProps) {
+export function PackConflicts({ groups, others, ctx, priorityOf, setPriority, removeWanted, observeAction, headerActions, onAction, onSeeVariants, detailMode = 'sheet' }: PackConflictsProps) {
   const { lang } = ctx;
   const [openPack, setOpenPack] = useState<number | null>(null);
   const banned = [...ctx.banned].sort((a, b) => a - b);
   const total = groups.reduce((n, g) => n + g.candidates.filter((c) => c.assignedAt === null).length, 0) + others.length;
-  if (groups.length === 0 && others.length === 0 && skippedGifts.length === 0 && banned.length === 0) return null;
+  if (groups.length === 0 && others.length === 0 && banned.length === 0) return null;
 
   const iconButton = (label: string, onClick: () => void, icon: ReactNode, pressed?: boolean) => (
     <button
@@ -137,7 +139,6 @@ export function PackConflicts({ groups, others, skippedGifts, ctx, priorityOf, s
                 );
               })}
             </ul>
-            <p className="text-xs text-fg-3">{t('conflictHint', lang)}</p>
           </div>
         );
       })}
@@ -169,8 +170,8 @@ export function PackConflicts({ groups, others, skippedGifts, ctx, priorityOf, s
                       <Star size={13} fill={level === 'must' ? 'currentColor' : 'none'} />,
                       level === 'must',
                     )}
-                    {iconButton(t('prioritySetSkip', lang, { name }), () => setPriority(entry.giftId, 'skip'), <Ban size={13} />)}
                     {observe ? iconButton(observe.label, () => onAction(observe), <Eye size={13} />) : null}
+                    {iconButton(t('removeFromSelection', lang, { name }), () => removeWanted(entry.giftId), <X size={13} />)}
                   </span>
                 </li>
               );
@@ -179,13 +180,9 @@ export function PackConflicts({ groups, others, skippedGifts, ctx, priorityOf, s
         </div>
       ) : null}
 
-      {banned.length > 0 || skippedGifts.length > 0 ? (
-        <details className="px-3 py-2" data-testid="skipped" open={groups.length === 0 && others.length === 0}>
-          <summary className="cursor-pointer text-xs font-medium text-fg-2">
-            {[banned.length > 0 ? t('routeBannedList', lang, { n: banned.length }) : null, skippedGifts.length > 0 ? t('routeSkippedList', lang, { n: skippedGifts.length }) : null]
-              .filter(Boolean)
-              .join(' · ')}
-          </summary>
+      {banned.length > 0 ? (
+        <details className="px-3 py-2" data-testid="banned" open={groups.length === 0 && others.length === 0}>
+          <summary className="cursor-pointer text-xs font-medium text-fg-2">{t('routeBannedList', lang, { n: banned.length })}</summary>
           <ul className="mt-1.5 flex flex-col gap-1.5">
             {banned.map((packId) => {
               const pack = ctx.indexes.packById.get(packId);
@@ -196,19 +193,6 @@ export function PackConflicts({ groups, others, skippedGifts, ctx, priorityOf, s
                   <span className="ml-auto">
                     <PackActions packId={packId} ctx={ctx} />
                   </span>
-                </li>
-              );
-            })}
-            {skippedGifts.map((id) => {
-              const gift = ctx.indexes.giftById.get(id);
-              return (
-                <li key={`gift-${id}`} className="flex items-center gap-2 text-xs text-fg-2">
-                  {gift ? <GiftIcon gift={gift} size={20} lang={lang} /> : null}
-                  <span className="line-through">{ctx.giftName(id)}</span>
-                  <button type="button" onClick={() => setPriority(id, 'normal')} className="ml-auto inline-flex items-center gap-1 text-fg underline" aria-label={`${ctx.giftName(id)} ${t('priorityRestore', lang)}`}>
-                    <RotateCcw size={11} aria-hidden />
-                    {t('priorityRestore', lang)}
-                  </button>
                 </li>
               );
             })}

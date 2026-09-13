@@ -1,12 +1,12 @@
 import type { Keyword } from '../../core/schema.ts';
 import type { RoutePlan } from '../../core/types.ts';
 import { pick, t, type Lang } from '../i18n.ts';
-import { segmentsFor, suggestedOrder } from './metro.ts';
+import { segmentsFor } from './metro.ts';
 
 /**
  * A Discord-friendly plain-text rendering of the plan, one line per metro segment: packs that
- * share a window are listed together in any order, partly overlapping windows carry the
- * suggested floors. Ids are localized by the callbacks. Only what the route decides is written.
+ * share a window are listed together with the floors they may take. Ids are localized by the
+ * callbacks. Only what the route decides is written.
  */
 export function planToText(
   plan: RoutePlan,
@@ -15,7 +15,7 @@ export function planToText(
   keywordLabel: (id: Keyword) => string,
   lang: Lang,
   dropped: number[] = [],
-  marks: { must?: number[]; skipped?: number[]; bannedPacks?: number[]; run?: { currentFloor: number; visits: Record<number, number> } } = {},
+  marks: { must?: number[]; bannedPacks?: number[]; run?: { currentFloor: number; visits: Record<number, number> } } = {},
 ): string {
   const lines: string[] = [];
   const must = new Set(marks.must ?? []);
@@ -46,10 +46,8 @@ export function planToText(
     const head = segment.passed
       ? `${segment.from}F (${t('runVisited', lang, { floor: segment.from })})`
       : segment.fixed
-      ? `${segment.from}F`
-      : segment.partial
-        ? `${segment.from}~${segment.to}F (${t('routeSuggestOrder', lang, { from: segment.from, to: segment.to, order: suggestedOrder(segment).join(' → ') })})`
-        : `${segment.from}~${segment.to}F (${t('routeAnyFloor', lang)})`;
+        ? `${segment.from}F`
+        : `${segment.from}~${segment.to}F`;
     const text = [`${head}: ${segment.packs.map((p) => packName(p.packId)).join(' · ')}`];
     for (const pack of segment.packs) {
       for (const giftId of pack.gifts) {
@@ -70,10 +68,6 @@ export function planToText(
   if (marks.bannedPacks && marks.bannedPacks.length > 0) {
     lines.push('');
     lines.push(`${t('packBanned', lang)}: ${marks.bannedPacks.map(packName).join(', ')}`);
-  }
-  if (marks.skipped && marks.skipped.length > 0) {
-    lines.push('');
-    lines.push(`${t('prioritySkip', lang)}: ${marks.skipped.map(giftName).join(', ')}`);
   }
   return lines.join('\n');
 }

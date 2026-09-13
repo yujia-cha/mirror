@@ -66,14 +66,12 @@ function ranges(floors: number[]): string {
   return out.join(', ');
 }
 
-/** "Hard 4~5 · 평행중첩 6~10": where the pack can be picked, by run mode. */
+/** "4~5층 · 6~10층": where the pack can be picked. The app always plays Hard, so Normal-only floors are not listed. */
 function packFloorsText(pack: ThemePack, lang: Lang): string {
-  const parts: string[] = [];
-  if (pack.availability.normal.length > 0) parts.push(`${t('modeNormal', lang)} ${ranges(pack.availability.normal)}`);
-  if (pack.availability.hard.length > 0) parts.push(`${t('modeHard', lang)} ${ranges(pack.availability.hard)}`);
-  if (pack.availability.parallel.length > 0) parts.push(`${t('modeParallel', lang)} ${ranges(pack.availability.parallel)}`);
-  if (pack.availability.extreme.length > 0) parts.push(`${t('modeExtreme', lang)} ${ranges(pack.availability.extreme)}`);
-  return parts.join(' · ');
+  return [pack.availability.hard, pack.availability.parallel, pack.availability.extreme]
+    .filter((floors) => floors.length > 0)
+    .map((floors) => t('packFloorRange', lang, { floors: ranges(floors) }))
+    .join(' · ');
 }
 
 export function PackStateBadge({ packId, ctx }: { packId: number; ctx: PackContext }) {

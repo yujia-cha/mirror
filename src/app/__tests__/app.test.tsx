@@ -17,12 +17,13 @@ import { classifyGift, compareEntries, prioritiseGifts } from '../lib/gift-prior
 import { defaultDeck } from '../lib/default-deck.ts';
 import { DeckStep } from '../steps/DeckStep.tsx';
 import { GiftsStep } from '../steps/GiftsStep.tsx';
+import { GiftIcon } from '../components/GiftIcon.tsx';
 import { App } from '../App.tsx';
 import { AppShell } from '../shell/AppShell.tsx';
 import { PlanProvider } from '../shell/PlanContext.tsx';
 import { RoutePlanPanel } from '../shell/RoutePlanPanel.tsx';
 import { GoalsPanel } from '../shell/GoalsPanel.tsx';
-import { RouteSettings } from '../shell/RouteSettings.tsx';
+import { RouteOptions } from '../shell/RouteOptions.tsx';
 import { RunStage } from '../stage/RunStage.tsx';
 import { Tracker } from '../tracker/Tracker.tsx';
 import { planToText } from '../lib/plan-text.ts';
@@ -80,7 +81,7 @@ describe('share links', () => {
       deck: [10101, 10403],
       deployed: [10403],
       wanted: [9283, 9088],
-      priority: { 9283: 'must' as const, 9088: 'skip' as const },
+      priority: { 9283: 'must' as const },
       fusionGoal: { 9088: 'resultOnly' as const },
       options: { ...appDefaultOptions(), startKeyword: 'auto' as const },
     };
@@ -211,6 +212,8 @@ describe('run store', () => {
 
   it('keeps panel widths inside the band they may be dragged to', () => {
     expect(sanitizeUi({ rightTab: 'goals' }).rightTab).toBe('goals');
+    // The old 「루트 설정」 tab lives under the items tab now.
+    expect(sanitizeUi({ leftTab: 'settings' }).leftTab).toBe('gifts');
     expect(sanitizeUi({}).leftWidth).toBe(336);
     expect(sanitizeUi({ leftWidth: 900, rightWidth: 40 })).toMatchObject({ leftWidth: 560, rightWidth: 260 });
     expect(sanitizeUi({ leftWidth: 412.6 }).leftWidth).toBe(413);
@@ -348,7 +351,8 @@ describe('gift priority', () => {
   it('reads the shortfall off the worst condition', () => {
     const gift = indexes.giftById.get(9092)!; // 연성진동: 5 vibration inflictors
     const entry = classifyGift(gift, evaluateConditions([9092], statsFor([10216, 10512, 10916]), indexes));
-    expect(entry.group).toBe('near');
+    // Close is not active: there is no 「거의 활성」 group any more.
+    expect(entry.group).toBe('other');
     expect(entry.lack?.need).toBe(5);
     expect(entry.lack?.have).toBe(3);
   });
@@ -498,6 +502,41 @@ describe('DeckStep', () => {
   });
 });
 
+describe('GiftIcon', () => {
+  it('draws the keyword as the border (hue, or line shape for an attack type) and the judgement as a ring', () => {
+    const icon = (id: number, judgement: 'met' | 'unmet' | null = null) => {
+      const { unmount } = render(<GiftIcon gift={indexes.giftById.get(id)!} size={32} judgement={judgement} lang="ko" />);
+      const el = screen.getByTestId('gift-icon');
+      return { el, unmount };
+    };
+    let r = icon(9088); // 진혼: Combustion
+    expect(r.el).toHaveAttribute('data-keyword', 'Combustion');
+    expect(r.el.className).toContain('border-kw-combustion');
+    expect(r.el.className).not.toMatch(/ring-(ok|bad)/);
+    r.unmount();
+    r = icon(9032); // 꿈을 꾸는 전기양: Slash
+    expect(r.el).toHaveAttribute('data-keyword', 'Slash');
+    expect(r.el.className).toContain('border-dashed');
+    expect(r.el.className).not.toContain('border-kw-');
+    r.unmount();
+    r = icon(9012); // 오늘의 표정: Hit
+    expect(r.el.className).toContain('border-double');
+    r.unmount();
+    r = icon(9423); // 깨진 안경: no keyword
+    expect(r.el).toHaveAttribute('data-keyword', 'None');
+    expect(r.el.className).toContain('border-line');
+    expect(r.el.className).not.toContain('border-kw-');
+    r.unmount();
+    r = icon(9088, 'met');
+    expect(r.el.className).toContain('border-kw-combustion');
+    expect(r.el.className).toContain('ring-ok');
+    r.unmount();
+    r = icon(9088, 'unmet');
+    expect(r.el.className).toContain('ring-bad');
+    r.unmount();
+  });
+});
+
 describe('GiftsStep', () => {
   const renderGifts = () => {
     const { deck, deployed } = useApp.getState();
@@ -536,9 +575,12 @@ describe('GiftsStep', () => {
     renderGifts();
     // 진혼 needs 5 화상 identities and the burn deck has 7; 연성진동 wants 5 진동 and is short.
     expect(tile(9088)).toHaveTextContent('화상 7/5');
+    // Two sections only: 「거의 활성」 is gone, so a gift short of its condition sits in 「기타」, which starts folded.
+    expect(screen.queryByRole('button', { name: /거의 활성/ })).toBeNull();
+    await user.click(screen.getByRole('button', { name: /기타/, expanded: false }));
     expect(tile(9092)).toHaveTextContent('진동 3/5');
-    // Every header folds, not just 「기타」 (which starts folded).
-    for (const name of [/지금 덱으로 활성/, /거의 활성/]) {
+    // Every header folds.
+    for (const name of [/지금 덱으로 활성/, /기타/]) {
       const header = screen.getByRole('button', { name, expanded: true });
       await user.click(header);
       expect(screen.getByRole('button', { name, expanded: false })).toBeInTheDocument();
@@ -585,25 +627,85 @@ describe('GiftsStep', () => {
     expect(within(sheet).getByRole('checkbox', { name: /재료도 목표/ })).toBeChecked();
   });
 
-  it('pins observations from the tray, up to the limit and only for observable gifts', async () => {
+  it('pins observations through the slots: the 「+」 list offers only observable goals, ✕ unpins, a full row has no 「+」', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
     for (const id of [9283, 9222, 9217, 9435, 9751]) useApp.getState().toggleWanted(id);
     const { deck, deployed } = useApp.getState();
     render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
-    const eye = (name: string) => screen.getByRole('button', { name: `${name} 관측 지정` });
-    expect(eye('상납된 시가')).toBeDisabled(); // not in the season's observation pool
-    await user.click(eye('새하얀 캔버스'));
-    await user.click(eye('누군가의 단말기'));
-    await user.click(eye('버틀러식 포박술'));
+    const slots = () => within(screen.getByTestId('observe-slots')).getAllByTestId('observe-slot');
+    const plus = () => screen.queryAllByRole('button', { name: /^관측 \d번 칸/ });
+    expect(slots()).toHaveLength(3);
+    expect(plus()).toHaveLength(3);
+    // The chips carry no star or eye buttons any more.
+    expect(screen.queryByRole('button', { name: /우선순위|관측 지정$/ })).toBeNull();
+    await user.click(plus()[0]!);
+    const list = screen.getByTestId('observe-candidates');
+    expect(within(list).queryByRole('button', { name: '상납된 시가 관측 지정' })).toBeNull(); // not in the season's observation pool
+    expect(within(list).getAllByRole('button')).toHaveLength(4);
+    await user.click(within(list).getByRole('button', { name: '새하얀 캔버스 관측 지정' }));
+    expect(useApp.getState().options.observedGifts).toEqual([9222]);
+    expect(screen.queryByTestId('observe-candidates')).toBeNull();
+    expect(slots()[0]).toHaveAttribute('data-gift', '9222');
+    // A pinned gift leaves the list; the next 「+」 is the next empty cell.
+    await user.click(plus()[0]!);
+    expect(within(screen.getByTestId('observe-candidates')).getAllByRole('button')).toHaveLength(3);
+    await user.click(screen.getByRole('button', { name: '누군가의 단말기 관측 지정' }));
+    await user.click(plus()[0]!);
+    await user.click(screen.getByRole('button', { name: '버틀러식 포박술 관측 지정' }));
     expect(useApp.getState().options.observedGifts).toEqual([9222, 9217, 9435]);
-    expect(eye('뱀 허물')).toBeDisabled();
-    expect(screen.getByText('관측 지정 3/3 · 나머지는 플래너가 추천')).toBeInTheDocument();
-    await user.click(eye('새하얀 캔버스'));
+    expect(plus()).toHaveLength(0);
+    await user.click(screen.getByRole('button', { name: '새하얀 캔버스 관측 해제' }));
     expect(useApp.getState().options.observedGifts).toEqual([9217, 9435]);
+    expect(plus()).toHaveLength(1);
     // Deselecting a pinned gift drops its pin too.
     await user.click(screen.getByRole('button', { name: '누군가의 단말기 선택 해제' }));
     expect(useApp.getState().options.observedGifts).toEqual([9435]);
+  });
+
+  it('opens the gift sheet from a selected chip instead of jumping to its tile', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9283);
+    const { deck, deployed } = useApp.getState();
+    render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
+    const chip = screen.getByTestId('gift-chip');
+    expect(chip).toHaveAttribute('data-gift', '9283');
+    await user.click(within(chip).getByRole('button', { name: '상납된 시가 자세히' }));
+    expect(screen.getByRole('dialog', { name: '상납된 시가' })).toBeInTheDocument();
+  });
+
+  it('pins a chip dragged onto a slot, ignores one that cannot be observed, and a tap still opens the sheet', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    for (const id of [9283, 9222, 9217]) useApp.getState().toggleWanted(id);
+    const { deck, deployed } = useApp.getState();
+    render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
+    const chip = (id: number) => screen.getAllByTestId('gift-chip').find((c) => c.getAttribute('data-gift') === String(id))!;
+    const slot = (i: number) => screen.getAllByTestId('observe-slot')[i]!;
+    const drag = (id: number, i: number) => {
+      fireEvent.pointerDown(chip(id), { button: 0, clientX: 10, clientY: 10 });
+      fireEvent.pointerMove(window, { clientX: 10, clientY: 15 }); // under the start distance: not a drag yet
+      expect(screen.queryByTestId('chip-ghost')).toBeNull();
+      fireEvent.pointerMove(window, { clientX: 60, clientY: 60 });
+      expect(screen.getByTestId('chip-ghost')).toBeInTheDocument();
+      fireEvent.pointerEnter(slot(i));
+      fireEvent.pointerUp(window);
+      expect(screen.queryByTestId('chip-ghost')).toBeNull();
+    };
+    drag(9222, 0);
+    expect(useApp.getState().options.observedGifts).toEqual([9222]);
+    // Dropping on a filled cell swaps the gift in.
+    drag(9217, 0);
+    expect(useApp.getState().options.observedGifts).toEqual([9217]);
+    // 상납된 시가 is not in the observation pool: the drop does nothing.
+    drag(9283, 1);
+    expect(useApp.getState().options.observedGifts).toEqual([9217]);
+    // The click the browser fires after a drag is swallowed; a plain tap still opens the sheet.
+    fireEvent.click(within(chip(9217)).getByRole('button', { name: '누군가의 단말기 자세히' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await user.click(within(chip(9217)).getByRole('button', { name: '누군가의 단말기 자세히' }));
+    expect(screen.getByRole('dialog', { name: '누군가의 단말기' })).toBeInTheDocument();
   });
 
   it('points an empty deck at the deck tab only when it is given somewhere to go', async () => {
@@ -626,7 +728,8 @@ describe('GiftsStep', () => {
     render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
     await user.type(screen.getByRole('textbox', { name: '기프트 검색' }), '조그맣고');
     await user.click(screen.getByRole('button', { name: /기타/, expanded: false }));
-    await user.click(screen.getByRole('button', { name: '조그맣고 근사한 바이올린 자세히' }));
+    // The chip above the grid opens the same sheet; here it is opened from the tile.
+    await user.click(within(screen.getByTestId('gift-scroller')).getByRole('button', { name: '조그맣고 근사한 바이올린 자세히' }));
     await user.click(within(screen.getByTestId('gift-recipe')).getByText('조합식'));
     const box = screen.getByRole('checkbox', { name: '조그맣고 근사한 바이올린 재료도 목표' });
     expect(box).toBeChecked();
@@ -638,34 +741,22 @@ describe('GiftsStep', () => {
 });
 
 
-describe('RouteSettings', () => {
-  it('shows the start keyword, the pinned observations and the pack choices, and resets each', async () => {
+describe('RouteOptions', () => {
+  it('shows the start keyword and the pack choices, with no difficulty text, observation list or resets', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
-    for (const id of [9267, 9423]) useApp.getState().toggleWanted(id); // one observable gift among the goals
+    for (const id of [9267, 9423]) useApp.getState().toggleWanted(id);
     useApp.getState().banPack(1402);
-    renderPlanned(<RouteSettings />);
+    renderPlanned(<RouteOptions />);
     expect(screen.getByRole('combobox', { name: '시작 키워드' })).toBeInTheDocument();
-    expect(screen.getByText('항상 1~15층 · Hard로 계획합니다')).toBeInTheDocument();
-    expect(screen.queryByRole('radio')).toBeNull();
-    // Only the observable goal is listed, and pinning it takes a slot.
-    const observed = screen.getByTestId('settings-observed');
-    expect(within(observed).getAllByRole('listitem')).toHaveLength(1);
-    await user.click(within(observed).getByRole('button', { name: '깨진 안경 관측 지정 전환' }));
-    expect(useApp.getState().options.observedGifts).toEqual([9423]);
-    expect(observed).toHaveTextContent('1/3');
+    expect(screen.getByTestId('route-options').textContent).not.toMatch(/Hard|1~15/);
+    expect(screen.queryByTestId('settings-observed')).toBeNull();
+    expect(screen.queryByRole('button', { name: /옵션 초기화|새 런/ })).toBeNull();
     // The given-up pack is listed with its restore action.
     const packs = screen.getByTestId('settings-packs');
     expect(within(packs).getByTestId('settings-pack')).toHaveAttribute('data-pack', '1402');
     await user.click(within(packs).getByRole('button', { name: '화왕지절 되돌리기' }));
     expect(useApp.getState().options.bannedPacks).toEqual([]);
-    await user.click(screen.getByRole('button', { name: '옵션 초기화' }));
-    expect(useApp.getState().options.observedGifts).toEqual([]);
-    // A new run clears the record after a confirmation.
-    useApp.getState().visitPack(1402, 4);
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    await user.click(screen.getByRole('button', { name: '새 런' }));
-    expect(useApp.getState().run).toEqual(emptyRun());
   });
 });
 
@@ -707,7 +798,7 @@ describe('RoutePlanPanel', () => {
     expect(segment).toHaveAttribute('data-from', '4');
     expect(segment).toHaveAttribute('data-to', '5');
     expect(segment).not.toHaveAttribute('data-partial');
-    expect(segment).toHaveTextContent('4~5층 중 한 층');
+    expect(segment.textContent).not.toMatch(/고정|한 층|추천|어느 층/);
     expect(within(segment).getByRole('button', { name: '화왕지절' })).toBeInTheDocument();
     expect(within(rows()).queryByTestId('suggested')).toBeNull();
     expect(segment.style.height).toBe(`${64 * 2 - 8}px`);
@@ -723,7 +814,7 @@ describe('RoutePlanPanel', () => {
       ['4', '4'],
       ['5', '5'],
     ]);
-    expect(segments[0]).toHaveTextContent('4층 고정');
+    expect(segments[0]).not.toHaveTextContent('고정');
   });
 
   it('keeps partly overlapping windows on separate lanes with suggested stops and a half-filled station', () => {
@@ -738,7 +829,7 @@ describe('RoutePlanPanel', () => {
     expect(within(rows()).getAllByTestId('suggested').map((c) => c.getAttribute('data-floor'))).toEqual(['2', '3']);
     const overlapped = within(rows()).getAllByTestId('station').filter((el) => el.hasAttribute('data-overlap'));
     expect(overlapped.map((el) => el.getAttribute('data-floor'))).toEqual(['3']);
-    expect(segments[0]).toHaveTextContent('2~3층 · 추천 2');
+    expect(segments[0]).not.toHaveTextContent('추천');
   });
 
   it('rides packs with identical windows on one segment and lists every name', () => {
@@ -747,16 +838,17 @@ describe('RoutePlanPanel', () => {
     fillObservations();
     renderRoute();
     const segment = within(rows()).getByTestId('segment');
-    expect(segment).toHaveTextContent('2~3층 · 2팩 · 어느 층이든');
     expect(within(segment).getAllByTestId('segment-pack')).toHaveLength(2);
     expect(within(rows()).queryByTestId('suggested')).toBeNull();
   });
 
-  it('shows six legend items and no starlight, fusion or general-drop text', () => {
+  it('draws no legend, no band or segment wording, and no starlight, fusion or general-drop text', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
-    useApp.getState().toggleWanted(9267);
+    for (const id of [9415, 9427, 9267]) useApp.getState().toggleWanted(id); // partial windows and a fixed pack
+    fillObservations();
     renderRoute();
-    expect(screen.getByTestId('legend').querySelectorAll(':scope > span')).toHaveLength(6);
+    expect(screen.queryByTestId('legend')).toBeNull();
+    expect(rows().textContent).not.toMatch(/고정|한 층|추천|어느 층|Hard|EXTREME|평행중첩|범례/);
     expect(screen.queryByText(/별빛|합성|범용 드랍|나올 수 있음/)).toBeNull();
   });
 
@@ -768,7 +860,8 @@ describe('RoutePlanPanel', () => {
     await user.click(within(rows()).getByRole('button', { name: '화왕지절' }));
     const sheet = screen.getByRole('dialog', { name: '화왕지절' });
     expect(sheet).toHaveAttribute('data-testid', 'block-sheet');
-    expect(sheet).toHaveTextContent('Hard 4~5');
+    expect(sheet).toHaveTextContent('4~5층');
+    expect(sheet).not.toHaveTextContent('Hard');
     expect(within(sheet).getAllByTestId('pack-gift').length).toBeGreaterThan(1);
     const wantedRow = within(sheet).getAllByTestId('pack-gift').find((el) => el.hasAttribute('data-wanted'))!;
     expect(wantedRow).toHaveTextContent('달궈진 놋쇠');
@@ -793,7 +886,8 @@ describe('RoutePlanPanel', () => {
     useApp.getState().toggleWanted(9423); // observable; the planner recommends observing it
     renderRoute();
     const tile = within(within(rows()).getByTestId('start-cell')).getByTestId('observed-tile');
-    expect(tile).toHaveTextContent('추천');
+    expect(tile).not.toHaveAttribute('data-pinned');
+    expect(tile.textContent).not.toMatch(/추천|지정/);
     expect(tile).toHaveAttribute('title', '깨진 안경 · 관측 · 변하지 않는 안 가도 됨');
     await user.click(tile);
     const observed = screen.getByTestId('block-sheet');
@@ -802,7 +896,7 @@ describe('RoutePlanPanel', () => {
     expect(useApp.getState().options.observedGifts).toEqual([9423]);
     await user.click(within(observed).getByRole('button', { name: '닫기' }));
     expect(screen.queryByTestId('block-sheet')).toBeNull();
-    expect(within(within(rows()).getByTestId('start-cell')).getByTestId('observed-tile')).toHaveTextContent('지정');
+    expect(within(within(rows()).getByTestId('start-cell')).getByTestId('observed-tile')).toHaveAttribute('data-pinned');
   });
 
   it('marks a must-have gift with a star badge on its tile', () => {
@@ -840,13 +934,13 @@ describe('RoutePlanPanel', () => {
     const included = after.find((c) => c.hasAttribute('data-included') && c.getAttribute('data-pack') !== '1516')!;
     await user.click(within(included).getByRole('button', { name: /이 팩 포기$/ }));
     expect(useApp.getState().options.bannedPacks).toHaveLength(1);
-    const skipped = screen.getByTestId('skipped');
-    expect(skipped).toHaveTextContent('포기한 팩 1');
-    await user.click(within(skipped).getByRole('button', { name: /되돌리기$/ }));
+    const banned = screen.getByTestId('banned');
+    expect(banned).toHaveTextContent('포기한 팩 1');
+    await user.click(within(banned).getByRole('button', { name: /되돌리기$/ }));
     expect(useApp.getState().options.bannedPacks).toEqual([]);
   });
 
-  it('offers alternative routes as tabs and confirming one gives that gift up', async () => {
+  it('offers alternative routes as tabs and confirming one deselects that gift', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
     for (const id of CLEAR_REWARDS) useApp.getState().toggleWanted(id);
@@ -857,10 +951,25 @@ describe('RoutePlanPanel', () => {
     expect(tabs[1]).toHaveAttribute('aria-selected', 'true');
     expect(screen.queryByTestId('conflict-group')).toBeNull();
     expect(screen.getByText(/^확보/).parentElement).toHaveTextContent('5/5');
-    await user.click(screen.getByRole('button', { name: '이 기프트 포기' }));
-    expect(useApp.getState().wanted).toEqual(CLEAR_REWARDS);
-    expect(Object.values(useApp.getState().priority)).toEqual(['skip']);
-    expect(screen.getByTestId('skipped')).toHaveTextContent('포기한 기프트 1');
+    await user.click(screen.getByRole('button', { name: '이 기프트 선택 해제' }));
+    // 포기 is no longer a priority: the gift simply leaves the selection.
+    expect(useApp.getState().wanted).toHaveLength(CLEAR_REWARDS.length - 1);
+    expect(useApp.getState().priority).toEqual({});
+    expect(screen.queryByTestId('skipped')).toBeNull();
+    expect(screen.queryByRole('tablist')).toBeNull();
+  });
+
+  it('deselects an unresolved gift from its row in the unresolved card', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    for (const id of CLEAR_REWARDS) useApp.getState().toggleWanted(id);
+    useApp.getState().banPack(1516);
+    renderRoute();
+    // With one pack given up, the sixth reward fails on its own instead of as a pack conflict.
+    const row = screen.getAllByTestId('unresolved-row')[0]!;
+    expect(within(row).queryByRole('button', { name: /포기/ })).toBeNull();
+    await user.click(within(row).getByRole('button', { name: /선택 해제$/ }));
+    expect(useApp.getState().wanted).toHaveLength(CLEAR_REWARDS.length - 1);
   });
 
   it('lets a must-have gift win the conflict and shows its pack as included', () => {
@@ -909,21 +1018,19 @@ describe('RoutePlanPanel', () => {
     expect(byName(/^미충족 · 먹장구름/)).toHaveAttribute('data-judgement', 'unmet');
   });
 
-  it('cycles a tray chip through 보통 → 반드시 → 포기 → 보통', async () => {
+  it('toggles a goal between 보통 and 반드시 from its sheet; 포기 is not a priority any more', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
     useApp.getState().toggleWanted(9283);
-    useApp.getState().toggleObserved(9283, { max: 3, observable: () => true });
     const { deck, deployed } = useApp.getState();
     render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
-    await user.click(screen.getByRole('button', { name: '상납된 시가 우선순위: 보통' }));
+    await user.click(within(screen.getByTestId('gift-chip')).getByRole('button', { name: '상납된 시가 자세히' }));
+    const sheet = screen.getByRole('dialog', { name: '상납된 시가' });
+    await user.click(within(sheet).getByRole('button', { name: '상납된 시가 우선순위: 보통' }));
     expect(useApp.getState().priority).toEqual({ 9283: 'must' });
-    await user.click(screen.getByRole('button', { name: '상납된 시가 우선순위: 반드시' }));
-    expect(useApp.getState().priority).toEqual({ 9283: 'skip' });
-    // Giving a gift up releases its pinned observation.
-    expect(useApp.getState().options.observedGifts).toEqual([]);
-    await user.click(screen.getByRole('button', { name: '상납된 시가 우선순위: 포기' }));
+    await user.click(within(sheet).getByRole('button', { name: '상납된 시가 우선순위: 반드시' }));
     expect(useApp.getState().priority).toEqual({});
+    expect(within(sheet).queryByRole('button', { name: /포기/ })).toBeNull();
     // Deselecting a gift forgets its priority.
     useApp.getState().setPriority(9283, 'must');
     useApp.getState().toggleWanted(9283);
@@ -952,16 +1059,17 @@ describe('RoutePlanPanel', () => {
     expect(text).not.toContain('Combustion');
     expect(text).toContain('시작: 화상');
     expect(text).toContain('관측: 깨진 안경 (지정)');
-    expect(text).toContain('2~3F (어느 층이든): 마주하지 않는 · 낙화');
+    expect(text).toContain('2~3F: 마주하지 않는 · 낙화');
+    expect(text).not.toMatch(/어느 층|추천|Hard/);
     expect(text).toContain('  - 불결함 (마주하지 않는)');
     expect(text).toContain('4~15F: 자유');
     for (const word of ['별빛', '조합', '범용']) expect(text).not.toContain(word);
     const without = planToText(plan, (id) => indexes.giftById.get(id)?.name.ko ?? '', () => '', () => '', 'ko', [9283]);
     expect(without.split('\n')[0]).toBe('상납된 시가 제외');
-    const marked = planToText(plan, (id) => indexes.giftById.get(id)?.name.ko ?? '', (id) => indexes.packById.get(id)?.name.ko ?? '', () => '', 'ko', [], { must: [9423], skipped: [9283], bannedPacks: [1402] });
+    const marked = planToText(plan, (id) => indexes.giftById.get(id)?.name.ko ?? '', (id) => indexes.packById.get(id)?.name.ko ?? '', () => '', 'ko', [], { must: [9423], bannedPacks: [1402] });
     expect(marked).toContain('깨진 안경 (반드시)');
-    expect(marked).toContain('포기한 팩: 화왕지절');
-    expect(marked.trim().split('\n').at(-1)).toBe('포기: 상납된 시가');
+    expect(marked.trim().split('\n').at(-1)).toBe('포기한 팩: 화왕지절');
+    expect(marked).not.toContain('포기: ');
   });
 
   it('drops the visits made only for the other ingredients once the result alone is the goal', () => {
@@ -1002,6 +1110,10 @@ describe('AppShell', () => {
     expect(left).toHaveAttribute('aria-expanded', 'true');
     // The default tab is the items tab; the deck tab shows the twelve slots.
     expect(within(drawer).getByRole('tab', { name: '아이템' })).toHaveAttribute('aria-selected', 'true');
+    // Two tabs only: the route options (start keyword, chosen packs) sit under the items tab.
+    expect(within(drawer).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['덱', '아이템']);
+    expect(within(drawer).getByRole('combobox', { name: '시작 키워드' })).toBeInTheDocument();
+    expect(within(drawer).getByTestId('settings-packs')).toBeInTheDocument();
     await user.click(within(drawer).getByRole('tab', { name: '덱' }));
     expect(useApp.getState().ui.leftTab).toBe('deck');
     expect(within(drawer).getAllByText('인격 선택')).toHaveLength(12);
@@ -1024,6 +1136,45 @@ describe('AppShell', () => {
     await user.click(screen.getByRole('tab', { name: '추적기' }));
     expect(screen.getByTestId('tracker')).toBeInTheDocument();
     expect(useApp.getState().ui.rightTab).toBe('tracker');
+  });
+
+  it('resets the deck, items, route options and run from the header after a confirmation, keeping the panel state', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    for (const id of [9267, 9423, 9249]) useApp.getState().toggleWanted(id);
+    useApp.getState().setPriority(9267, 'must');
+    useApp.getState().setFusionGoal(9249, 'resultOnly');
+    useApp.getState().toggleObserved(9423, { max: 3, observable: () => true });
+    useApp.getState().banPack(1402);
+    useApp.getState().visitPack(1008, 2);
+    useApp.getState().setUi({ leftTab: 'deck', rightTab: 'goals' });
+    renderShell();
+    const reset = () => screen.getByRole('button', { name: '초기화' });
+    // The reset sits right before the share button; declining the confirmation changes nothing.
+    const labels = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'));
+    expect(labels.indexOf('초기화')).toBe(labels.indexOf('링크 복사') - 1);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await user.click(reset());
+    expect(useApp.getState().wanted).toEqual([9249, 9267, 9423]);
+    confirm.mockReturnValue(true);
+    await user.click(reset());
+    const state = useApp.getState();
+    expect(state.deck).toEqual(defaultDeck(data));
+    expect(state.deployed).toEqual(defaultDeck(data).slice(0, data.rules.deployment.default));
+    expect(state.wanted).toEqual([]);
+    expect(state.priority).toEqual({});
+    expect(state.fusionGoal).toEqual({});
+    expect(state.options).toEqual(appDefaultOptions());
+    expect(state.run).toEqual(emptyRun());
+    expect(state.ui).toMatchObject({ leftTab: 'deck', rightTab: 'goals' });
+    expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'undecided');
+    expect(screen.getByTestId('stage-floor')).toHaveTextContent('1');
+    // The same button starts over after a finished run, where the old 「새 런」 used to be.
+    act(() => useApp.setState({ run: { currentFloor: 16, stageFloor: 15, visits: { 4: 1402 }, giftStatus: { 9267: 'got' }, startGifts: [] } }));
+    expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'done');
+    await user.click(reset());
+    expect(useApp.getState().run).toEqual(emptyRun());
+    expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'undecided');
   });
 
   it('keeps both panels beside the stage on a desktop and folds them from the header', async () => {
@@ -1106,8 +1257,10 @@ describe('RunStage', () => {
     useApp.getState().toggleWanted(9267); // 화왕지절 (1402), Hard 4-5
     renderStage();
     expect(screen.getByTestId('stage-floor')).toHaveTextContent('1');
+    // The header names no difficulty: the app always plays Hard, so the word says nothing.
+    expect(header().textContent).not.toMatch(/Hard|EXTREME|평행중첩/);
     expect(screen.queryByTestId('stage-pack')).toBeNull();
-    expect(screen.getByText(/이 층에 계획된 팩이 없습니다/)).toBeInTheDocument();
+    expect(screen.getByText('계획된 팩 없음')).toBeInTheDocument();
     expect(screen.getByTestId('other-entry-card')).toHaveTextContent('다른 팩 입장');
     for (let i = 0; i < 3; i += 1) await skipFloor(user);
     expect(screen.getByTestId('stage-floor')).toHaveTextContent('4');
@@ -1280,8 +1433,30 @@ describe('RunStage', () => {
     await user.click(screen.getByRole('button', { name: '1층' }));
     expect(useApp.getState().run).toMatchObject({ currentFloor: 3, stageFloor: 1 });
     expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'skipped');
-    expect(screen.getByText(/지나간 층 · 다시 입장하면 기록이 바뀝니다/)).toBeInTheDocument();
+    // No explanatory sentence any more: the mode alone tells the story.
+    expect(screen.queryByText(/지나간 층/)).toBeNull();
     expect(screen.queryByTestId('other-entry-card')).toBeNull();
+  });
+
+  it("shows each other pack's exclusive gifts beside its name, the wanted ones ringed, with no count", async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    for (const id of [9267, 9754]) useApp.getState().toggleWanted(id); // 화왕지절 and 2호선, both Hard 4-5
+    useApp.getState().banPack(1109); // 2호선 leaves the route, so it is listed among the other packs
+    renderStage();
+    for (let i = 0; i < 3; i += 1) await skipFloor(user);
+    const rows = within(screen.getByTestId('other-packs')).getAllByTestId('other-pack');
+    const row = rows.find((r) => r.getAttribute('data-pack') === '1109')!;
+    const icons = within(row).getAllByTestId('gift-icon');
+    expect(icons.length).toBeGreaterThan(1);
+    expect(row.querySelectorAll('[data-wanted]')).toHaveLength(1);
+    expect(within(row).getByRole('img', { name: '굴레' })).toBeInTheDocument();
+    expect(row).not.toHaveTextContent('원함');
+    // A row with exclusives but nothing wanted has icons and no ring; a pack without exclusives has neither.
+    const other = rows.find((r) => r.getAttribute('data-pack') !== '1109' && within(r).queryAllByTestId('gift-icon').length > 0)!;
+    expect(other).toBeDefined();
+    expect(other.querySelector('[data-wanted]')).toBeNull();
+    for (const r of rows) expect(within(r).getByTestId('other-pack-gifts')).toBeInTheDocument();
   });
 
   it('finds any other pack of the floor by name and adds a gift from it as a goal', async () => {
@@ -1307,7 +1482,7 @@ describe('RunStage', () => {
     expect(useApp.getState().run.visits).toEqual({ 4: 1109 });
   });
 
-  it('closes the run after floor 15 and offers a new one', async () => {
+  it('closes the run after floor 15 with nothing to press: a new run comes from the header reset', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
     useApp.getState().toggleWanted(9267);
@@ -1318,8 +1493,8 @@ describe('RunStage', () => {
     // Nothing in the header moves the run any more: the cards and the pack area do.
     expect(within(header()).queryByRole('button', { name: /다른 팩 입장|다음 층|이전 층/ })).toBeNull();
     expect(screen.queryByTestId('other-entry-card')).toBeNull();
-    await user.click(within(screen.getByTestId('stage-done')).getByRole('button', { name: '새 런' }));
-    expect(useApp.getState().run).toEqual(emptyRun());
+    expect(within(screen.getByTestId('stage-done')).queryByRole('button')).toBeNull();
+    expect(screen.getByTestId('stage-done')).not.toHaveTextContent('새 런');
   });
 });
 
@@ -1444,17 +1619,15 @@ describe('GoalsPanel', () => {
     expect(useApp.getState().run).toMatchObject({ visits: { 4: 1402 }, currentFloor: 5 });
   };
 
-  it('lists every goal the player set, 포기 included, and nothing else', () => {
+  it('lists every goal the player set and nothing else', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
     for (const id of [9267, 9283, 9410]) useApp.getState().toggleWanted(id);
-    useApp.getState().setPriority(9283, 'skip');
     renderBoth();
     const rows = within(goals()).getAllByTestId('route-goal');
     expect(rows.map((r) => r.getAttribute('data-gift'))).toEqual(['9267', '9283', '9410']);
     expect(goals()).toHaveTextContent('0/3');
     expect(goalTile(9267)).toHaveAttribute('data-wanted');
-    expect(goalTile(9283)).not.toHaveAttribute('data-wanted');
-    expect(rows[1]).toHaveAttribute('data-priority', 'skip');
+    expect(goalTile(9283)).toHaveAttribute('data-wanted');
     // Only the chosen gifts: a fusion goal does not drag its ingredients in.
     expect(within(goals()).getAllByTestId('gift-tile').map((el) => el.getAttribute('data-gift'))).toEqual(['9267', '9283', '9410']);
     expect(screen.getByTestId('goals-panel')).toBeInTheDocument();

@@ -1,10 +1,9 @@
 /**
- * Group and order gifts by how close the current deck is to activating them.
+ * Group and order gifts by whether the current deck activates them.
  *
  * The planner reports one `ConditionReport` per condition; a gift is "active" when every one is
- * satisfied, "near" when the worst condition is at least 60% there, and "other" otherwise or when
- * it has no condition at all. Full-resonance and unparsed conditions cannot be judged from a deck,
- * so their gifts stay in "other" and read as 판정 불가.
+ * satisfied and "other" otherwise or when it has no condition at all. Full-resonance and unparsed
+ * conditions cannot be judged from a deck, so their gifts stay in "other" and read as 판정 불가.
  *
  * Inside a group, gifts bound to a specific pack come first: a 테마팩 한정 gift (or an EXTREME
  * clear reward) is what actually decides the route, while a 범용 gift may drop anywhere.
@@ -12,7 +11,7 @@
 import type { Gift } from '../../core/schema.ts';
 import type { ConditionReport } from '../../core/types.ts';
 
-export type GiftGroup = 'active' | 'near' | 'other';
+export type GiftGroup = 'active' | 'other';
 
 export interface GiftEntry {
   gift: Gift;
@@ -26,8 +25,6 @@ export interface GiftEntry {
   unjudgeable: boolean;
 }
 
-export const NEAR_THRESHOLD = 0.6;
-
 export function classifyGift(gift: Gift, reports: ConditionReport[]): GiftEntry {
   if (reports.length === 0) return { gift, reports, group: 'other', ratio: null, lack: null, unjudgeable: false };
   const unjudgeable = reports.some((r) => r.have === null || r.need === null);
@@ -35,13 +32,7 @@ export function classifyGift(gift: Gift, reports: ConditionReport[]): GiftEntry 
   const ratio =
     judgeable.length > 0 ? Math.min(...judgeable.map((r) => Math.min(1, r.have! / r.need!))) : null;
   const lack = judgeable.filter((r) => !r.satisfied).sort((a, b) => b.have! / b.need! - a.have! / a.need!)[0] ?? null;
-  const group: GiftGroup = unjudgeable
-    ? 'other'
-    : reports.every((r) => r.satisfied)
-      ? 'active'
-      : ratio !== null && ratio >= NEAR_THRESHOLD
-        ? 'near'
-        : 'other';
+  const group: GiftGroup = !unjudgeable && reports.every((r) => r.satisfied) ? 'active' : 'other';
   return { gift, reports, group, ratio, lack, unjudgeable };
 }
 
@@ -63,7 +54,7 @@ export function prioritiseGifts(
   gifts: Gift[],
   conditionByGift: Map<number, ConditionReport[]>,
 ): Record<GiftGroup, GiftEntry[]> {
-  const groups: Record<GiftGroup, GiftEntry[]> = { active: [], near: [], other: [] };
+  const groups: Record<GiftGroup, GiftEntry[]> = { active: [], other: [] };
   for (const gift of gifts) {
     const entry = classifyGift(gift, conditionByGift.get(gift.id) ?? []);
     groups[entry.group].push(entry);

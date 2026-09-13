@@ -14,7 +14,7 @@ import { useApp } from '../store.ts';
 import { keywordName } from '../format.ts';
 import { conditionText } from '../condition-text.ts';
 import { judgementsByGift, type Judgement } from '../lib/judgement.ts';
-import { planInputFor, priorityOf, skippedGifts } from '../lib/plan-input.ts';
+import { planInputFor, priorityOf } from '../lib/plan-input.ts';
 import { autoFailedFor, exclusivesIndex, stageModeFor, type StageMode } from '../lib/stage.ts';
 import { entanglements } from '../lib/entangle.ts';
 import { upgradeChildren } from '../lib/upgrade-children.ts';
@@ -35,7 +35,6 @@ export interface PlanState {
   variantIndex: number;
   setVariantIndex: (index: number) => void;
   variant: RouteVariant | undefined;
-  skipped: number[];
   /** Goal gifts the planner works for (given-up ones excluded). */
   goals: ReadonlySet<number>;
   judgements: Map<number, Judgement | null>;
@@ -173,7 +172,6 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
       variantIndex,
       setVariantIndex,
       variant,
-      skipped: skippedGifts(wanted, priority),
       goals,
       judgements,
       giftTitle,
@@ -200,7 +198,6 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
     variants,
     variantIndex,
     variant,
-    wanted,
     priority,
     options,
     run,

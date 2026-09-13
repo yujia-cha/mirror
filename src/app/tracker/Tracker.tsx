@@ -30,10 +30,7 @@ export function Tracker() {
 
   return (
     <div className="flex flex-col gap-3" data-testid="tracker">
-      <div>
-        <div className="text-sm font-semibold">{t('trackerTitle', lang)}</div>
-        <p className="mt-1 text-xs text-fg-3">{t('trackerHint', lang)}</p>
-      </div>
+      <div className="text-sm font-semibold">{t('trackerTitle', lang)}</div>
       {noticeGift ? <FusionNotice gift={noticeGift} giftStatus={giftStatus} indexes={indexes} onUnmark={(id) => setGiftStatus(id, null)} onClose={() => setNotice(null)} lang={lang} /> : null}
       {groups.map((group) => (
         <Card key={group.id} className="px-3 py-2.5" testId={`tracker-${group.id}`}>

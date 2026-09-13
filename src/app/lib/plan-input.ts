@@ -1,12 +1,12 @@
 /**
  * What the app hands the planner. The wanted list carries a per-gift priority: a gift marked
- * 반드시 is `required` (the search satisfies those first), a normal one is best-effort, and a
- * given-up (포기) one stays selected but is left out of the plan until the user restores it.
+ * 반드시 is `required` (the search satisfies those first), a normal one is best-effort. Giving a
+ * gift up simply removes it from the selection.
  */
 import type { PlanInput, PlanOptions, WantedGift } from '../../core/types.ts';
 
-export type Priority = 'must' | 'normal' | 'skip';
-export type PriorityMap = Record<number, 'must' | 'skip'>;
+export type Priority = 'must' | 'normal';
+export type PriorityMap = Record<number, 'must'>;
 /** Fusion results the user wants only as a whole: their ingredients are not goals of their own. */
 export type FusionGoalMap = Record<number, 'resultOnly'>;
 
@@ -37,17 +37,11 @@ export function priorityOf(priority: PriorityMap, giftId: number): Priority {
 }
 
 export function plannedGifts(wanted: number[], priority: PriorityMap, fusionGoal: FusionGoalMap = {}): WantedGift[] {
-  return wanted
-    .filter((id) => priorityOf(priority, id) !== 'skip')
-    .map((id) => ({
-      giftId: id,
-      required: priorityOf(priority, id) === 'must',
-      ...(fusionGoal[id] === 'resultOnly' ? { ingredientsAsGoals: false } : {}),
-    }));
-}
-
-export function skippedGifts(wanted: number[], priority: PriorityMap): number[] {
-  return wanted.filter((id) => priorityOf(priority, id) === 'skip');
+  return wanted.map((id) => ({
+    giftId: id,
+    required: priorityOf(priority, id) === 'must',
+    ...(fusionGoal[id] === 'resultOnly' ? { ingredientsAsGoals: false } : {}),
+  }));
 }
 
 export function planInputFor(state: {

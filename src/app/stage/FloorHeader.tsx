@@ -1,15 +1,13 @@
 /**
- * The top of the stage: the floor on stage as a big number with its band, the previous/next
- * controls, and a strip of the fifteen floors that mirrors the route (planned or entered pack,
- * played, skipped, the frontier) and lets the player look back at a played floor.
+ * The top of the stage: the floor on stage as a big number, the entered pack or the pack-less
+ * state as a badge, and a strip of the fifteen floors that mirrors the route (planned or entered
+ * pack, played, skipped, the frontier) and lets the player look back at a played floor.
  */
 import { t, type Lang } from '../i18n.ts';
 import { APP_LAST_FLOOR, useApp } from '../store.ts';
 import { bandMode, stageModeFor, type StageMode } from '../lib/stage.ts';
 import { Badge } from '../components/ui.tsx';
 import { usePlan } from '../shell/PlanContext.tsx';
-
-const BAND_KEY = { hard: 'optionBandHard', parallel: 'optionBandParallel', extreme: 'optionBandExtreme' } as const;
 
 /** The entered pack is named by the caller; here only the pack-less states get a badge. */
 function modeBadge(mode: StageMode, lang: Lang) {
@@ -34,7 +32,6 @@ export function FloorHeader({ mode }: { mode: StageMode }) {
             {floor}
           </span>
           <span className="font-mono text-sm text-fg-3">{t('stageOf', lang)}</span>
-          <span className="text-sm text-fg-2">{t(BAND_KEY[bandMode(floor)], lang)}</span>
         </div>
         {entered !== undefined ? <Badge tone="sure">{packName(entered)}</Badge> : modeBadge(mode, lang)}
       </div>
