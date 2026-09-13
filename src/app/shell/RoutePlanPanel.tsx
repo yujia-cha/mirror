@@ -1,8 +1,7 @@
 /**
  * The whole route, as the right panel shows it: the counts, the alternative routes, the metro map
  * in its vertical form, the unresolved card with its pack-level choices, and the condition
- * judgements — and, at the top, every goal as a pressable tile sharing the run record with the
- * stage. Wide enough for a phone drawer or a 336px desktop panel.
+ * judgements. Wide enough for a phone drawer or a 336px desktop panel.
  */
 import { useRef, useState } from 'react';
 import { Ban, Copy, Hourglass, Star } from 'lucide-react';
@@ -13,25 +12,21 @@ import { conditionText } from '../condition-text.ts';
 import { planToText } from '../lib/plan-text.ts';
 import { priorityOf } from '../lib/plan-input.ts';
 import { actionsFor, type UnresolvedAction } from '../lib/unresolved-actions.ts';
-import { FusionNotice } from '../components/FusionNotice.tsx';
 import { GiftIcon } from '../components/GiftIcon.tsx';
-import { GiftTile } from '../components/GiftTile.tsx';
 import { MetroMap } from '../components/MetroMap.tsx';
 import { PackConflicts } from '../components/PackConflicts.tsx';
 import { Badge, Button, Card, Notice, SectionTitle, Toast } from '../components/ui.tsx';
 import { usePlan } from './PlanContext.tsx';
 
 export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
-  const { data, indexes, stats, lang, input, plan, shown, variants, variantIndex, setVariantIndex, variant, skipped, judgements, giftTitle, giftName, packName, keywordLabel, ctx, openGift } = usePlan();
+  const { data, indexes, stats, lang, input, plan, shown, variants, variantIndex, setVariantIndex, variant, skipped, judgements, giftTitle, giftName, packName, keywordLabel, ctx } = usePlan();
   const wanted = useApp((s) => s.wanted);
   const priority = useApp((s) => s.priority);
   const options = useApp((s) => s.options);
   const run = useApp((s) => s.run);
   const setOptions = useApp((s) => s.setOptions);
   const setPriority = useApp((s) => s.setPriority);
-  const setGiftStatus = useApp((s) => s.setGiftStatus);
   const [copied, setCopied] = useState(false);
-  const [notice, setNotice] = useState<number | null>(null);
   const tabsRef = useRef<HTMLDivElement | null>(null);
 
   if (!plan || !shown) {
@@ -156,63 +151,6 @@ export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
     tabsRef.current?.querySelectorAll<HTMLButtonElement>('[role=tab]')[1]?.focus();
   };
 
-  // Every goal the player set, 포기 included, as the same pressable tiles the stage and the tracker
-  // use: one record (`run.giftStatus`) behind all three. A fusion goal carries its ingredients,
-  // which are what the packs actually drop.
-  const gotCount = wanted.filter((id) => run.giftStatus[id] === 'got').length;
-  const noticeGift = notice !== null ? indexes.giftById.get(notice) : undefined;
-  const goalTile = (id: number, asGoal: boolean) => {
-    const gift = indexes.giftById.get(id);
-    return gift ? (
-      <GiftTile
-        key={id}
-        gift={gift}
-        size={32}
-        status={run.giftStatus[id] ?? null}
-        wanted={asGoal}
-        must={asGoal && ctx.isMust(id)}
-        judgement={judgements.get(id) ?? null}
-        title={giftTitle(id)}
-        onToggle={(next) => {
-          setGiftStatus(id, next);
-          if (gift.fusion?.mixed) setNotice(next === 'got' ? id : null);
-        }}
-        onOpen={() => openGift(id)}
-        lang={lang}
-      />
-    ) : null;
-  };
-  const goals = (
-    <Card className="px-3 py-2.5" testId="route-goals">
-      <SectionTitle right={<span className="font-mono text-xs text-fg-3">{`${gotCount}/${wanted.length}`}</span>}>{t('routeGoals', lang)}</SectionTitle>
-      <p className="mt-1 text-xs text-fg-3">{t('routeGoalsHint', lang)}</p>
-      {noticeGift ? (
-        <div className="mt-2">
-          <FusionNotice gift={noticeGift} giftStatus={run.giftStatus} indexes={indexes} onUnmark={(id) => setGiftStatus(id, null)} onClose={() => setNotice(null)} lang={lang} />
-        </div>
-      ) : null}
-      <div className="mt-2 flex flex-col gap-1.5">
-        {wanted.map((id) => {
-          const level = priorityOf(priority, id);
-          const fusion = shown.fusions.find((f) => f.result === id);
-          return (
-            <div key={id} className={`flex flex-wrap items-center gap-1.5 ${level === 'skip' ? 'opacity-60' : ''}`} data-testid="route-goal" data-gift={id} data-priority={level}>
-              {goalTile(id, level !== 'skip')}
-              {fusion ? (
-                <>
-                  <span className="text-xs text-fg-3" aria-label={t('routeGoalsIngredients', lang)}>
-                    ←
-                  </span>
-                  {fusion.ingredients.map((ingredient) => goalTile(ingredient, false))}
-                </>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-    </Card>
-  );
-
   const conditionGifts = [...new Set(shown.conditions.map((c) => c.giftId))];
   const conditions = (
     <Card className="p-3.5" testId="conditions">
@@ -248,7 +186,6 @@ export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
       {summary}
       {variantTabs}
       {cappedBanner}
-      {goals}
       <MetroMap plan={shown} ctx={ctx} keywordLabel={keywordLabel} run={{ currentFloor: run.currentFloor }} variant="vertical" detailMode="sheet" />
       <PackConflicts
         groups={groups}

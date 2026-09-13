@@ -7,7 +7,7 @@ import type { Lang } from './i18n.ts';
 import type { FusionGoalMap, Priority, PriorityMap, RunState } from './lib/plan-input.ts';
 
 export type LeftTab = 'deck' | 'gifts' | 'settings';
-export type RightTab = 'plan' | 'tracker';
+export type RightTab = 'plan' | 'goals' | 'tracker';
 
 /** Which side panels are open on a desktop layout, and which tab each shows. Device-only. */
 export interface UiState {
@@ -177,7 +177,7 @@ export function sanitizeUi(raw: unknown): UiState {
   if (typeof source.leftOpen === 'boolean') out.leftOpen = source.leftOpen;
   if (typeof source.rightOpen === 'boolean') out.rightOpen = source.rightOpen;
   if (source.leftTab === 'deck' || source.leftTab === 'gifts' || source.leftTab === 'settings') out.leftTab = source.leftTab;
-  if (source.rightTab === 'plan' || source.rightTab === 'tracker') out.rightTab = source.rightTab;
+  if (source.rightTab === 'plan' || source.rightTab === 'goals' || source.rightTab === 'tracker') out.rightTab = source.rightTab;
   out.leftWidth = clampPanelWidth(source.leftWidth);
   out.rightWidth = clampPanelWidth(source.rightWidth);
   return out;

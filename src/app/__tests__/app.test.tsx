@@ -21,6 +21,7 @@ import { App } from '../App.tsx';
 import { AppShell } from '../shell/AppShell.tsx';
 import { PlanProvider } from '../shell/PlanContext.tsx';
 import { RoutePlanPanel } from '../shell/RoutePlanPanel.tsx';
+import { GoalsPanel } from '../shell/GoalsPanel.tsx';
 import { RouteSettings } from '../shell/RouteSettings.tsx';
 import { RunStage } from '../stage/RunStage.tsx';
 import { Tracker } from '../tracker/Tracker.tsx';
@@ -209,6 +210,7 @@ describe('run store', () => {
   });
 
   it('keeps panel widths inside the band they may be dragged to', () => {
+    expect(sanitizeUi({ rightTab: 'goals' }).rightTab).toBe('goals');
     expect(sanitizeUi({}).leftWidth).toBe(336);
     expect(sanitizeUi({ leftWidth: 900, rightWidth: 40 })).toMatchObject({ leftWidth: 560, rightWidth: 260 });
     expect(sanitizeUi({ leftWidth: 412.6 }).leftWidth).toBe(413);
@@ -669,6 +671,15 @@ describe('RouteSettings', () => {
 
 describe('RoutePlanPanel', () => {
   const renderRoute = () => renderPlanned(<RoutePlanPanel onOpenGifts={() => undefined} />);
+
+  it('keeps the goals grid out of the route tab', () => {
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267);
+    renderRoute();
+    expect(screen.getByTestId('route-plan')).toBeInTheDocument();
+    expect(screen.queryByTestId('route-goals')).toBeNull();
+    expect(screen.queryByTestId('gift-tile')).toBeNull();
+  });
   const rows = () => screen.getByTestId('metro-rows');
   /** Spend all three observation slots on other gifts so observable fixtures get routed. */
   const fillObservations = () => {
@@ -1007,6 +1018,9 @@ describe('AppShell', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     // The tracker tab lives in the right drawer.
     await user.click(screen.getByRole('button', { name: '루트 패널' }));
+    await user.click(screen.getByRole('tab', { name: '목표' }));
+    expect(screen.getByTestId('goals-empty')).toBeInTheDocument();
+    expect(useApp.getState().ui.rightTab).toBe('goals');
     await user.click(screen.getByRole('tab', { name: '추적기' }));
     expect(screen.getByTestId('tracker')).toBeInTheDocument();
     expect(useApp.getState().ui.rightTab).toBe('tracker');
@@ -1409,12 +1423,12 @@ describe('RunStage · start-of-run gifts', () => {
   });
 });
 
-describe('RoutePlanPanel · goals', () => {
+describe('GoalsPanel', () => {
   const renderBoth = (override?: typeof data) =>
     renderPlanned(
       <>
         <RunStage onOpenGifts={() => undefined} />
-        <RoutePlanPanel />
+        <GoalsPanel />
       </>,
       override,
     );
@@ -1430,7 +1444,7 @@ describe('RoutePlanPanel · goals', () => {
     expect(useApp.getState().run).toMatchObject({ visits: { 4: 1402 }, currentFloor: 5 });
   };
 
-  it('lists every goal the player set, 포기 included, with the ingredients of a fusion goal', () => {
+  it('lists every goal the player set, 포기 included, and nothing else', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
     for (const id of [9267, 9283, 9410]) useApp.getState().toggleWanted(id);
     useApp.getState().setPriority(9283, 'skip');
@@ -1441,10 +1455,9 @@ describe('RoutePlanPanel · goals', () => {
     expect(goalTile(9267)).toHaveAttribute('data-wanted');
     expect(goalTile(9283)).not.toHaveAttribute('data-wanted');
     expect(rows[1]).toHaveAttribute('data-priority', 'skip');
-    // A fusion goal shows what the packs actually drop: its ingredients, marked as the same record.
-    expect(within(rows[2]!).getAllByTestId('gift-tile').map((el) => el.getAttribute('data-gift'))).toEqual(['9410', '9408', '9409']);
-    expect(goalTile(9408)).not.toHaveAttribute('data-wanted');
-    expect(goalTile(9408)).toHaveAttribute('data-status', 'pending');
+    // Only the chosen gifts: a fusion goal does not drag its ingredients in.
+    expect(within(goals()).getAllByTestId('gift-tile').map((el) => el.getAttribute('data-gift'))).toEqual(['9267', '9283', '9410']);
+    expect(screen.getByTestId('goals-panel')).toBeInTheDocument();
   });
 
   it('shares one record with the tiles of the entered pack, in both directions', async () => {
@@ -1471,20 +1484,19 @@ describe('RoutePlanPanel · goals', () => {
     await waitFor(() => expect(screen.queryByTestId('pack-area-closing')).toBeNull());
   });
 
-  it('feeds an ingredient marked in the panel back into the route', async () => {
+  it('feeds a goal marked in the panel back into the route', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
-    useApp.getState().toggleWanted(9410); // 서릿발 발자국 ← 9408 (1004) + 9409 (1005), floors 1-2
-    // Observation off, or the planner would observe the ingredients instead of visiting.
+    for (const id of [9419, 9423]) useApp.getState().toggleWanted(id); // 낙화 (1010, Hard 2-3) and 변하지 않는 (1012, Hard 4-5)
+    // Observation off, or the planner would observe both instead of visiting.
     const noObservation = { ...data, rules: { ...data.rules, giftObservation: { ...data.rules.giftObservation, max: 0 } } };
     renderBoth(noObservation);
-    const packs = () => screen.getAllByTestId('stage-pack').map((c) => c.getAttribute('data-pack'));
-    expect(packs()).toEqual(['1004', '1005']);
-    await user.click(goalTile(9408));
-    expect(useApp.getState().run.giftStatus).toEqual({ 9408: 'got' });
-    expect(packs()).toEqual(['1005']);
-    expect(planRoute(planInputFor(useApp.getState()), noObservation, indexes).stats.requiredPacks).toBe(1);
-    expect(goalTile(9410)).toHaveAttribute('data-status', 'pending');
+    const packs = () => planRoute(planInputFor(useApp.getState()), noObservation, indexes).floors.filter((f) => f.packId !== null).map((f) => f.packId);
+    expect(packs()).toEqual([1010, 1012]);
+    await user.click(goalTile(9419));
+    expect(useApp.getState().run.giftStatus).toEqual({ 9419: 'got' });
+    expect(packs()).toEqual([1012]);
+    expect(goals()).toHaveTextContent('1/2');
   });
 
   it('shows a goal the run marked as missed, and a press turns it into got', async () => {
@@ -1496,10 +1508,9 @@ describe('RoutePlanPanel · goals', () => {
     await user.click(screen.getByTestId('area-next'));
     expect(useApp.getState().run.giftStatus).toEqual({ 9267: 'failed' });
     expect(goalTile(9267)).toHaveAttribute('data-status', 'failed');
-    expect(screen.getByTestId('route-summary')).toHaveTextContent('실패 1');
     await user.click(goalTile(9267));
     expect(useApp.getState().run.giftStatus).toEqual({ 9267: 'got' });
-    expect(screen.getByTestId('route-summary')).not.toHaveTextContent('실패');
+    expect(goalTile(9267)).toHaveAttribute('data-status', 'got');
   });
 
   it('raises the 달의 기억 reminder from the goals grid too', async () => {
