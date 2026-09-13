@@ -12,7 +12,7 @@ npm run route -- --deck 10101,10203,10312,10403,10505,10601 \
                  --want 9088,9280 --floors 1-5 --difficulty hard
 ```
 
-옵션: `--floors 1-5|1-10|1-15`, `--difficulty normal|hard`, `--observe N`(기프트 관측 수), `--json`(RoutePlan 원본), `--explain`(층별 선택 이유와 대안 팩), `--trace`(탐색 노드 수·가지치기 통계).
+옵션: `--floors 1-5|1-10|1-15`, `--difficulty normal|hard`, `--observe 9191,9423`(기프트 관측으로 지정할 기프트), `--no-observe`(관측 없이), `--json`(RoutePlan 원본), `--explain`(층별 선택 이유와 대안 팩), `--trace`(탐색 노드 수·가지치기 통계).
 
 UI에서 온 제보라면 공유 URL을 그대로 넘길 수 있다: `npm run route -- --share '#s=...'`.
 

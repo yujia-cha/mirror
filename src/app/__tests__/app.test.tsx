@@ -27,7 +27,7 @@ import { Tracker } from '../tracker/Tracker.tsx';
 import { planToText } from '../lib/plan-text.ts';
 import { actionsFor } from '../lib/unresolved-actions.ts';
 import { keywordName } from '../format.ts';
-import { planRoute } from '../../core/index.ts';
+import { observable as observableGift, planRoute } from '../../core/index.ts';
 
 vi.mock('../../core/data/load.ts', async () => {
   const { loadGameDataFromDisk } = await import('../../core/data/node.ts');
@@ -219,6 +219,7 @@ describe('run store', () => {
       stageFloor: 3,
       visits: { 2: 1102 },
       giftStatus: { 9431: 'failed' },
+      startGifts: [],
     });
     expect(sanitizeRun({ currentFloor: 20, stageFloor: 20, visits: {}, giftStatus: {} })).toMatchObject({ currentFloor: 16, stageFloor: 15 });
     // A record saved before the run-first shell, while no run was on: nothing to keep.
@@ -879,7 +880,7 @@ describe('RoutePlanPanel', () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
     useApp.getState().toggleWanted(9283);
-    useApp.getState().toggleObserved(9283, 3);
+    useApp.getState().toggleObserved(9283, { max: 3, observable: () => true });
     const { deck, deployed } = useApp.getState();
     render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
     await user.click(screen.getByRole('button', { name: '상납된 시가 우선순위: 보통' }));
@@ -1283,6 +1284,107 @@ describe('RunStage', () => {
     expect(screen.queryByTestId('other-entry-card')).toBeNull();
     await user.click(within(screen.getByTestId('stage-done')).getByRole('button', { name: '새 런' }));
     expect(useApp.getState().run).toEqual(emptyRun());
+  });
+});
+
+describe('RunStage · start-of-run gifts', () => {
+  /** The app's default deck (LCB 수감자 ×12) with the reported goals: three pins, one a general drop, and a fusion. */
+  const LCB_DECK = [10101, 10201, 10301, 10401, 10501, 10601, 10701, 10801, 10901, 11001, 11101, 11201];
+  const PINS = [9191, 9419, 9423];
+  const observable = (id: number) => {
+    const gift = indexes.giftById.get(id);
+    return gift ? observableGift(gift, data.rules) : false;
+  };
+  const setup = () => {
+    useApp.getState().setDeck(LCB_DECK, 6);
+    for (const id of [9191, 9410, 9419, 9423]) useApp.getState().toggleWanted(id);
+    for (const id of PINS) useApp.getState().toggleObserved(id, { max: 3, observable });
+    return renderPlanned(
+      <>
+        <RunStage onOpenGifts={() => undefined} />
+        <RoutePlanPanel />
+      </>,
+    );
+  };
+  const currentPlan = () => planRoute(planInputFor(useApp.getState()), data, indexes);
+  const header = () => screen.getByTestId('floor-header');
+  const lookBack = async (user: ReturnType<typeof userEvent.setup>, floor: number) =>
+    user.click(within(header()).getAllByTestId('floor-cell').find((cell) => cell.getAttribute('data-floor') === String(floor))!);
+  const got = (ids: number[]) => Object.fromEntries(ids.map((id) => [id, 'got']));
+
+  it('plans the ingredient packs on floors 1-2 around the three pins', () => {
+    setup();
+    const plan = currentPlan();
+    expect(plan.start.observed.map((o) => [o.giftId, o.pinned])).toEqual(PINS.map((id) => [id, true]));
+    expect(plan.stats.requiredPacks).toBe(2);
+    expect(screen.getAllByTestId('stage-pack').map((c) => c.getAttribute('data-pack'))).toEqual(['1004', '1005']);
+    expect(screen.getByText(/^필요 팩/).parentElement).toHaveTextContent('2');
+    expect(screen.getByText(/^확보/).parentElement).toHaveTextContent('4/4');
+    expect(screen.getAllByTestId('observed-tile')).toHaveLength(3);
+  });
+
+  it('takes the start-of-run record back when an entry on floor 1 is undone, however often', async () => {
+    const user = userEvent.setup();
+    setup();
+    for (let round = 0; round < 3; round += 1) {
+      await user.click(screen.getByRole('button', { name: '공장 자동화 입장' }));
+      expect(useApp.getState().run).toMatchObject({ visits: { 1: 1004 }, currentFloor: 2, giftStatus: got(PINS), startGifts: PINS });
+      expect(currentPlan().stats.requiredPacks).toBe(1);
+      await user.click(screen.getByRole('button', { name: '공장 자동화 돌아가기' }));
+      expect(useApp.getState().run).toMatchObject({ visits: {}, currentFloor: 1, stageFloor: 1, giftStatus: {}, startGifts: [] });
+      const plan = currentPlan();
+      expect(plan.stats.requiredPacks).toBe(2);
+      expect(plan.start.observed.map((o) => o.giftId)).toEqual(PINS);
+      await waitFor(() => expect(screen.queryByTestId('pack-area-closing')).toBeNull());
+    }
+    expect(screen.getAllByTestId('stage-pack').map((c) => c.getAttribute('data-pack'))).toEqual(['1004', '1005']);
+    expect(screen.getByText(/^필요 팩/).parentElement).toHaveTextContent('2');
+    expect(screen.getByText(/^확보/).parentElement).toHaveTextContent('4/4');
+  });
+
+  it('takes the record back when a skipped floor 1 is reopened from the strip', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole('button', { name: '다른 팩 입장' }));
+    expect(useApp.getState().run).toMatchObject({ currentFloor: 2, giftStatus: got(PINS), startGifts: PINS });
+    await lookBack(user, 1);
+    expect(useApp.getState().run).toMatchObject({ currentFloor: 1, stageFloor: 1, giftStatus: {}, startGifts: [] });
+    expect(currentPlan().stats.requiredPacks).toBe(2);
+  });
+
+  it('keeps the record while the run goes on, and a later floor undone leaves it alone', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole('button', { name: '공장 자동화 입장' }));
+    await user.click(screen.getByTestId('area-next'));
+    expect(useApp.getState().run).toMatchObject({ currentFloor: 2, stageFloor: 2, giftStatus: got(PINS), startGifts: PINS });
+    expect(currentPlan().stats.requiredPacks).toBe(1);
+    await user.click(screen.getByRole('button', { name: '사랑할 수 없는 입장' }));
+    expect(useApp.getState().run).toMatchObject({ visits: { 1: 1004, 2: 1005 }, currentFloor: 3 });
+    await user.click(screen.getByRole('button', { name: '사랑할 수 없는 돌아가기' }));
+    expect(useApp.getState().run).toMatchObject({ visits: { 1: 1004 }, currentFloor: 2, giftStatus: got(PINS), startGifts: PINS });
+  });
+
+  it('leaves a status the player changed by hand alone when the record is taken back', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole('button', { name: '다른 팩 입장' }));
+    act(() => useApp.getState().setGiftStatus(9419, 'failed'));
+    await lookBack(user, 1);
+    expect(useApp.getState().run.giftStatus).toEqual({ 9419: 'failed' });
+    expect(useApp.getState().run.startGifts).toEqual([]);
+  });
+
+  it('refuses a pin on a gift that cannot be observed, and forgets a stale record on load', () => {
+    useApp.getState().toggleWanted(9410);
+    useApp.getState().toggleWanted(9423);
+    useApp.getState().toggleObserved(9410, { max: 3, observable });
+    expect(useApp.getState().options.observedGifts).toEqual([]);
+    useApp.getState().toggleObserved(9423, { max: 3, observable });
+    expect(useApp.getState().options.observedGifts).toEqual([9423]);
+    expect(sanitizeRun({ currentFloor: 1, visits: {}, giftStatus: { 9423: 'got' }, startGifts: [9423] }).startGifts).toEqual([]);
+    expect(sanitizeRun({ currentFloor: 2, visits: {}, giftStatus: { 9423: 'got', 9419: 'failed' }, startGifts: [9423, 9419, 9423, 'x'] }).startGifts).toEqual([9423]);
+    expect(sanitizeRun({ currentFloor: 2, visits: {}, giftStatus: { 9423: 'got' } }).startGifts).toEqual([]);
   });
 });
 

@@ -65,7 +65,7 @@ export function RouteSettings() {
                     size="sm"
                     variant={pinned ? 'primary' : 'ghost'}
                     disabled={!pinned && options.observedGifts.length >= max}
-                    onClick={() => toggleObserved(id, max)}
+                    onClick={() => toggleObserved(id, { max, observable: ctx.observable })}
                     ariaLabel={t('routeObservedToggle', lang, { name: giftName(id) })}
                   >
                     <Eye size={12} aria-hidden />
