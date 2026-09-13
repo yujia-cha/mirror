@@ -219,6 +219,22 @@ export function sanitizeRun(raw: unknown): RunState {
   return out;
 }
 
+/**
+ * Builds before M17 recorded the planner's recommended observations as collected on leaving
+ * floor 1 and never took that back, so a saved run can carry a "got" ingredient nobody has. Dropping
+ * every collected mark on a gift that is no goal makes the planner route for it again (a pack
+ * already visited still supplies its own drops through the played floor), at the cost of tracker
+ * marks on non-goal gifts, which the player can set again.
+ */
+export function withoutLegacyGot(giftStatus: RunState['giftStatus'], wanted: number[]): RunState['giftStatus'] {
+  const out: RunState['giftStatus'] = {};
+  for (const [id, status] of Object.entries(giftStatus)) {
+    if (status === 'got' && !wanted.includes(Number(id))) continue;
+    out[Number(id)] = status;
+  }
+  return out;
+}
+
 function withoutPack(visits: Record<number, number>, packId: number): Record<number, number> {
   const out: Record<number, number> = {};
   for (const [f, id] of Object.entries(visits)) if (id !== packId) out[Number(f)] = id;
@@ -494,7 +510,7 @@ export const useApp = create<AppState>()(
     }),
     {
       name: 'md-route-planner',
-      version: 6,
+      version: 7,
       migrate: (persisted, version) => {
         let state = (persisted ?? {}) as Partial<AppState> & { step?: unknown };
         if (version < 2) {
@@ -503,16 +519,20 @@ export const useApp = create<AppState>()(
         }
         // v3 replaced the observation count with pinned observation gifts; v4 fixed the floor
         // range at 15 and added per-gift priorities; v5 added fusion goals and the run in
-        // progress; v6 dropped the step flow (the run is always on) and added the panel state.
+        // progress; v6 dropped the step flow (the run is always on) and added the panel state;
+        // v7 (M17) records the start-of-run gifts so returning to floor 1 takes them back — a run
+        // saved by an earlier build may still hold a recommended observation as collected.
         const wanted = Array.isArray(state.wanted) ? state.wanted : [];
         const { step: _step, ...rest } = state;
         void _step;
+        const run = sanitizeRun(state.run);
+        if (version < 7 && run.currentFloor > 1) run.giftStatus = withoutLegacyGot(run.giftStatus, wanted);
         return {
           ...rest,
           wanted,
           priority: sanitizePriority(state.priority, wanted),
           fusionGoal: sanitizeFusionGoal(state.fusionGoal, wanted),
-          run: sanitizeRun(state.run),
+          run,
           ui: sanitizeUi(state.ui),
           options: sanitizeOptions(state.options),
         } as AppState;
