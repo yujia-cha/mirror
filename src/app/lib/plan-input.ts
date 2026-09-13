@@ -24,6 +24,12 @@ export interface RunState {
   /** floor -> pack entered there. */
   visits: Record<number, number>;
   giftStatus: Record<number, GiftStatus>;
+  /**
+   * The gifts recorded as collected when floor 1 was first left: the observed gifts and the
+   * starting gift. Taken back again if the run returns to floor 1 (an entry undone, a skip taken
+   * back), so a revisited decision never leaves phantom "in hand" gifts behind.
+   */
+  startGifts: number[];
 }
 
 export function priorityOf(priority: PriorityMap, giftId: number): Priority {

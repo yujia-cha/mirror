@@ -53,7 +53,8 @@ interface AppState extends SharedState {
   removeWanted: (giftId: number) => void;
   clearWanted: () => void;
   /** Pin or unpin a wanted gift for 기프트 관측; at most `max` pins. */
-  toggleObserved: (giftId: number, max: number) => void;
+  /** Pin or unpin a wanted gift for 기프트 관측; a pin needs a free slot and an observable gift. */
+  toggleObserved: (giftId: number, limits: ObserveLimits) => void;
   /** 반드시 / 보통 / 포기 for a wanted gift. */
   setPriority: (giftId: number, priority: Priority) => void;
   /** Pack-level choices: include somewhere (the planner picks the floor), give up, or neither. */
@@ -149,8 +150,14 @@ export function sanitizeFusionGoal(raw: unknown, wanted: number[]): FusionGoalMa
   return out;
 }
 
+/** What a pin must satisfy: the slot limit and whether the gift can be observed at all. */
+export interface ObserveLimits {
+  max: number;
+  observable: (giftId: number) => boolean;
+}
+
 export function emptyRun(): RunState {
-  return { currentFloor: 1, stageFloor: 1, visits: {}, giftStatus: {} };
+  return { currentFloor: 1, stageFloor: 1, visits: {}, giftStatus: {}, startGifts: [] };
 }
 
 export function defaultUi(): UiState {
@@ -204,6 +211,11 @@ export function sanitizeRun(raw: unknown): RunState {
   out.currentFloor = Math.min(RUN_DONE_FLOOR, Math.max(1, floor, ...Object.keys(out.visits).map((f) => Number(f) + 1)));
   const stage = typeof source.stageFloor === 'number' ? Math.round(source.stageFloor) : out.currentFloor;
   out.stageFloor = Math.min(APP_LAST_FLOOR, out.currentFloor, Math.max(1, stage));
+  // The start-of-run record only means something once floor 1 is behind, and only for gifts
+  // still marked as collected.
+  if (out.currentFloor > 1 && Array.isArray(source.startGifts)) {
+    out.startGifts = [...new Set(source.startGifts.filter((id): id is number => Number.isInteger(id) && out.giftStatus[id as number] === 'got'))];
+  }
   return out;
 }
 
@@ -211,6 +223,28 @@ function withoutPack(visits: Record<number, number>, packId: number): Record<num
   const out: Record<number, number> = {};
   for (const [f, id] of Object.entries(visits)) if (id !== packId) out[Number(f)] = id;
   return out;
+}
+
+/**
+ * Move the frontier. Leaving floor 1 is when `settle.got` — the start-of-run gifts — lands in hand
+ * and is remembered; coming back to floor 1 takes that record out again (a status the player
+ * changed by hand in the meantime is left alone).
+ */
+function moveFrontier(
+  run: RunState,
+  currentFloor: number,
+  settle?: { got?: number[]; failed?: number[] },
+): Pick<RunState, 'currentFloor' | 'giftStatus' | 'startGifts'> {
+  let giftStatus = withStatus(run.giftStatus, settle);
+  let startGifts = run.startGifts;
+  if (run.currentFloor === 1 && currentFloor > 1) {
+    startGifts = [...new Set(settle?.got ?? [])];
+  } else if (run.currentFloor > 1 && currentFloor === 1) {
+    giftStatus = { ...giftStatus };
+    for (const id of run.startGifts) if (giftStatus[id] === 'got') delete giftStatus[id];
+    startGifts = [];
+  }
+  return { currentFloor, giftStatus, startGifts };
 }
 
 function withStatus(giftStatus: RunState['giftStatus'], settle?: { got?: number[]; failed?: number[] }): RunState['giftStatus'] {
@@ -351,12 +385,7 @@ export const useApp = create<AppState>()(
           const visits = withoutPack(state.run.visits, packId);
           visits[floor] = packId;
           return {
-            run: {
-              ...state.run,
-              visits,
-              currentFloor: Math.max(state.run.currentFloor, floor + 1),
-              giftStatus: withStatus(state.run.giftStatus, settle),
-            },
+            run: { ...state.run, visits, ...moveFrontier(state.run, Math.max(state.run.currentFloor, floor + 1), settle) },
           };
         }),
       unvisitPack: (packId, opts) =>
@@ -367,9 +396,10 @@ export const useApp = create<AppState>()(
           const visits = withoutPack(state.run.visits, packId);
           // The last decided floor becomes undecided again; an older one turns into a skip.
           const currentFloor = floor === state.run.currentFloor - 1 ? floor : state.run.currentFloor;
-          const giftStatus = { ...state.run.giftStatus };
+          const moved = moveFrontier(state.run, currentFloor);
+          const giftStatus = { ...moved.giftStatus };
           for (const id of opts?.reset ?? []) delete giftStatus[id];
-          return { run: { ...state.run, visits, currentFloor, stageFloor: Math.min(state.run.stageFloor, currentFloor), giftStatus } };
+          return { run: { ...state.run, visits, ...moved, stageFloor: Math.min(state.run.stageFloor, currentFloor), giftStatus } };
         }),
       nextFloor: (settle) =>
         set((state) => {
@@ -378,7 +408,7 @@ export const useApp = create<AppState>()(
           const skipping = run.stageFloor === run.currentFloor;
           const currentFloor = skipping ? run.currentFloor + 1 : run.currentFloor;
           const stageFloor = Math.min(APP_LAST_FLOOR, run.stageFloor + 1);
-          return { run: { ...run, currentFloor, stageFloor, giftStatus: withStatus(run.giftStatus, settle) } };
+          return { run: { ...run, stageFloor, ...moveFrontier(run, currentFloor, settle) } };
         }),
       setStageFloor: (floor) =>
         set((state) => {
@@ -387,7 +417,7 @@ export const useApp = create<AppState>()(
           const stageFloor = Math.min(APP_LAST_FLOOR, run.currentFloor, Math.max(1, floor));
           // A skip right before the frontier holds no record, so stepping back onto it takes it back.
           const currentFloor = stageFloor === run.currentFloor - 1 && run.visits[stageFloor] === undefined ? stageFloor : run.currentFloor;
-          return { run: { ...run, stageFloor, currentFloor } };
+          return { run: { ...run, stageFloor, ...moveFrontier(run, currentFloor) } };
         }),
       resetRun: () => set({ run: emptyRun() }),
       setGiftStatus: (giftId, status) =>
@@ -435,10 +465,10 @@ export const useApp = create<AppState>()(
           },
         })),
 
-      toggleObserved: (giftId, max) =>
+      toggleObserved: (giftId, limits) =>
         set((state) => {
           const has = state.options.observedGifts.includes(giftId);
-          if (!has && (state.options.observedGifts.length >= max || !state.wanted.includes(giftId))) return {};
+          if (!has && (state.options.observedGifts.length >= limits.max || !state.wanted.includes(giftId) || !limits.observable(giftId))) return {};
           const observedGifts = has
             ? state.options.observedGifts.filter((id) => id !== giftId)
             : [...state.options.observedGifts, giftId];

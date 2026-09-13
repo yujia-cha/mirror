@@ -34,8 +34,10 @@ export interface PlanOptions {
   startKeyword: Keyword | 'auto';
   /**
    * Gifts the user pinned for the starlight-funded 기프트 관측 (at most `rules.giftObservation.max`).
-   * The planner fills the remaining slots itself: first to rescue gifts the route cannot reach,
-   * then to free a forced pack so the route has more room.
+   * A pin applies to any planned gift not yet in hand — a general drop included, which the
+   * observation turns into a certainty — and goes before the free starting gift. The planner
+   * fills the remaining slots itself: first to rescue gifts the route cannot reach, then to free
+   * a forced pack so the route has more room.
    */
   observedGifts: number[];
   /** Assume every forced pack needs an observation on a pack never visited before (×1.5 cost). */

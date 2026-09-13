@@ -834,3 +834,187 @@ describe('run progress', () => {
     expect(plan.floors.filter((f) => !f.passed).map((f) => f.floor)).toEqual([15]);
   });
 });
+
+describe('observation pins', () => {
+  /** The twelve LCB 수감자, the app's default deck; its dominant keyword is Burst. */
+  const LCB_DECK = [10101, 10201, 10301, 10401, 10501, 10601, 10701, 10801, 10901, 11001, 11101, 11201];
+  /** What the app always plans: floors 1-15 on Hard. */
+  const hard15 = (overrides: Partial<PlanOptions> = {}): PlanOptions => options({ lastFloor: 15, hardFromFloor: 1, ...overrides });
+  /** The reported scenario: three pins, one of them a general drop, and a fusion whose ingredients sit on floors 1-2. */
+  const SCENARIO = [9191, 9410, 9419, 9423];
+  const PINS = [9191, 9419, 9423];
+  const codes = (result: ReturnType<typeof planRoute>): string[] => result.warnings.map((w) => w.code);
+  const packAt = (result: ReturnType<typeof planRoute>, floor: number) => result.floors.find((f) => f.floor === floor)!;
+
+  it.each([true, false])('honours a pin on a general drop and routes the fusion ingredients (required=%s)', (required) => {
+    const wanted = SCENARIO.map((giftId) => ({ giftId, required }));
+    const result = plan({ deck: LCB_DECK, wanted, options: hard15({ observedGifts: PINS }) });
+    expect(result.start.observed).toEqual([
+      { giftId: 9191, pinned: true, freedPack: null },
+      { giftId: 9419, pinned: true, freedPack: null },
+      { giftId: 9423, pinned: true, freedPack: null },
+    ]);
+    expect(result.start.starlight).toBe(270);
+    expect(result.stats.requiredPacks).toBe(2);
+    expect(packAt(result, 1)).toMatchObject({ packId: 1004, reason: 'required', window: { from: 1, to: 2 }, pickups: [{ giftId: 9408, kind: 'exclusive', neededFor: 9410 }] });
+    expect(packAt(result, 2)).toMatchObject({ packId: 1005, reason: 'required', window: { from: 1, to: 2 }, pickups: [{ giftId: 9409, kind: 'exclusive', neededFor: 9410 }] });
+    expect(result.floors.filter((f) => f.floor >= 3).every((f) => f.packId === null)).toBe(true);
+    expect(result.fusions).toEqual([{ result: 9410, ingredients: [9408, 9409], earliestFloor: 2, unreachable: false, exceedsShopSlots: false }]);
+    expect(result.generalDrops).toEqual([]);
+    expect(codes(result)).not.toContain('general-drop-not-guaranteed');
+    expect(codes(result)).not.toContain('observation-trimmed');
+    expect(result.unresolved).toEqual([]);
+    expect(result.stats).toMatchObject({ coveredWanted: 4, totalWanted: 4, starlight: 320 });
+  });
+
+  it('turns a pinned general drop into a certainty instead of a "may drop"', () => {
+    const result = plan({ wanted: want(9191), options: hard15({ observedGifts: [9191] }) });
+    expect(result.start.observed).toEqual([{ giftId: 9191, pinned: true, freedPack: null }]);
+    expect(result.generalDrops).toEqual([]);
+    expect(codes(result)).not.toContain('general-drop-not-guaranteed');
+    expect(result.floors.every((f) => f.packId === null)).toBe(true);
+    expect(result.stats).toMatchObject({ requiredPacks: 0, coveredWanted: 1 });
+  });
+
+  it('reports a pin on a gift that is no goal, and keeps the slot for its own recommendation', () => {
+    const result = plan({ wanted: want(9423), options: hard15({ observedGifts: [9419] }) });
+    expect(result.start.observed).toEqual([{ giftId: 9423, pinned: false, freedPack: 1012 }]);
+    expect(result.warnings.find((w) => w.code === 'observation-trimmed')?.giftIds).toEqual([9419]);
+    expect(result.stats.requiredPacks).toBe(0);
+  });
+
+  it('skips a pin on a gift already in hand without a word or a slot', () => {
+    const result = plan({ wanted: want(9419, 9423), options: options({ hardFromFloor: 1, ownedGifts: [9419], observedGifts: [9419] }) });
+    expect(result.start.observed).toEqual([{ giftId: 9423, pinned: false, freedPack: 1012 }]);
+    expect(codes(result)).not.toContain('observation-trimmed');
+    expect(result.stats.coveredWanted).toBe(2);
+  });
+
+  it('carries the app mid-run state: pins owned after floor 1, the first pack visited, the second still to come', () => {
+    const result = plan({
+      deck: LCB_DECK,
+      wanted: want(...SCENARIO),
+      options: hard15({ observedGifts: PINS, ownedGifts: PINS, currentFloor: 2, pinnedPacks: { 1: 1004 } }),
+    });
+    expect(result.start.observed).toEqual([]);
+    expect(codes(result)).not.toContain('observation-trimmed');
+    expect(packAt(result, 1)).toMatchObject({ passed: true, packId: 1004 });
+    expect(packAt(result, 2)).toMatchObject({ packId: 1005, reason: 'required' });
+    expect(result.stats).toMatchObject({ requiredPacks: 1, coveredWanted: 4 });
+    expect(result.unresolved).toEqual([]);
+  });
+
+  it('takes the free starting gift for a wanted general drop, and a pinned one is not taken twice', () => {
+    // 9047 and 9093 are both in the Burst starting pool and both general drops.
+    const free = plan({ deck: LCB_DECK, wanted: want(9047, 9093), options: hard15() });
+    expect(free.start).toMatchObject({ keyword: 'Burst', startGift: 9047, observed: [] });
+    expect(free.generalDrops).toEqual([9093]);
+
+    const pinned = plan({ deck: LCB_DECK, wanted: want(9047, 9093), options: hard15({ observedGifts: [9047] }) });
+    expect(pinned.start.observed).toEqual([{ giftId: 9047, pinned: true, freedPack: null }]);
+    expect(pinned.start.startGift).toBe(9093);
+    expect(pinned.generalDrops).toEqual([]);
+  });
+
+  it('keeps the first three pins in the order they were pinned and names the fourth', () => {
+    const result = plan({ deck: LCB_DECK, wanted: want(...SCENARIO), options: hard15({ observedGifts: [9423, 9419, 9191, 9408] }) });
+    expect(result.start.observed.map((o) => o.giftId)).toEqual([9423, 9419, 9191]);
+    expect(result.start.observed.every((o) => o.pinned)).toBe(true);
+    expect(result.warnings.find((w) => w.code === 'observation-trimmed')?.giftIds).toEqual([9408]);
+  });
+
+  it('does not spend a slot on a pin the plan already gave up on (Hard-only gift, Normal plan)', () => {
+    const result = plan({ wanted: want(9423, 9419), options: options({ hardFromFloor: null, lastFloor: 5, observedGifts: [9423] }) });
+    expect(result.unresolved).toEqual([expect.objectContaining({ giftId: 9423, reason: 'hard-only' })]);
+    expect(result.start.observed).toEqual([{ giftId: 9419, pinned: false, freedPack: 1010 }]);
+    expect(codes(result)).not.toContain('observation-trimmed');
+    expect(result.stats.coveredWanted).toBe(1);
+  });
+
+  it('mid-run, reports the fusion as lost once both ingredient floors are behind, and recommends nothing', () => {
+    const result = plan({ deck: LCB_DECK, wanted: want(...SCENARIO), options: hard15({ currentFloor: 3 }) });
+    expect(result.start.observed).toEqual([]);
+    expect(packAt(result, 3).packId).toBe(1010);
+    expect(packAt(result, 4)).toMatchObject({ packId: 1012, window: { from: 4, to: 5 } });
+    expect(result.unresolved).toEqual([
+      expect.objectContaining({ giftId: 9408, reason: 'no-pack-in-range' }),
+      expect.objectContaining({ giftId: 9409, reason: 'no-pack-in-range' }),
+      expect.objectContaining({ giftId: 9410, reason: 'fusion-ingredient-unresolved', missing: [9408, 9409] }),
+    ]);
+    expect(result.stats).toMatchObject({ requiredPacks: 2, coveredWanted: 3 });
+  });
+
+  it('mid-run, after the first ingredient pack, still plans the second and fuses on floor 2', () => {
+    const result = plan({ wanted: want(9410), options: hard15({ currentFloor: 2, pinnedPacks: { 1: 1004 } }) });
+    expect(packAt(result, 1)).toMatchObject({ passed: true, packId: 1004, pickups: [expect.objectContaining({ giftId: 9408 })] });
+    expect(packAt(result, 2)).toMatchObject({ packId: 1005, reason: 'required', window: { from: 2, to: 2 } });
+    expect(result.fusions[0]).toMatchObject({ result: 9410, earliestFloor: 2 });
+    expect(result.unresolved).toEqual([]);
+    expect(result.stats.requiredPacks).toBe(1);
+  });
+
+  it('lets a pinned ingredient be observed and spends any free slot on the other one', () => {
+    const free = plan({ wanted: want(9410), options: hard15({ observedGifts: [9408] }) });
+    expect(free.start.observed).toEqual([
+      { giftId: 9408, pinned: true, freedPack: null },
+      { giftId: 9409, pinned: false, freedPack: 1005 },
+    ]);
+    expect(free.stats.requiredPacks).toBe(0);
+    expect(free.fusions[0]).toMatchObject({ earliestFloor: 1 });
+
+    const full = plan({ wanted: want(9410, 9419, 9423), options: hard15({ observedGifts: [9408, 9419, 9423] }) });
+    expect(full.start.observed.map((o) => o.giftId)).toEqual([9408, 9419, 9423]);
+    expect(packAt(full, 1)).toMatchObject({ packId: 1005, window: { from: 1, to: 2 } });
+    expect(full.stats.requiredPacks).toBe(1);
+    expect(full.fusions[0]).toMatchObject({ earliestFloor: 1 });
+  });
+
+  it('keeps the pins even when rescuing would have spent the slots differently', () => {
+    const result = plan({ wanted: want(9283, 9222, 9217, 9435, 9751), options: options({ hardFromFloor: 1, observedGifts: [9222, 9217, 9435] }) });
+    expect(result.start.observed.map((o) => [o.giftId, o.pinned])).toEqual([[9222, true], [9217, true], [9435, true]]);
+    expect(packAt(result, 5).packId).toBe(1025);
+    expect(result.unresolved).toEqual([expect.objectContaining({ giftId: 9751, reason: 'pack-conflict' })]);
+    expect(result.stats.coveredWanted).toBe(4);
+  });
+
+  it('stays deterministic and within the invariants with pins', () => {
+    const input: PlanInput = { deck: LCB_DECK, wanted: want(...SCENARIO), options: hard15({ observedGifts: PINS }) };
+    const a = planRoute(input, data, indexes);
+    const b = planRoute(input, data, indexes);
+    const strip = (r: ReturnType<typeof planRoute>) => JSON.stringify({ ...r, stats: { ...r.stats, elapsedMs: 0 } });
+    expect(strip(a)).toBe(strip(b));
+    expect(a.start.observed.length).toBeLessThanOrEqual(data.rules.giftObservation.max);
+    for (const entry of a.start.observed.filter((o) => o.pinned)) expect(PINS).toContain(entry.giftId);
+    const packs = a.floors.filter((f) => f.packId !== null).map((f) => f.packId);
+    expect(new Set(packs).size).toBe(packs.length);
+    for (const floor of a.floors) {
+      if (floor.packId === null) continue;
+      expect(indexes.packsByFloor[floor.mode].get(floor.floor)).toContain(floor.packId);
+    }
+  });
+
+  it('routes every pack when observation is off and reports the pins it could not use', () => {
+    const result = planWithout({ deck: LCB_DECK, wanted: want(...SCENARIO), options: hard15({ observedGifts: PINS }) });
+    expect(result.start.observed).toEqual([]);
+    expect(result.warnings.find((w) => w.code === 'observation-trimmed')?.giftIds).toEqual(PINS);
+    expect(result.floors.filter((f) => f.packId !== null).map((f) => [f.floor, f.packId])).toEqual([[1, 1004], [2, 1005], [3, 1010], [4, 1012]]);
+    expect(result.stats.requiredPacks).toBe(4);
+    expect(result.generalDrops).toEqual([9191]);
+  });
+
+  it('keeps three pins first under a twenty-gift load', () => {
+    const extra = data.gifts
+      .filter((g) => g.acquisition.kind === 'packLimited' && ![9408, 9409, 9419, 9423].includes(g.id))
+      .slice(0, 14)
+      .map((g) => g.id);
+    const wanted = want(...SCENARIO, 9088, 9249, ...extra);
+    expect(wanted).toHaveLength(20);
+    const started = performance.now();
+    const result = planRoute({ deck: LCB_DECK, wanted, options: hard15({ observedGifts: PINS }) }, data, indexes);
+    expect(performance.now() - started).toBeLessThan(500);
+    expect(result.start.observed.length).toBeLessThanOrEqual(3);
+    expect(result.start.observed.filter((o) => o.pinned).map((o) => o.giftId)).toEqual(PINS);
+    const packs = result.floors.filter((f) => f.packId !== null).map((f) => f.packId);
+    expect(new Set(packs).size).toBe(packs.length);
+  });
+});

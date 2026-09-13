@@ -48,7 +48,10 @@ export interface PlanState {
   enter: (packId: number) => void;
   /** Leave the stage floor: an undecided floor is skipped, an entered pack's unmarked goals are missed. */
   next: () => void;
-  /** Go back from an entered pack: the entry and every status recorded for that pack's own drops are cleared. */
+  /**
+   * Go back from an entered pack: the entry and every status recorded for that pack's own drops
+   * are cleared; when that reopens floor 1, the start-of-run gifts recorded on leaving it go too.
+   */
   leave: (packId: number) => void;
 }
 
@@ -113,6 +116,10 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
       nextFloor({ got: startSettle, failed });
     };
     const leave = (packId: number): void => unvisitPack(packId, { reset: exclusivesOf(packId) });
+    const canObserve = (id: number): boolean => {
+      const gift = indexes.giftById.get(id);
+      return gift ? observable(gift, data.rules) : false;
+    };
     const ctx: PackContext = {
       indexes,
       judgements,
@@ -120,10 +127,7 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
       giftName,
       packName,
       isMust: (id) => priorityOf(priority, id) === 'must',
-      observable: (id) => {
-        const gift = indexes.giftById.get(id);
-        return gift ? observable(gift, data.rules) : false;
-      },
+      observable: canObserve,
       observed: new Set((shown?.start.observed ?? []).filter((o) => o.pinned).map((o) => o.giftId)),
       wanted: goals,
       preferred: new Set(options.preferredPacks),
@@ -132,7 +136,7 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
       onPrefer: variant ? undefined : preferPack,
       onBan: variant ? undefined : banPack,
       onRestore: variant ? undefined : restorePack,
-      onToggleObserved: variant ? undefined : (giftId) => toggleObserved(giftId, data.rules.giftObservation.max),
+      onToggleObserved: variant ? undefined : (giftId) => toggleObserved(giftId, { max: data.rules.giftObservation.max, observable: canObserve }),
       onToggleWanted: variant ? undefined : (giftId) => toggleWanted(giftId),
       run: {
         currentFloor: run.currentFloor,

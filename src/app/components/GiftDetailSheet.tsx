@@ -131,7 +131,7 @@ export function GiftDetailSheet({
               </Button>
               <Button
                 variant={pinned ? 'primary' : 'secondary'}
-                onClick={() => toggleObserved(gift.id, observeMax)}
+                onClick={() => toggleObserved(gift.id, { max: observeMax, observable: () => canObserve })}
                 disabled={!canObserve || observeFull}
                 ariaLabel={t('giftsObserve', lang, { name })}
                 title={!canObserve ? t('giftsObserveNotAllowed', lang) : observeFull ? t('giftsObserveFull', lang, { max: observeMax }) : undefined}

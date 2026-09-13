@@ -60,26 +60,18 @@ function normaliseOptions(
   data: GameData,
   indexes: GameIndexes,
   deck: number[],
-): { options: PlanOptions; warnings: PlanWarning[] } {
+): { options: PlanOptions; warnings: PlanWarning[]; droppedObservations: number[] } {
   const warnings: PlanWarning[] = [];
   let next = { ...options };
 
-  // Pinned observations: known, observable, unique, and within the slot limit.
+  // Pinned observations: known, observable, unique, and within the slot limit. The ones dropped
+  // here join the pins the plan itself cannot use in a single warning (see planRoute).
   const observedGifts = [...new Set(next.observedGifts ?? [])].filter((id) => {
     const gift = indexes.giftById.get(id);
     return gift !== undefined && observable(gift, data.rules);
   });
   const kept = observedGifts.slice(0, data.rules.giftObservation.max);
-  if (kept.length !== (next.observedGifts ?? []).length) {
-    warnings.push({
-      code: 'observation-trimmed',
-      giftIds: (next.observedGifts ?? []).filter((id) => !kept.includes(id)),
-      detail: {
-        ko: `관측으로 지정한 기프트 중 관측할 수 없거나 한도(${data.rules.giftObservation.max}개)를 넘는 것은 제외했습니다.`,
-        en: `Some pinned observations were dropped: not observable, or over the ${data.rules.giftObservation.max}-slot limit.`,
-      },
-    });
-  }
+  const droppedObservations = (next.observedGifts ?? []).filter((id) => !kept.includes(id));
   next = { ...next, observedGifts: kept };
 
   const maxFloor = Math.max(...data.rules.floors.normal, ...data.rules.floors.parallel, ...data.rules.floors.extreme);
@@ -142,7 +134,7 @@ function normaliseOptions(
     });
   }
 
-  return { options: next, warnings };
+  return { options: next, warnings, droppedObservations };
 }
 
 /**
@@ -217,7 +209,7 @@ function floorsFor(options: PlanOptions, data: GameData): { rows: number[]; plan
 
 export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes): RoutePlan {
   const startedAt = Date.now();
-  const { options, warnings } = normaliseOptions(input.options, data, indexes, input.deck);
+  const { options, warnings, droppedObservations } = normaliseOptions(input.options, data, indexes, input.deck);
   const { rows, plannable: floors } = floorsFor(options, data);
   const currentFloor = options.currentFloor ?? 1;
   const midRun = currentFloor > 1;
@@ -239,7 +231,6 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
   const requirements = expansion.requirements;
 
   // ---- 2. Gifts that need no routing -------------------------------------
-  const generalDrops: number[] = [];
   for (const requirement of requirements) {
     if (requirement.via !== 'route') continue;
     const gift = indexes.giftById.get(requirement.giftId);
@@ -272,26 +263,12 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
       });
       continue;
     }
-    if (indexes.freelyAvailableGifts.has(requirement.giftId)) {
-      requirement.via = 'generalDrop';
-      generalDrops.push(requirement.giftId);
-    }
+    // Any pack can drop it, so no pack is chosen for it — unless a pinned observation or the free
+    // starting gift makes it certain below.
+    if (indexes.freelyAvailableGifts.has(requirement.giftId)) requirement.via = 'generalDrop';
   }
 
-  // ---- 3. The free starting-keyword gift ----------------------------------
-  // Mid-run the start was chosen long ago (whatever it gave is in hand), so only the keyword stands.
-  const start = chooseStart(
-    midRun ? [] : requirements.filter((r) => r.via === 'route'),
-    indexes,
-    data.rules,
-    stats,
-    options.startKeyword,
-  );
-  for (const requirement of requirements) {
-    if (requirement.giftId === start.startGift) requirement.via = 'startGift';
-  }
-
-  // ---- 4. Hard-only gifts on a Normal-only plan ---------------------------
+  // ---- 3. Hard-only gifts on a Normal-only plan ---------------------------
   const planIsHard = options.hardFromFloor !== null;
   for (const requirement of requirements.filter((r) => r.via === 'route')) {
     const gift = indexes.giftById.get(requirement.giftId);
@@ -308,7 +285,67 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
     }
   }
 
-  // ---- 5. Observation and the pack search --------------------------------
+  // ---- 4. Pinned observations ---------------------------------------------
+  // 기프트 관측 hands over up to `budget` gifts at run start. The user's pins are the one explicit
+  // decision in this stage, so they go first — before the free starting gift and before the
+  // planner's own recommendations — and they apply to any planned gift not yet in hand: one the
+  // route would visit a pack for, or a general drop that observation turns into a certainty.
+  const budget = data.rules.giftObservation.max;
+  const observed: ObservedGift[] = [];
+  const observe = (giftId: number, pinned: boolean, freedPack: number | null): void => {
+    for (const requirement of requirements) {
+      if (requirement.giftId === giftId && (requirement.via === 'route' || requirement.via === 'generalDrop')) {
+        requirement.via = 'observation';
+      }
+    }
+    observed.push({ giftId, pinned, freedPack });
+  };
+  const canObserve = (giftId: number): boolean => {
+    const gift = indexes.giftById.get(giftId);
+    return gift !== undefined && observable(gift, data.rules) && !observed.some((o) => o.giftId === giftId);
+  };
+  const plannable = (giftId: number): boolean =>
+    requirements.some((r) => r.giftId === giftId && (r.via === 'route' || r.via === 'generalDrop'));
+  const known = (giftId: number): boolean => requirements.some((r) => r.giftId === giftId);
+
+  // A pin on a gift already in hand, or one the plan already gave up on, is skipped without a
+  // word: the run made it moot (the app keeps pins after floor 1, when they are owned) or the
+  // unresolved list already explains it. Only a pin on a gift that is no goal at all is reported.
+  const notPlanned: number[] = [];
+  for (const giftId of options.observedGifts) {
+    if (observed.length >= budget) break;
+    if (plannable(giftId) && canObserve(giftId)) observe(giftId, true, null);
+    else if (!known(giftId)) notPlanned.push(giftId);
+  }
+  const trimmed = [...new Set([...droppedObservations, ...notPlanned])];
+  if (trimmed.length > 0) {
+    warnings.push({
+      code: 'observation-trimmed',
+      giftIds: trimmed,
+      detail: {
+        ko: `관측으로 지정한 기프트 중 관측할 수 없거나, 한도(${budget}개)를 넘거나, 이번 계획의 목표가 아닌 것은 제외했습니다.`,
+        en: `Some pinned observations were dropped: not observable, over the ${budget}-slot limit, or not a goal of this plan.`,
+      },
+    });
+  }
+
+  // ---- 5. The free starting-keyword gift ----------------------------------
+  // Mid-run the start was chosen long ago (whatever it gave is in hand), so only the keyword stands.
+  // A general drop in the pool is worth taking here too: free, and certain instead of likely.
+  const start = chooseStart(
+    midRun ? [] : requirements.filter((r) => r.via === 'route' || r.via === 'generalDrop'),
+    indexes,
+    data.rules,
+    stats,
+    options.startKeyword,
+  );
+  for (const requirement of requirements) {
+    if (requirement.giftId === start.startGift && (requirement.via === 'route' || requirement.via === 'generalDrop')) {
+      requirement.via = 'startGift';
+    }
+  }
+
+  // ---- 6. Recommended observations and the pack search -------------------
   const runSearch = () =>
     assignPacks({
       requirements: requirements.filter((r) => r.via === 'route'),
@@ -320,32 +357,10 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
     });
 
   /**
-   * 기프트 관측 hands over up to `max` gifts at run start. Slots go, in order: to the gifts the user
-   * pinned; to gifts the route cannot reach (directly, or by observing whatever occupies the floor
-   * they need); and finally to gifts whose pack the route would otherwise be forced to visit, so
-   * the run keeps more floors free. The search runs at most twice.
+   * The slots the pins left go, in order: to gifts the route cannot reach (directly, or by
+   * observing whatever occupies the floor they need); then to gifts whose pack the route would
+   * otherwise be forced to visit, so the run keeps more floors free. The search runs at most twice.
    */
-  const budget = data.rules.giftObservation.max;
-  const observed: ObservedGift[] = [];
-  const observe = (giftId: number, pinned: boolean, freedPack: number | null): void => {
-    for (const requirement of requirements) {
-      if (requirement.giftId === giftId && requirement.via === 'route') requirement.via = 'observation';
-    }
-    observed.push({ giftId, pinned, freedPack });
-  };
-  const canObserve = (giftId: number): boolean => {
-    const gift = indexes.giftById.get(giftId);
-    return gift !== undefined && observable(gift, data.rules) && !observed.some((o) => o.giftId === giftId);
-  };
-  const routeRequirement = (giftId: number): boolean =>
-    requirements.some((r) => r.giftId === giftId && r.via === 'route');
-
-  // a) pinned by the user
-  for (const giftId of options.observedGifts) {
-    if (observed.length >= budget) break;
-    if (routeRequirement(giftId) && canObserve(giftId)) observe(giftId, true, null);
-  }
-
   let search = runSearch();
 
   // Observation happens at run start, so mid-run only the pins the player reports still apply.
@@ -403,10 +418,16 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
     search.supplier.delete(pick.giftId);
   }
 
-  const startObserved = [...observed].sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.giftId - b.giftId);
+  const startObserved = [
+    ...observed.filter((o) => o.pinned),
+    ...observed.filter((o) => !o.pinned).sort((a, b) => a.giftId - b.giftId),
+  ];
   const startStarlight = observed.length === 0 ? 0 : (data.rules.giftObservation.costTable[observed.length - 1] ?? 0);
 
-  // ---- 6. Fusions, and ingredients no longer worth routing for ------------
+  // What is still left to ordinary drops, now that observation and the start gift have had their say.
+  const generalDrops = requirements.filter((r) => r.via === 'generalDrop').map((r) => r.giftId);
+
+  // ---- 7. Fusions, and ingredients no longer worth routing for ------------
   const schedule = (): { fusions: FusionStep[]; obtainedAtFloor: Map<number, number> } => {
     const obtainedAtFloor = new Map<number, number>();
     for (const requirement of requirements) {
@@ -530,7 +551,7 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
     });
   }
 
-  // ---- 6. Build the floor plan -------------------------------------------
+  // ---- 8. Build the floor plan -------------------------------------------
   const pickupsByFloor = new Map<number, FloorPlan['pickups']>();
   for (const requirement of requirements) {
     if (requirement.via !== 'route') continue;
@@ -601,7 +622,7 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
     };
   });
 
-  // ---- 7. Fusions that cannot happen ----------------------------------------
+  // ---- 9. Fusions that cannot happen ----------------------------------------
   for (const fusion of fusions) {
     if (!fusion.unreachable) continue;
     const droppedIngredients = droppedFor.get(fusion.result);
@@ -623,7 +644,7 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
     });
   }
 
-  // ---- 8. Warnings --------------------------------------------------------
+  // ---- 10. Warnings -------------------------------------------------------
   const conditions = evaluateConditions(
     input.wanted.map((w) => w.giftId),
     stats,
@@ -724,7 +745,7 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
     }
   }
 
-  // ---- 9. Assemble -------------------------------------------------------
+  // ---- 11. Assemble ------------------------------------------------------
   const unresolvedIds = new Set(unresolved.map((u) => u.giftId));
   const coveredWanted = input.wanted.filter((w) => !unresolvedIds.has(w.giftId)).length;
 

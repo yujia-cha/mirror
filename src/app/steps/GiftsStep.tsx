@@ -286,7 +286,7 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => toggleObserved(id, observeMax)}
+                  onClick={() => toggleObserved(id, { max: observeMax, observable: () => canObserve })}
                   disabled={!canObserve || full}
                   aria-pressed={pinned}
                   aria-label={t('giftsObserve', lang, { name: giftName(id) })}
