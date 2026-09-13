@@ -1,21 +1,38 @@
 /**
  * An E.G.O gift as a square tile. Artwork loads from the asset host when one is configured and
- * otherwise a grey placeholder stands in; the border carries the condition judgement (green =
- * met, red = not met, dashed = cannot judge), which is the one place the palette uses hue.
+ * otherwise a grey placeholder stands in. The border tells the gift's keyword: the seven status
+ * keywords each have a hue, the three attack types a line shape (slash dashed, pierce dotted,
+ * blunt double), and a gift with none keeps the plain grey line. The condition judgement sits
+ * outside the border as a ring (green = met, red = not met, grey = cannot judge). These are the
+ * only places the palette uses hue.
  */
 import { useState } from 'react';
 import { Check, Gem, Star, X } from 'lucide-react';
-import type { Gift } from '../../core/schema.ts';
+import type { Gift, Keyword } from '../../core/schema.ts';
 import { pick, t, type Lang } from '../i18n.ts';
 import { giftIconUrl } from '../lib/assets.ts';
 import type { Judgement } from '../lib/judgement.ts';
 
 export type GiftIconSize = 20 | 32 | 44;
 
-const BORDER: Record<Judgement, string> = {
-  met: 'border-2 border-ok',
-  unmet: 'border-2 border-bad',
-  unknown: 'border-2 border-dashed border-line-strong',
+const KEYWORD_BORDER: Record<Keyword, string> = {
+  Combustion: 'border-2 border-kw-combustion',
+  Laceration: 'border-2 border-kw-laceration',
+  Vibration: 'border-2 border-kw-vibration',
+  Burst: 'border-2 border-kw-burst',
+  Sinking: 'border-2 border-kw-sinking',
+  Breath: 'border-2 border-kw-breath',
+  Charge: 'border-2 border-kw-charge',
+  Slash: 'border-2 border-dashed border-fg-2',
+  Penetrate: 'border-2 border-dotted border-fg-2',
+  Hit: 'border-[3px] border-double border-fg-2',
+  None: 'border border-line',
+};
+
+const RING: Record<Judgement, string> = {
+  met: 'ring-2 ring-ok ring-offset-1 ring-offset-surface',
+  unmet: 'ring-2 ring-bad ring-offset-1 ring-offset-surface',
+  unknown: 'ring-2 ring-line-strong ring-offset-1 ring-offset-surface',
 };
 
 const JUDGEMENT_KEY = { met: 'condMet', unmet: 'condUnmet', unknown: 'giftUnjudgeable' } as const;
@@ -49,17 +66,19 @@ export function GiftIcon({
   const judged = judgement ? t(JUDGEMENT_KEY[judgement], lang) : null;
   const statusText = status === 'got' ? t('giftStatusGot', lang) : status === 'failed' ? t('giftStatusFailed', lang) : null;
   const aria = [must ? t('priorityMust', lang) : null, statusText, judged, label].filter(Boolean).join(' · ');
-  const border = judgement ? BORDER[judgement] : 'border border-line';
+  const border = KEYWORD_BORDER[gift.keyword] ?? KEYWORD_BORDER.None;
+  const ring = judgement ? RING[judgement] : '';
   const tile = (
     <span
       role="img"
       aria-label={aria}
       title={title ? `${label} · ${title}` : label}
       data-testid="gift-icon"
+      data-keyword={gift.keyword}
       data-judgement={judgement ?? 'none'}
       data-must={must || undefined}
       data-status={status ?? undefined}
-      className={`relative inline-flex flex-none items-center justify-center overflow-hidden rounded-sm bg-surface-3 text-fg-3 ${border} ${status === 'failed' ? 'opacity-50' : ''}`}
+      className={`relative inline-flex flex-none items-center justify-center overflow-hidden rounded-sm bg-surface-3 text-fg-3 ${border} ${ring} ${status === 'failed' ? 'opacity-50' : ''}`}
       style={{ width: size, height: size }}
     >
       {url && !failed ? (

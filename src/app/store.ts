@@ -6,7 +6,7 @@ import { defaultOptions } from '../core/index.ts';
 import type { Lang } from './i18n.ts';
 import type { FusionGoalMap, Priority, PriorityMap, RunState } from './lib/plan-input.ts';
 
-export type LeftTab = 'deck' | 'gifts' | 'settings';
+export type LeftTab = 'deck' | 'gifts';
 export type RightTab = 'plan' | 'goals' | 'tracker';
 
 /** Which side panels are open on a desktop layout, and which tab each shows. Device-only. */
@@ -55,7 +55,7 @@ interface AppState extends SharedState {
   /** Pin or unpin a wanted gift for 기프트 관측; at most `max` pins. */
   /** Pin or unpin a wanted gift for 기프트 관측; a pin needs a free slot and an observable gift. */
   toggleObserved: (giftId: number, limits: ObserveLimits) => void;
-  /** 반드시 / 보통 / 포기 for a wanted gift. */
+  /** 반드시 / 보통 for a wanted gift; giving a gift up is `removeWanted`. */
   setPriority: (giftId: number, priority: Priority) => void;
   /** Pack-level choices: include somewhere (the planner picks the floor), give up, or neither. */
   preferPack: (packId: number) => void;
@@ -77,7 +77,8 @@ interface AppState extends SharedState {
   resetRun: () => void;
   setGiftStatus: (giftId: number, status: 'got' | 'failed' | null) => void;
   setOptions: (patch: Partial<PlanOptions>) => void;
-  resetOptions: () => void;
+  /** The header's 초기화: deck back to `deck` (the LCB default), no items, default options, no run. `ui`, `lang`, `dark` stay. */
+  resetAll: (deck: number[], deployedDefault: number) => void;
   setUi: (patch: Partial<UiState>) => void;
   setLang: (lang: Lang) => void;
   toggleDark: () => void;
@@ -176,7 +177,9 @@ export function sanitizeUi(raw: unknown): UiState {
   const source = raw as Record<string, unknown>;
   if (typeof source.leftOpen === 'boolean') out.leftOpen = source.leftOpen;
   if (typeof source.rightOpen === 'boolean') out.rightOpen = source.rightOpen;
-  if (source.leftTab === 'deck' || source.leftTab === 'gifts' || source.leftTab === 'settings') out.leftTab = source.leftTab;
+  // The old 「루트 설정」 tab folded into the items tab.
+  if (source.leftTab === 'deck' || source.leftTab === 'gifts') out.leftTab = source.leftTab;
+  else if (source.leftTab === 'settings') out.leftTab = 'gifts';
   if (source.rightTab === 'plan' || source.rightTab === 'goals' || source.rightTab === 'tracker') out.rightTab = source.rightTab;
   out.leftWidth = clampPanelWidth(source.leftWidth);
   out.rightWidth = clampPanelWidth(source.rightWidth);
@@ -279,7 +282,7 @@ export function sanitizePriority(raw: unknown, wanted: number[]): PriorityMap {
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     const id = Number(key);
     if (!wanted.includes(id)) continue;
-    if (value === 'must' || value === 'skip') out[id] = value;
+    if (value === 'must') out[id] = value;
   }
   return out;
 }
@@ -447,13 +450,7 @@ export const useApp = create<AppState>()(
       setPriority: (giftId, priority) =>
         set((state) => {
           if (!state.wanted.includes(giftId)) return {};
-          const next = priority === 'normal' ? withoutGift(state.priority, giftId) : { ...state.priority, [giftId]: priority };
-          // A given-up gift is not planned, so a pinned observation on it would be wasted.
-          const options =
-            priority === 'skip' && state.options.observedGifts.includes(giftId)
-              ? { ...state.options, observedGifts: state.options.observedGifts.filter((id) => id !== giftId) }
-              : state.options;
-          return { priority: next, options };
+          return { priority: priority === 'normal' ? withoutGift(state.priority, giftId) : { ...state.priority, [giftId]: priority } };
         }),
 
       preferPack: (packId) =>
@@ -492,7 +489,10 @@ export const useApp = create<AppState>()(
         }),
 
       setOptions: (patch) => set((state) => ({ options: { ...state.options, ...patch } })),
-      resetOptions: () => set({ options: appDefaultOptions() }),
+      resetAll: (deck, deployedDefault) => {
+        const next = uniqueDeck(deck);
+        set({ deck: next, deployed: next.slice(0, deployedDefault), wanted: [], priority: {}, fusionGoal: {}, options: appDefaultOptions(), run: emptyRun() });
+      },
       setUi: (patch) => set((state) => ({ ui: sanitizeUi({ ...state.ui, ...patch }) })),
       setLang: (lang) => set({ lang }),
       toggleDark: () => set((state) => ({ dark: !state.dark })),

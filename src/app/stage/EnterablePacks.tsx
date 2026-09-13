@@ -2,7 +2,8 @@
  * The packs the player can enter on the stage floor. A card shows the pack's portrait, its name
  * and the gifts only it drops; pulling the card down (or pressing 「입장」 at its foot) enters
  * it. The dashed card at the end stands for a pack off the route: pulling it moves on without a
- * record. A search over every pack the game can offer on this floor sits below.
+ * record. A search over every pack the game can offer on this floor sits below, each row with
+ * the pack's exclusive gifts beside its name.
  */
 import { useMemo, useState } from 'react';
 import { ChevronsDown, DoorOpen, LogIn, Search } from 'lucide-react';
@@ -19,6 +20,28 @@ import { Badge, Button } from '../components/ui.tsx';
 const CARD_CLASS = 'relative flex w-[128px] flex-none flex-col items-center gap-2 rounded-md border bg-surface px-2.5 pt-2.5 select-none';
 const FOOT_CLASS = '-mx-2.5 mt-0.5 flex h-[34px] w-[calc(100%+20px)] items-center justify-center gap-1 rounded-b-md border-t text-sm font-medium transition-colors';
 const MAX_ICONS = 5;
+
+/** The pack's exclusive gifts as small icons, the wanted ones ringed; at most `MAX_ICONS`, then 「+n」. */
+function ExclusiveIcons({ packId, ctx, exclusivesOf, justify, testId }: { packId: number; ctx: PackContext; exclusivesOf: (packId: number) => number[]; justify: 'center' | 'start'; testId: string }) {
+  const exclusives = exclusivesOf(packId);
+  const shown = exclusives.slice(0, MAX_ICONS);
+  const more = exclusives.length - shown.length;
+  return (
+    <div className={`flex min-h-5 flex-wrap gap-[3px] ${justify === 'center' ? 'justify-center' : ''}`} data-testid={testId}>
+      {shown.map((id) => {
+        const gift = ctx.indexes.giftById.get(id);
+        if (!gift) return null;
+        const wanted = ctx.wanted.has(id);
+        return (
+          <span key={id} className={`inline-flex rounded-sm ${wanted ? 'ring-1 ring-ink' : ''}`} data-wanted={wanted || undefined}>
+            <GiftIcon gift={gift} size={20} must={ctx.isMust(id)} status={ctx.run?.giftStatus(id) ?? null} lang={ctx.lang} />
+          </span>
+        );
+      })}
+      {more > 0 ? <span className="inline-flex h-5 items-center px-1 font-mono text-[10px] text-fg-3">{t('stageExclusiveMore', ctx.lang, { n: more })}</span> : null}
+    </div>
+  );
+}
 
 export function StagePackCard({
   pack,
@@ -38,9 +61,6 @@ export function StagePackCard({
 }) {
   const { lang } = ctx;
   const pull = usePullGesture({ directions: ['down'], onCommit: () => onEnter(pack.id) });
-  const exclusives = exclusivesOf(pack.id);
-  const shown = exclusives.slice(0, MAX_ICONS);
-  const more = exclusives.length - shown.length;
   const name = pick(pack.name, lang);
   return (
     <div
@@ -58,19 +78,7 @@ export function StagePackCard({
       <button type="button" onClick={() => onOpen(pack.id)} aria-haspopup="dialog" aria-label={t('stagePackDetail', lang, { name })} className="line-clamp-2 w-full break-keep text-center text-xs font-medium leading-tight text-fg underline-offset-2 hover:underline">
         {name}
       </button>
-      <div className="flex min-h-5 flex-wrap justify-center gap-[3px]" data-testid="stage-pack-gifts">
-        {shown.map((id) => {
-          const gift = ctx.indexes.giftById.get(id);
-          if (!gift) return null;
-          const wanted = ctx.wanted.has(id);
-          return (
-            <span key={id} className={`inline-flex rounded-sm ${wanted ? 'ring-1 ring-ink' : ''}`} data-wanted={wanted || undefined}>
-              <GiftIcon gift={gift} size={20} must={ctx.isMust(id)} status={ctx.run?.giftStatus(id) ?? null} lang={lang} />
-            </span>
-          );
-        })}
-        {more > 0 ? <span className="inline-flex h-5 items-center px-1 font-mono text-[10px] text-fg-3">{t('stageExclusiveMore', lang, { n: more })}</span> : null}
-      </div>
+      <ExclusiveIcons packId={pack.id} ctx={ctx} exclusivesOf={exclusivesOf} justify="center" testId="stage-pack-gifts" />
       <button
         type="button"
         onClick={() => onEnter(pack.id)}
@@ -101,7 +109,7 @@ export function OtherEntryCard({ onSkip, lang }: { onSkip: () => void; lang: Lan
         <DoorOpen size={40} strokeWidth={1.5} className="opacity-40" />
       </span>
       <span className="text-center text-xs font-medium leading-tight text-fg">{t('stageOtherEntry', lang)}</span>
-      <span className="min-h-5 text-center text-[11px] leading-tight text-fg-3">{t('stageOtherEntryHint', lang)}</span>
+      <div className="min-h-5" />
       <button type="button" onClick={onSkip} aria-label={t('stageOtherEntry', lang)} className={`${FOOT_CLASS} border-dashed ${pull.past ? 'border-ink bg-ink text-ink-fg' : 'border-line-strong text-fg-2 hover:bg-surface-2'}`}>
         {pull.past ? t('stageReleaseNext', lang) : t('stageNext', lang)}
         <ChevronsDown size={14} aria-hidden />
@@ -149,17 +157,16 @@ export function OtherPacks({
         {packs.length === 0 ? (
           <p className="text-xs text-fg-3">{t('stageOtherNone', lang)}</p>
         ) : (
-          <ul className="grid gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(200px,1fr))]">
+          <ul className="grid gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(240px,1fr))]">
             {packs.map((pack) => {
               const name = pick(pack.name, lang);
-              const wantedHere = exclusivesOf(pack.id).filter((id) => ctx.wanted.has(id)).length;
               return (
                 <li key={pack.id} className="relative flex items-center gap-2 rounded-sm border border-line px-2 py-1.5" data-testid="other-pack" data-pack={pack.id}>
                   <PackCard pack={pack} size={28} onOpen={setOpen} lang={lang} />
-                  <span className="min-w-0 flex-1 truncate text-sm">
-                    {name}
-                    {wantedHere > 0 ? <span className="ml-1 text-xs text-fg-2">{`${t('giftWanted', lang)} ${wantedHere}`}</span> : null}
-                  </span>
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    <span className="truncate text-sm">{name}</span>
+                    <ExclusiveIcons packId={pack.id} ctx={ctx} exclusivesOf={exclusivesOf} justify="start" testId="other-pack-gifts" />
+                  </div>
                   <Button size="sm" variant="secondary" onClick={() => onEnter(pack.id)} ariaLabel={t('stageEnterPack', lang, { name })}>
                     <LogIn size={12} aria-hidden />
                     {t('stageEnter', lang)}

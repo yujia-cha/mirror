@@ -4,7 +4,7 @@
  * judgements. Wide enough for a phone drawer or a 336px desktop panel.
  */
 import { useRef, useState } from 'react';
-import { Ban, Copy, Hourglass, Star } from 'lucide-react';
+import { Copy, Hourglass, Star, X } from 'lucide-react';
 import { conflictGroups } from '../../core/index.ts';
 import { pick, t } from '../i18n.ts';
 import { useApp } from '../store.ts';
@@ -19,13 +19,14 @@ import { Badge, Button, Card, Notice, SectionTitle, Toast } from '../components/
 import { usePlan } from './PlanContext.tsx';
 
 export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
-  const { data, indexes, stats, lang, input, plan, shown, variants, variantIndex, setVariantIndex, variant, skipped, judgements, giftTitle, giftName, packName, keywordLabel, ctx } = usePlan();
+  const { data, indexes, stats, lang, input, plan, shown, variants, variantIndex, setVariantIndex, variant, judgements, giftTitle, giftName, packName, keywordLabel, ctx } = usePlan();
   const wanted = useApp((s) => s.wanted);
   const priority = useApp((s) => s.priority);
   const options = useApp((s) => s.options);
   const run = useApp((s) => s.run);
   const setOptions = useApp((s) => s.setOptions);
   const setPriority = useApp((s) => s.setPriority);
+  const removeWanted = useApp((s) => s.removeWanted);
   const [copied, setCopied] = useState(false);
   const tabsRef = useRef<HTMLDivElement | null>(null);
 
@@ -34,7 +35,6 @@ export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
       <Card className="flex flex-col items-center gap-2.5 px-4 py-8 text-center" testId="route-empty">
         <Star size={28} className="text-fg-3" aria-hidden />
         <div className="text-sm font-semibold">{t('routeEmpty', lang)}</div>
-        <div className="text-xs text-fg-3">{t('routeEmptyHint', lang)}</div>
         {onOpenGifts ? (
           <Button variant="primary" onClick={onOpenGifts}>
             {t('tabGifts', lang)}
@@ -54,7 +54,6 @@ export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
     await navigator.clipboard.writeText(
       planToText(shown, giftName, packName, keywordLabel, lang, variant?.dropped ?? [], {
         must: wanted.filter((id) => priorityOf(priority, id) === 'must'),
-        skipped,
         bannedPacks: options.bannedPacks,
         ...(run.currentFloor > 1 || Object.keys(run.visits).length > 0 ? { run: { currentFloor: run.currentFloor, visits: run.visits } } : {}),
       }),
@@ -76,7 +75,6 @@ export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
           <span className="font-mono text-lg font-bold text-fg">{value}</span>
         </span>
       ))}
-      {skipped.length > 0 ? <span className="text-xs text-fg-3">{t('routeSkipped', lang, { n: skipped.length })}</span> : null}
       {failedCount > 0 ? <Badge tone="alert">{t('runFailedCount', lang, { n: failedCount })}</Badge> : null}
       {shown.unresolved.length > 0 ? <Badge tone="neutral">{t('routeUnresolvedCount', lang, { n: shown.unresolved.length })}</Badge> : null}
       {capped ? <Badge tone="approx">{t('routeApprox', lang)}</Badge> : null}
@@ -115,8 +113,8 @@ export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
           );
         })}
         {variant ? (
-          <Button size="sm" variant="ghost" onClick={() => setPriority(variant.dropped[0]!, 'skip')}>
-            <Ban size={12} aria-hidden />
+          <Button size="sm" variant="ghost" onClick={() => removeWanted(variant.dropped[0]!)}>
+            <X size={12} aria-hidden />
             {t('routeVariantConfirm', lang)}
           </Button>
         ) : null}
@@ -190,10 +188,10 @@ export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
       <PackConflicts
         groups={groups}
         others={others}
-        skippedGifts={skipped}
         ctx={ctx}
         priorityOf={(id) => priorityOf(priority, id)}
         setPriority={setPriority}
+        removeWanted={removeWanted}
         observeAction={(entry) => {
           const i = shown.unresolved.indexOf(entry);
           return (unresolvedActions[i] ?? []).find((a) => a.kind === 'observeGift' && !sharedLabels.has(a.label));

@@ -1,10 +1,13 @@
 /**
- * Pick the gifts to chase. They are grouped by how close the current deck is to activating them
- * and drawn as a grid of tiles; the detail sheet behind each name carries the wording the tiles
- * leave out (effect text, every condition, how it is obtained, the recipe).
+ * Pick the gifts to chase. They are grouped by whether the current deck activates them and drawn
+ * as a grid of tiles; the detail sheet behind each name carries the wording the tiles leave out
+ * (effect text, every condition, how it is obtained, the recipe). Between the filters and the
+ * grid sit the observation slots and the selected-gift chips: a chip opens the sheet, and can be
+ * dragged onto a slot to pin the gift for observation.
  */
-import { useEffect, useMemo, useState } from 'react';
-import { Ban, ChevronDown, ChevronLeft, ChevronRight, Eye, Link2, RefreshCw, Search, Star, User, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { ChevronDown, ChevronLeft, ChevronRight, Link2, RefreshCw, Search, User, X } from 'lucide-react';
 import type { AcquisitionKind, GameData, Gift, Keyword, Sin } from '../../core/schema.ts';
 import { evaluateConditions, observable } from '../../core/index.ts';
 import type { ConditionReport, DeckStats, GameIndexes } from '../../core/types.ts';
@@ -15,11 +18,12 @@ import { prioritiseGifts, type GiftEntry, type GiftGroup } from '../lib/gift-pri
 import { entanglements } from '../lib/entangle.ts';
 import { upgradeChildren } from '../lib/upgrade-children.ts';
 import { judgementOf } from '../lib/judgement.ts';
-import { priorityOf, type Priority } from '../lib/plan-input.ts';
+import { useChipDrag } from '../lib/useChipDrag.ts';
 import { Badge, Button, Card, FilterSelect } from '../components/ui.tsx';
 import { GiftIcon } from '../components/GiftIcon.tsx';
 import { GiftTileGrid, type GiftTileData } from '../components/GiftGrid.tsx';
 import { GiftDetailSheet } from '../components/GiftDetailSheet.tsx';
+import { ObserveSlots } from '../components/ObserveSlots.tsx';
 
 interface Props {
   data: GameData;
@@ -34,9 +38,8 @@ type TierFilter = '1' | '2' | '3' | '4' | '5' | 'EX';
 type PriceFilter = 'p1' | 'p2' | 'p3' | 'p4';
 const PRICE_BANDS: Record<PriceFilter, [number, number]> = { p1: [0, 150], p2: [151, 250], p3: [251, 400], p4: [401, Infinity] };
 
-const GROUPS: { group: GiftGroup; title: 'giftsActive' | 'giftsNear' | 'giftsOther' }[] = [
+const GROUPS: { group: GiftGroup; title: 'giftsActive' | 'giftsOther' }[] = [
   { group: 'active', title: 'giftsActive' },
-  { group: 'near', title: 'giftsNear' },
   { group: 'other', title: 'giftsOther' },
 ];
 
@@ -48,8 +51,7 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
   const clearWanted = useApp((s) => s.clearWanted);
   const observedGifts = useApp((s) => s.options.observedGifts);
   const toggleObserved = useApp((s) => s.toggleObserved);
-  const priority = useApp((s) => s.priority);
-  const setPriority = useApp((s) => s.setPriority);
+  const setOptions = useApp((s) => s.setOptions);
   const observeMax = data.rules.giftObservation.max;
 
   const [query, setQuery] = useState('');
@@ -59,9 +61,8 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
   const [sin, setSin] = useState<Sin | 'all'>('all');
   const [price, setPrice] = useState<PriceFilter | 'all'>('all');
   const [detail, setDetail] = useState<number | null>(null);
-  // 「기타」 is the long tail, so it starts folded; the other two open with the panel.
-  const [collapsed, setCollapsed] = useState<Record<GiftGroup, boolean>>({ active: false, near: false, other: true });
-  const [jump, setJump] = useState<{ id: number; nonce: number } | null>(null);
+  // 「기타」 is the long tail, so it starts folded; 「활성」 opens with the panel.
+  const [collapsed, setCollapsed] = useState<Record<GiftGroup, boolean>>({ active: false, other: true });
   const filtersOn = keyword !== 'all' || tier !== 'all' || acquisition !== 'all' || sin !== 'all' || price !== 'all' || query.trim() !== '';
   const resetFilters = (): void => {
     setQuery('');
@@ -116,23 +117,31 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, indexes, wanted, conditionByGift, childrenOf, query, keyword, tier, acquisition, sin, price]);
 
-  const total = groups.active.length + groups.near.length + groups.other.length;
-  useEffect(() => {
-    if (!jump) return;
-    const el = document.getElementById(`gift-${jump.id}`);
-    if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'center' });
-  }, [jump, collapsed]);
-  const jumpTo = (id: number): void => {
-    const gift = indexes.giftById.get(id);
-    const parentId = gift?.upgradeOf ?? id;
-    for (const { group } of GROUPS) {
-      if (groups[group].some((e) => e.gift.id === parentId)) setCollapsed((state) => ({ ...state, [group]: false }));
-    }
-    setJump({ id, nonce: Date.now() });
-  };
+  const total = groups.active.length + groups.other.length;
   const giftName = (id: number): string => pick(indexes.giftById.get(id)?.name, lang);
+  const judgementFor = (id: number) => judgementOf(conditionByGift.get(id));
+  const canObserve = (id: number): boolean => {
+    const gift = indexes.giftById.get(id);
+    return gift ? observable(gift, data.rules) : false;
+  };
 
   const toggle = (gift: Gift): void => toggleWanted(gift.id, (childrenOf.get(gift.id) ?? []).map((g) => g.id));
+
+  // Observation: the slots take a selected gift from the 「+」 list or from a dragged chip. A drop
+  // on a filled slot replaces its gift; a drop elsewhere, or of a gift that cannot be observed,
+  // does nothing.
+  const observeCandidates = wanted.filter((id) => canObserve(id) && !observedGifts.includes(id));
+  const pin = (id: number): void => toggleObserved(id, { max: observeMax, observable: canObserve });
+  const unpin = (id: number): void => {
+    if (observedGifts.includes(id)) toggleObserved(id, { max: observeMax, observable: canObserve });
+  };
+  const drag = useChipDrag((giftId, slot) => {
+    if (slot === null || !canObserve(giftId) || observedGifts.includes(giftId)) return;
+    const occupant = observedGifts[slot];
+    if (occupant !== undefined) setOptions({ observedGifts: observedGifts.map((id) => (id === occupant ? giftId : id)) });
+    else pin(giftId);
+  });
+  const draggedGift = drag.state.dragging !== null ? indexes.giftById.get(drag.state.dragging) : undefined;
 
   const tilesFor = (entries: GiftEntry[]): GiftTileData[] =>
     entries.flatMap((entry) => {
@@ -143,7 +152,7 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
       ];
     });
 
-  const section = (group: GiftGroup, titleKey: 'giftsActive' | 'giftsNear' | 'giftsOther') => {
+  const section = (group: GiftGroup, titleKey: 'giftsActive' | 'giftsOther') => {
     const entries = groups[group];
     const tiles = tilesFor(entries);
     const chosen = tiles.filter((tile) => wanted.includes(tile.entry.gift.id)).length;
@@ -243,64 +252,69 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
         ) : null}
       </div>
 
+      <ObserveSlots
+        slots={observedGifts}
+        max={observeMax}
+        candidates={observeCandidates}
+        indexes={indexes}
+        judgementOf={judgementFor}
+        lang={lang}
+        onPin={pin}
+        onUnpin={unpin}
+        dragging={drag.state.dragging !== null}
+        over={drag.state.over}
+        onHover={drag.setOver}
+      />
+
       {wanted.length > 0 ? (
         <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-line bg-surface-2 px-2.5 py-2" aria-label={t('giftsSelected', lang, { n: wanted.length })}>
           <span className="mr-0.5 text-xs font-medium text-fg-2">{t('giftsSelected', lang, { n: wanted.length })}</span>
           {wanted.map((id) => {
             const gift = indexes.giftById.get(id);
             const pinned = observedGifts.includes(id);
-            const canObserve = gift ? observable(gift, data.rules) : false;
-            const full = !pinned && observedGifts.length >= observeMax;
-            const why = !canObserve ? t('giftsObserveNotAllowed', lang) : full ? t('giftsObserveFull', lang, { max: observeMax }) : t('giftsObserve', lang, { name: giftName(id) });
-            const level = priorityOf(priority, id);
-            const nextLevel: Priority = level === 'normal' ? 'must' : level === 'must' ? 'skip' : 'normal';
-            const levelLabel = t(level === 'must' ? 'priorityMust' : level === 'skip' ? 'prioritySkip' : 'priorityNormal', lang);
             return (
               <span
                 key={id}
-                data-priority={level}
+                data-testid="gift-chip"
+                data-gift={id}
+                data-pinned={pinned || undefined}
                 data-entangled={entangledIds.has(id) || undefined}
-                className={`inline-flex h-7 items-center gap-1 rounded-full border bg-surface pl-1 pr-1 text-xs text-fg ${
-                  level === 'must' ? 'border-ink' : level === 'skip' ? 'border-line opacity-60' : 'border-line-strong'
+                {...drag.handleFor(id)}
+                style={{ touchAction: 'none' }}
+                className={`inline-flex h-7 select-none items-center gap-1 rounded-full border bg-surface pl-1 pr-1 text-xs text-fg ${pinned ? 'border-ink' : 'border-line-strong'} ${
+                  drag.state.dragging === id ? 'opacity-40' : ''
                 }`}
               >
-                {gift ? <GiftIcon gift={gift} size={20} judgement={judgementOf(conditionByGift.get(id))} lang={lang} /> : null}
-                <button type="button" onClick={() => jumpTo(id)} aria-label={t('giftGoTo', lang, { name: giftName(id) })} className={`hover:underline ${level === 'skip' ? 'line-through' : ''}`}>
+                {gift ? <GiftIcon gift={gift} size={20} judgement={judgementFor(id)} lang={lang} /> : null}
+                <button type="button" onClick={() => setDetail(id)} aria-haspopup="dialog" aria-label={t('giftDetail', lang, { name: giftName(id) })} className="hover:underline">
                   {giftName(id)}
                 </button>
                 {entangledIds.has(id) ? <Link2 size={11} aria-hidden className="text-fg-2" /> : null}
-                <button
-                  type="button"
-                  onClick={() => setPriority(id, nextLevel)}
-                  aria-label={t('priorityOf', lang, { name: giftName(id), value: levelLabel })}
-                  title={t('priorityOf', lang, { name: giftName(id), value: levelLabel })}
-                  className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${level === 'must' ? 'bg-ink text-ink-fg' : level === 'skip' ? 'text-fg' : 'text-fg-3'}`}
-                >
-                  {level === 'skip' ? <Ban size={11} /> : <Star size={11} fill={level === 'must' ? 'currentColor' : 'none'} />}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => toggleObserved(id, { max: observeMax, observable: () => canObserve })}
-                  disabled={!canObserve || full}
-                  aria-pressed={pinned}
-                  aria-label={t('giftsObserve', lang, { name: giftName(id) })}
-                  title={why}
-                  className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${pinned ? 'bg-ink text-ink-fg' : 'text-fg-3'} disabled:opacity-30`}
-                >
-                  <Eye size={11} />
-                </button>
                 <button type="button" onClick={() => removeWanted(id)} aria-label={t('removeFromSelection', lang, { name: giftName(id) })} className="text-fg-3">
                   <X size={11} />
                 </button>
               </span>
             );
           })}
-          <span className="text-xs text-fg-3">{t('giftsObserveHint', lang, { n: observedGifts.length, max: observeMax })}</span>
           <button type="button" onClick={clearWanted} className="ml-auto text-xs text-fg-3 underline">
             {t('giftsClear', lang)}
           </button>
         </div>
       ) : null}
+
+      {draggedGift
+        ? createPortal(
+            <div
+              className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 rounded-md bg-surface p-1 shadow-pop"
+              style={{ left: drag.state.x, top: drag.state.y }}
+              data-testid="chip-ghost"
+              aria-hidden
+            >
+              <GiftIcon gift={draggedGift} size={32} lang={lang} />
+            </div>,
+            document.body,
+          )
+        : null}
 
       {body}
 

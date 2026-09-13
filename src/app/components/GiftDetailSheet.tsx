@@ -2,7 +2,7 @@
  * Everything about one gift, opened from its tile: what it does, the conditions it needs, how it
  * is obtained, and — folded away until asked for — the recipe the planner would actually use.
  */
-import { Ban, Check, Eye, Link2, Star } from 'lucide-react';
+import { Check, Eye, Link2, Star } from 'lucide-react';
 import type { GameData, Gift } from '../../core/schema.ts';
 import { chooseRecipe, observable } from '../../core/index.ts';
 import type { ConditionReport, GameIndexes } from '../../core/types.ts';
@@ -19,12 +19,11 @@ import { DetailSurface } from './BlockDetail.tsx';
 import { GiftIcon } from './GiftIcon.tsx';
 import { Button } from './ui.tsx';
 
-/** 「조합으로만 · Hard 전용 · 화왕지절 전용」 — the badges of the old list row, said as a sentence. */
+/** 「조합으로만 · 화왕지절 전용」 — the badges of the old list row, said as a sentence. */
 function acquisitionLine(gift: Gift, indexes: GameIndexes, lang: Lang): string {
   const parts = [t(badgeFor(gift.acquisition.kind).label, lang)];
   const packId = gift.acquisition.exclusiveTo[0] ?? gift.acquisition.clearRewardOf ?? null;
   if (packId !== null && packId !== undefined) parts.push(t('giftPackOnly', lang, { name: pick(indexes.packById.get(packId)?.name, lang) }));
-  if (gift.hardOnly) parts.push(t('hardOnlyFull', lang));
   return parts.join(' · ');
 }
 
@@ -97,7 +96,7 @@ export function GiftDetailSheet({
   const name = pick(gift.name, lang);
   const selected = wanted.includes(gift.id);
   const level = priorityOf(priority, gift.id);
-  const nextLevel: Priority = level === 'normal' ? 'must' : level === 'must' ? 'skip' : 'normal';
+  const nextLevel: Priority = level === 'must' ? 'normal' : 'must';
   const pinned = observedGifts.includes(gift.id);
   const canObserve = observable(gift, data.rules);
   const observeFull = !pinned && observedGifts.length >= observeMax;
@@ -124,10 +123,10 @@ export function GiftDetailSheet({
               <Button
                 variant={level === 'must' ? 'primary' : 'secondary'}
                 onClick={() => setPriority(gift.id, nextLevel)}
-                ariaLabel={t('priorityOf', lang, { name, value: t(level === 'must' ? 'priorityMust' : level === 'skip' ? 'prioritySkip' : 'priorityNormal', lang) })}
+                ariaLabel={t('priorityOf', lang, { name, value: t(level === 'must' ? 'priorityMust' : 'priorityNormal', lang) })}
               >
-                {level === 'skip' ? <Ban size={13} aria-hidden /> : <Star size={13} aria-hidden fill={level === 'must' ? 'currentColor' : 'none'} />}
-                {t(level === 'must' ? 'priorityMust' : level === 'skip' ? 'prioritySkip' : 'priorityNormal', lang)}
+                <Star size={13} aria-hidden fill={level === 'must' ? 'currentColor' : 'none'} />
+                {t(level === 'must' ? 'priorityMust' : 'priorityNormal', lang)}
               </Button>
               <Button
                 variant={pinned ? 'primary' : 'secondary'}

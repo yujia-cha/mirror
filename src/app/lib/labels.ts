@@ -1,4 +1,4 @@
-import type { AcquisitionKind, Difficulty, Sin } from '../../core/schema.ts';
+import type { AcquisitionKind, Sin } from '../../core/schema.ts';
 import type { UnresolvedReason } from '../../core/types.ts';
 import type { StringKey } from '../i18n.ts';
 
@@ -38,13 +38,6 @@ export const SIN_LABEL: Record<Sin, StringKey> = {
   ENVY: 'sinENVY',
 };
 
-export const MODE_LABEL: Record<Difficulty, StringKey> = {
-  normal: 'modeNormal',
-  hard: 'modeHard',
-  parallel: 'modeParallel',
-  extreme: 'modeExtreme',
-};
-
 export const UNRESOLVED_LABEL: Record<UnresolvedReason, StringKey> = {
   'no-pack-in-range': 'unresolvedNoPack',
   'pack-conflict': 'unresolvedConflict',
@@ -56,8 +49,3 @@ export const UNRESOLVED_LABEL: Record<UnresolvedReason, StringKey> = {
   'pack-banned': 'unresolvedBanned',
   failed: 'unresolvedFailed',
 };
-
-/** Which band a floor belongs to: 0 = 1-5, 1 = 평행중첩, 2 = EXTREME. */
-export function bandOf(floor: number): 0 | 1 | 2 {
-  return floor <= 5 ? 0 : floor <= 10 ? 1 : 2;
-}

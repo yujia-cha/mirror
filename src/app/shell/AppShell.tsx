@@ -1,14 +1,16 @@
 /**
  * The run-first shell: a header, the stage in the middle, and two collapsible panels — setup on
- * the left (deck, items, route settings), the route and the T4 tracker on the right. On a desktop
- * the panels sit beside the stage; on a phone they are drawers.
+ * the left (deck, items with the route options), the route, the goals and the T4 tracker on the
+ * right. On a desktop the panels sit beside the stage; on a phone they are drawers. The header's
+ * reset puts the deck, the items, the route options and the run back to their first state.
  */
 import { useState } from 'react';
-import { Globe, Moon, PanelLeft, PanelRight, Share2, Sun } from 'lucide-react';
+import { Globe, Moon, PanelLeft, PanelRight, RotateCcw, Share2, Sun } from 'lucide-react';
 import type { GameData } from '../../core/schema.ts';
 import type { DeckStats, GameIndexes } from '../../core/types.ts';
 import { t, type Lang } from '../i18n.ts';
 import { useApp, type LeftTab, type RightTab } from '../store.ts';
+import { defaultDeck } from '../lib/default-deck.ts';
 import { useDesktop } from '../lib/useMediaQuery.ts';
 import { IconButton } from '../components/ui.tsx';
 import { DeckStep } from '../steps/DeckStep.tsx';
@@ -18,7 +20,7 @@ import { Tracker } from '../tracker/Tracker.tsx';
 import { PlanProvider } from './PlanContext.tsx';
 import { RoutePlanPanel } from './RoutePlanPanel.tsx';
 import { GoalsPanel } from './GoalsPanel.tsx';
-import { RouteSettings } from './RouteSettings.tsx';
+import { RouteOptions } from './RouteOptions.tsx';
 import { PanelResizer } from './PanelResizer.tsx';
 import { SidePanel } from './SidePanel.tsx';
 
@@ -43,6 +45,7 @@ export function AppShell({
 }) {
   const ui = useApp((s) => s.ui);
   const setUi = useApp((s) => s.setUi);
+  const resetAll = useApp((s) => s.resetAll);
   const desktop = useDesktop();
   // Phones keep their own drawer state: only one drawer at a time, closed on every load.
   const [drawer, setDrawer] = useState<'left' | 'right' | null>(null);
@@ -60,10 +63,13 @@ export function AppShell({
     setUi({ leftTab: 'gifts', ...(desktop ? { leftOpen: true } : {}) });
     if (!desktop) setDrawer('left');
   };
+  const reset = (): void => {
+    if (typeof window.confirm === 'function' && !window.confirm(t('resetAllConfirm', lang))) return;
+    resetAll(defaultDeck(data), data.rules.deployment.default);
+  };
   const leftTabs: { id: LeftTab; label: string }[] = [
     { id: 'deck', label: t('tabDeck', lang) },
     { id: 'gifts', label: t('tabGifts', lang) },
-    { id: 'settings', label: t('tabRouteSettings', lang) },
   ];
   const rightTabs: { id: RightTab; label: string }[] = [
     { id: 'plan', label: t('tabRoutePlan', lang) },
@@ -82,6 +88,9 @@ export function AppShell({
             <h1 className="text-base font-bold text-fg">{t('appTitle', lang)}</h1>
           </div>
           <div className="flex gap-1.5">
+            <IconButton onClick={reset} label={t('resetAll', lang)}>
+              <RotateCcw size={15} />
+            </IconButton>
             <IconButton onClick={onShare} label={t('share', lang)}>
               <Share2 size={15} />
             </IconButton>
@@ -112,8 +121,12 @@ export function AppShell({
             width={ui.leftWidth}
           >
             {ui.leftTab === 'deck' ? <DeckStep data={data} indexes={indexes} stats={stats} lang={lang} /> : null}
-            {ui.leftTab === 'gifts' ? <GiftsStep data={data} indexes={indexes} stats={stats} lang={lang} onGoDeck={() => setUi({ leftTab: 'deck' })} /> : null}
-            {ui.leftTab === 'settings' ? <RouteSettings /> : null}
+            {ui.leftTab === 'gifts' ? (
+              <div className="flex flex-col gap-2.5">
+                <GiftsStep data={data} indexes={indexes} stats={stats} lang={lang} onGoDeck={() => setUi({ leftTab: 'deck' })} />
+                <RouteOptions />
+              </div>
+            ) : null}
           </SidePanel>
 
           {desktop && leftOpen ? <PanelResizer side="left" width={ui.leftWidth} onWidth={(leftWidth) => setUi({ leftWidth })} lang={lang} /> : null}

@@ -22,7 +22,6 @@ const FOLD_MS = 200;
 export function RunStage({ onOpenGifts }: { onOpenGifts: () => void }) {
   const { indexes, lang, shown, ctx, exclusivesOf, stageMode, enter, next } = usePlan();
   const run = useApp((s) => s.run);
-  const resetRun = useApp((s) => s.resetRun);
   const floor = run.stageFloor;
   const routePacks = enterablePacks(shown, floor);
   const offered = packsOfferedOn(indexes, floor);
@@ -47,9 +46,6 @@ export function RunStage({ onOpenGifts }: { onOpenGifts: () => void }) {
     body = (
       <Card className="flex flex-col items-center gap-2.5 px-4 py-8 text-center" testId="stage-done">
         <div className="text-sm font-semibold">{t('stageDone', lang)}</div>
-        <Button variant="secondary" onClick={() => resetRun()}>
-          {t('stageNewRun', lang)}
-        </Button>
       </Card>
     );
   } else if (stageMode === 'entered' && entered !== undefined) {
@@ -66,10 +62,8 @@ export function RunStage({ onOpenGifts }: { onOpenGifts: () => void }) {
             </Button>
           </Notice>
         ) : null}
-        {stageMode === 'skipped' ? <Notice>{t('stageHistoryHint', lang)}</Notice> : null}
         <div className="flex flex-wrap items-baseline gap-2">
           <span className="text-sm font-semibold">{t('stageEnterable', lang)}</span>
-          <span className="text-xs text-fg-3">{t('stagePullHint', lang)}</span>
         </div>
         {shown && routePacks.length === 0 && stageMode === 'undecided' ? <p className="text-xs text-fg-3">{t('stageNoRoutePack', lang)}</p> : null}
         <div className="flex flex-wrap items-start gap-2.5 pb-3" data-testid="stage-packs">

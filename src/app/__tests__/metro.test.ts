@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { loadGameDataFromDisk } from '../../core/data/node.ts';
 import { buildIndexes, defaultOptions, planRoute } from '../../core/index.ts';
-import { assignLanes, segmentsFor, stackBlocks, suggestedOrder } from '../lib/metro.ts';
+import { assignLanes, segmentsFor, stackBlocks } from '../lib/metro.ts';
 
 const data = loadGameDataFromDisk();
 const indexes = buildIndexes(data);
@@ -18,8 +18,8 @@ describe('metro segments', () => {
       [2, 3, true, 0],
       [3, 4, true, 1],
     ]);
-    expect(suggestedOrder(metro.segments[0]!)).toEqual([2]);
-    expect(suggestedOrder(metro.segments[1]!)).toEqual([3]);
+    expect(metro.segments[0]!.packs.map((p) => p.floor)).toEqual([2]);
+    expect(metro.segments[1]!.packs.map((p) => p.floor)).toEqual([3]);
     expect([...metro.overlap]).toEqual([3]);
     expect(metro.lanes).toBe(2);
   });

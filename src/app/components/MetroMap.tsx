@@ -3,14 +3,15 @@
  * block over that station, packs that may sit on any floor of a window ride one dashed segment
  * together (any order), and windows that only partly overlap get their own lane with the
  * planner's suggested stops marked. Each segment carries a label card with its packs (card and
- * name) and their pickups; a pack card opens the pack's gift list.
+ * name) and their pickups; a pack card opens the pack's gift list. The map explains nothing in
+ * words: fill, dash and weight are the whole vocabulary.
  */
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Eye, Star } from 'lucide-react';
 import type { ObservedGift, RoutePlan } from '../../core/types.ts';
-import { pick, t, type Lang } from '../i18n.ts';
+import { pick, t } from '../i18n.ts';
 import { MAX_FLOOR } from '../lib/timetable.ts';
-import { segmentsFor, stackBlocks, suggestedOrder, type Segment } from '../lib/metro.ts';
+import { segmentsFor, stackBlocks, type Segment } from '../lib/metro.ts';
 import { useElementWidth } from '../lib/useElementWidth.ts';
 import { DetailSurface, ObservedDetailBody, type DetailMode } from './BlockDetail.tsx';
 import { GiftIcon } from './GiftIcon.tsx';
@@ -40,21 +41,11 @@ const BANDS: [number, number][] = [
   [6, 10],
   [11, 15],
 ];
-const BAND_KEY = ['optionBandHard', 'optionBandParallel', 'optionBandExtreme'] as const;
 /** A one-row label card, until it has been measured. */
-const EST_CARD_H = 141;
+const EST_CARD_H = 121;
 
 function bandFill(band: 0 | 1 | 2): string {
   return band === 2 ? 'url(#metro-hatch)' : band === 1 ? 'var(--color-surface-2)' : 'transparent';
-}
-
-function segmentTitle(segment: Segment, lang: Lang): string {
-  if (segment.passed) return t('runVisited', lang, { floor: segment.from });
-  if (segment.fixed) return t('routeFixedFloor', lang, { floor: segment.from });
-  if (segment.partial) return t('routeSuggestOrder', lang, { from: segment.from, to: segment.to, order: suggestedOrder(segment).join(' → ') });
-  return segment.packs.length > 1
-    ? t('routeSegmentMany', lang, { from: segment.from, to: segment.to, n: segment.packs.length })
-    : t('routeSegmentOne', lang, { from: segment.from, to: segment.to });
 }
 
 function Station({
@@ -85,6 +76,7 @@ function Station({
   );
 }
 
+/** An observed gift on the start row: the eye badge is filled when the player pinned it, hollow when the planner recommends it. */
 function ObservedTile({ entry, ctx, onPress }: { entry: ObservedGift; ctx: PackContext; onPress?: () => void }) {
   const gift = ctx.indexes.giftById.get(entry.giftId);
   if (!gift) return null;
@@ -94,7 +86,6 @@ function ObservedTile({ entry, ctx, onPress }: { entry: ObservedGift; ctx: PackC
     : entry.freedPack !== null
       ? t('routeObservedFrees', ctx.lang, { pack: ctx.packName(entry.freedPack) })
       : t('routeObservedRescue', ctx.lang);
-  const label = entry.pinned ? t('routeObservedPinned', ctx.lang) : t('routeObservedRecommended', ctx.lang);
   const body = (
     <>
       <span className="relative">
@@ -104,16 +95,24 @@ function ObservedTile({ entry, ctx, onPress }: { entry: ObservedGift; ctx: PackC
         </span>
       </span>
       <span className="text-xs text-fg">{name}</span>
-      <span className={`rounded-full px-1 text-[9px] leading-[13px] ${entry.pinned ? 'bg-ink text-ink-fg' : 'border border-line text-fg-2'}`}>{label}</span>
     </>
   );
   const title = `${name} · ${t('routeObserved', ctx.lang)} · ${why}`;
   return onPress ? (
-    <button type="button" onClick={onPress} aria-pressed={entry.pinned} aria-label={t('routeObservedToggle', ctx.lang, { name })} title={title} data-testid="observed-tile" className="inline-flex items-center gap-1.5 rounded-sm px-1 hover:bg-surface-2">
+    <button
+      type="button"
+      onClick={onPress}
+      aria-pressed={entry.pinned}
+      aria-label={t('routeObservedToggle', ctx.lang, { name })}
+      title={title}
+      data-testid="observed-tile"
+      data-pinned={entry.pinned || undefined}
+      className="inline-flex items-center gap-1.5 rounded-sm px-1 hover:bg-surface-2"
+    >
       {body}
     </button>
   ) : (
-    <span className="inline-flex items-center gap-1.5" title={title} data-testid="observed-tile">
+    <span className="inline-flex items-center gap-1.5" title={title} data-testid="observed-tile" data-pinned={entry.pinned || undefined}>
       {body}
     </span>
   );
@@ -247,7 +246,7 @@ export function MetroMap({ plan, ctx, keywordLabel, run, variant = 'auto', detai
   const ranks = [...new Set(offsets)].sort((a, b) => a - b);
   const deskLanes = offsets.map((o) => ranks.indexOf(o));
   const skyline = Math.max(EST_CARD_H, ...cards.map((c, i) => offsets[i]! + heightOf(c.segment.key)));
-  const LINE_Y = 40 + skyline + 42;
+  const LINE_Y = 16 + skyline + 42;
   const H = LINE_Y + 46;
   const desktop = vertical ? null : (
     <div className="hidden lg:block" data-testid="metro-columns">
@@ -260,12 +259,7 @@ export function MetroMap({ plan, ctx, keywordLabel, run, variant = 'auto', detai
             </pattern>
           </defs>
           {BANDS.map(([a, b], i) => (
-            <g key={a}>
-              <rect x={x(a) - st / 2} y={0} width={st * (b - a + 1)} height={H} fill={bandFill(i as 0 | 1 | 2)} />
-              <text x={(x(a) + x(b)) / 2} y={18} textAnchor="middle" fontSize={11} fill="var(--color-fg-2)">
-                {t(BAND_KEY[i]!, lang)}
-              </text>
-            </g>
+            <rect key={a} x={x(a) - st / 2} y={0} width={st * (b - a + 1)} height={H} fill={bandFill(i as 0 | 1 | 2)} />
           ))}
           <line x1={LEFT} y1={LINE_Y} x2={W - 20} y2={LINE_Y} stroke="var(--color-line-strong)" strokeWidth={4} />
           <circle cx={LEFT - 24} cy={LINE_Y} r={9} fill="var(--color-ink)" />
@@ -321,7 +315,6 @@ export function MetroMap({ plan, ctx, keywordLabel, run, variant = 'auto', detai
               data-passed={segment.passed || undefined}
               data-lane={deskLanes[i]}
             >
-              <div className="truncate text-xs text-fg-2">{segmentTitle(segment, lang)}</div>
               <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5">{segment.packs.map((p) => packEntry(segment, p, deskMode, false))}</div>
             </div>
           );
@@ -354,17 +347,9 @@ export function MetroMap({ plan, ctx, keywordLabel, run, variant = 'auto', detai
               <rect width="1" height="7" x="6" fill="var(--color-line)" />
             </pattern>
           </defs>
-          {BANDS.map(([a, b], i) => {
-            const cy = (y(a) + y(b)) / 2;
-            return (
-              <g key={a}>
-                <rect x={0} y={y(a) - SP / 2} width={PW} height={SP * (b - a + 1)} fill={i === 2 ? 'url(#metro-hatch-m)' : bandFill(i as 0 | 1 | 2)} />
-                <text transform={`rotate(-90 7 ${cy})`} x={7} y={cy} textAnchor="middle" fontSize={9} fill="var(--color-fg-2)">
-                  {t(BAND_KEY[i]!, lang)}
-                </text>
-              </g>
-            );
-          })}
+          {BANDS.map(([a, b], i) => (
+            <rect key={a} x={0} y={y(a) - SP / 2} width={PW} height={SP * (b - a + 1)} fill={i === 2 ? 'url(#metro-hatch-m)' : bandFill(i as 0 | 1 | 2)} />
+          ))}
           <line x1={LX} y1={y(1) - 20} x2={LX} y2={y(MAX_FLOOR) + 20} stroke="var(--color-line-strong)" strokeWidth={4} />
           {Array.from({ length: MAX_FLOOR }, (_, i) => i + 1).map((f) => (
             <g key={f}>
@@ -413,8 +398,7 @@ export function MetroMap({ plan, ctx, keywordLabel, run, variant = 'auto', detai
               data-passed={segment.passed || undefined}
               data-lane={segment.lane}
             >
-              {/* One floor is 56px tall: the label sits beside the pack there, above it otherwise. */}
-              <div className={`truncate text-[10px] leading-3 text-fg-2 ${compact ? 'shrink-0' : ''}`}>{segmentTitle(segment, lang)}</div>
+              {/* One floor is 56px tall: packs sit in a row there, in a column otherwise. */}
               <div className={`flex min-w-0 ${compact ? 'flex-wrap items-center gap-x-2 gap-y-1' : 'flex-wrap items-start gap-x-2 gap-y-1'}`}>{segment.packs.map((p) => packEntry(segment, p, phoneMode, compact))}</div>
             </div>
           );
@@ -423,46 +407,10 @@ export function MetroMap({ plan, ctx, keywordLabel, run, variant = 'auto', detai
     </div>
   );
 
-  const legend = (
-    <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 border-t border-line px-3 py-2 text-xs text-fg-3" data-testid="legend">
-      <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-3.5 rounded-[3px] bg-ink" />
-        {t('legendFixed', lang)}
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-5 rounded-[3px] border-[1.5px] border-dashed border-fg-2" />
-        {t('legendWindow', lang)}
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-ink" />
-        {t('legendSuggest', lang)}
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full border-[1.5px] border-fg" style={{ background: 'linear-gradient(90deg, var(--color-fg) 50%, var(--color-surface) 50%)' }} />
-        {t('legendOverlap', lang)}
-      </span>
-      {run ? (
-        <>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-fg" />
-            {t('legendPassed', lang)}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded-full border-[1.5px] border-fg p-px">
-              <span className="block h-full w-full rounded-full border border-fg" />
-            </span>
-            {t('legendCurrent', lang)}
-          </span>
-        </>
-      ) : null}
-    </div>
-  );
-
   return (
     <div className="rounded-md border border-line bg-surface shadow-card">
       {desktop}
       {phone}
-      {legend}
     </div>
   );
 }

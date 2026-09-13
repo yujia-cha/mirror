@@ -4,7 +4,8 @@
 
 /*
  * Grey-only palette (docs/design/ui-redesign.md). Acquisition certainty and state are told apart
- * by fill, dash and weight — never by hue. Dark mode swaps the same tokens on `.dark`.
+ * by fill, dash and weight — never by hue. Hue is reserved for gift icons: the keyword border and
+ * the judgement ring. Dark mode swaps the same tokens on `.dark`.
  */
 @theme {
   --color-*: initial;
@@ -20,9 +21,17 @@
   /* 확정 badge · primary button · fixed timetable block */
   --color-ink: #292524;
   --color-ink-fg: #ffffff;
-  /* The two hues the palette allows: condition judgement on gift icon borders (met / not met). */
+  /* Condition judgement, drawn as a ring around a gift icon (met / not met). */
   --color-ok: #2f8f5b;
   --color-bad: #c9403a;
+  /* Gift keyword, drawn as the gift icon's border. Attack types use line shape instead. */
+  --color-kw-combustion: #e0562f;
+  --color-kw-laceration: #c8283c;
+  --color-kw-vibration: #d9a400;
+  --color-kw-burst: #8b5cf6;
+  --color-kw-sinking: #2f6fdb;
+  --color-kw-breath: #1aa39a;
+  --color-kw-charge: #f0a020;
   --color-transparent: transparent;
   --color-current: currentColor;
 
@@ -60,6 +69,13 @@
   --color-ink-fg: #1c1917;
   --color-ok: #4cc38a;
   --color-bad: #f0665e;
+  --color-kw-combustion: #f0785a;
+  --color-kw-laceration: #e35a6c;
+  --color-kw-vibration: #e8c04a;
+  --color-kw-burst: #a98bfa;
+  --color-kw-sinking: #6a9aee;
+  --color-kw-breath: #4cc4bb;
+  --color-kw-charge: #f5b95a;
   --shadow-card: none;
   --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.5);
 }

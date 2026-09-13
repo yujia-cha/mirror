@@ -320,9 +320,7 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
         })}
       </ul>
 
-      {deck.length === 0 ? (
-        <p className="text-xs text-fg-3">{t('deckEmptyHint', lang)}</p>
-      ) : (
+      {deck.length === 0 ? null : (
         <div className="flex flex-wrap items-center gap-1.5">
           {chips.map((chip) => (
             <Chip key={chip.label} title={t('deckChipBasis', lang, { n: chip.count, total: chip.formation })}>

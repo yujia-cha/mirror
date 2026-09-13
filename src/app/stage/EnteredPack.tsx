@@ -69,7 +69,6 @@ export function PackArea({ packId, floor, closing = false }: { packId: number; f
           >
             <ChevronsUp size={14} aria-hidden />
             {pastUp ? t('stageReleaseBack', lang) : t('stageBack', lang)}
-            {pastUp ? null : <span className="ml-1.5 text-[11px] font-normal text-fg-3">{t('stageBackHint', lang)}</span>}
           </button>
 
           <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-4 px-3 py-3.5">
@@ -84,7 +83,6 @@ export function PackArea({ packId, floor, closing = false }: { packId: number; f
                 <span className="font-mono text-xs text-fg-3">{exclusives.length}</span>
                 {goalCount > 0 ? <span className="text-xs text-fg-2">{`${t('stageGoalsFirst', lang)} ${goalCount}`}</span> : null}
               </div>
-              <p className="text-xs text-fg-3">{t('stageGotHint', lang)}</p>
               {exclusives.length === 0 ? (
                 <p className="text-xs text-fg-3">{t('stageExclusivesNone', lang)}</p>
               ) : (
@@ -121,7 +119,6 @@ export function PackArea({ packId, floor, closing = false }: { packId: number; f
           >
             <ChevronsDown size={14} aria-hidden />
             {pastDown ? t('stageReleaseNext', lang) : t('stageNext', lang)}
-            {pastDown ? null : <span className="ml-1.5 text-[11px] font-normal text-fg-3">{t('stageNextHint', lang)}</span>}
           </button>
         </div>
       </div>

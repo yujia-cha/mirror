@@ -4,7 +4,7 @@
  * overlap (2-3 and 3-4) stay apart and keep the planner's suggested floors, because each such
  * window assumes the other pack moves out of the way.
  */
-import type { FloorPlan, RoutePlan } from '../../core/types.ts';
+import type { RoutePlan } from '../../core/types.ts';
 
 export interface SegmentPack {
   packId: number;
@@ -12,7 +12,6 @@ export interface SegmentPack {
   floor: number;
   /** Exclusive pickups on that floor. */
   gifts: number[];
-  reason: FloorPlan['reason'];
 }
 
 export interface Segment {
@@ -82,7 +81,6 @@ export function segmentsFor(plan: RoutePlan): Metro {
       packId: floor.packId,
       floor: floor.floor,
       gifts: floor.pickups.filter((p) => p.kind === 'exclusive').map((p) => p.giftId),
-      reason: floor.reason,
     });
     groups.set(key, segment);
   }
@@ -114,9 +112,4 @@ export function segmentsFor(plan: RoutePlan): Metro {
     else freeRuns.push({ from: floor.floor, to: floor.floor, passed: floor.passed });
   }
   return { segments, overlap, lanes: Math.max(1, ...lanes.map((l) => l + 1)), freeRuns };
-}
-
-/** The planner's floors for a partial segment, in visiting order. */
-export function suggestedOrder(segment: Segment): number[] {
-  return [...segment.packs].map((p) => p.floor).sort((a, b) => a - b);
 }
