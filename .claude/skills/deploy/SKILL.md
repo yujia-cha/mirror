@@ -26,7 +26,7 @@ description: Deploy this app (Cloudflare Pages by default, GitHub Pages as a man
 
 ## GitHub Pages 예비 경로
 
-Actions 탭에서 `Deploy to GitHub Pages (fallback)`를 수동 실행한다. 이 워크플로만 `VITE_BASE=/<repo>/`로 빌드하므로 하위 경로에서도 동작한다. 저장소 Settings → Pages → Source가 GitHub Actions여야 한다.
+Actions 탭에서 `Deploy to GitHub Pages (fallback)`를 수동 실행한다. **지금까지 마일스톤 배포는 전부 이 워크플로를 main에서 손으로 실행해 왔다**(M10~M17). main에 병합했다고 GitHub Pages가 갱신되지는 않으므로, 병합 뒤 반드시 실행하고 사이트 하단의 데이터 버전으로 확인한다. 이 워크플로만 `VITE_BASE=/<repo>/`로 빌드하므로 하위 경로에서도 동작한다. 저장소 Settings → Pages → Source가 GitHub Actions여야 한다.
 
 ## base 경로
 

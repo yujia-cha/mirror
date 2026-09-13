@@ -11,7 +11,7 @@ import userEvent from '@testing-library/user-event';
 import { loadGameDataFromDisk } from '../../core/data/node.ts';
 import { analyseDeck, buildIndexes, defaultOptions, evaluateConditions } from '../../core/index.ts';
 import { conditionText, josa, reachedTierText } from '../condition-text.ts';
-import { appDefaultOptions, decodeShared, defaultUi, emptyRun, encodeShared, sanitizeOptions, sanitizeRun, sanitizeUi, sinnerOf, useApp } from '../store.ts';
+import { appDefaultOptions, decodeShared, defaultUi, emptyRun, encodeShared, sanitizeOptions, sanitizeRun, sanitizeUi, sinnerOf, useApp, withoutLegacyGot } from '../store.ts';
 import { planInputFor } from '../lib/plan-input.ts';
 import { classifyGift, compareEntries, prioritiseGifts } from '../lib/gift-priority.ts';
 import { defaultDeck } from '../lib/default-deck.ts';
@@ -43,6 +43,8 @@ const statsFor = (deck: number[], deployed?: number[]) => analyseDeck(deck, inde
 const CLEAR_REWARDS = [9250, 9251, 9252, 9253, 9254, 9255];
 
 const BURN_DECK = [10112, 10216, 10311, 10415, 10512, 10604, 10715, 10808, 10916, 11009, 11115, 11216];
+/** The app's default deck (LCB 수감자 ×12); its dominant keyword is Burst. */
+const LCB_DECK = [10101, 10201, 10301, 10401, 10501, 10601, 10701, 10801, 10901, 11001, 11101, 11201];
 
 beforeEach(() => {
   useApp.setState({ deck: [], deployed: [], wanted: [], priority: {}, fusionGoal: {}, run: emptyRun(), ui: defaultUi(), options: appDefaultOptions(), lang: 'ko', dark: true });
@@ -226,6 +228,26 @@ describe('run store', () => {
     expect(sanitizeRun({ active: false, visits: { 2: 1102 } })).toEqual(emptyRun());
     expect(sanitizeRun({ active: true, visits: { 2: 1102 }, currentFloor: 3 })).toMatchObject({ visits: { 2: 1102 }, currentFloor: 3, stageFloor: 3 });
     expect(sanitizeRun(null)).toEqual(emptyRun());
+  });
+
+  it('drops the collected marks an earlier build left on non-goal gifts when upgrading a saved run', async () => {
+    const wanted = [9191, 9410, 9419, 9423];
+    const giftStatus: Record<number, 'got' | 'failed'> = { 9419: 'got', 9423: 'got', 9409: 'got', 9431: 'failed' };
+    expect(withoutLegacyGot(giftStatus, wanted)).toEqual({ 9419: 'got', 9423: 'got', 9431: 'failed' });
+    const migrate = useApp.persist.getOptions().migrate!;
+    const saved = { deck: LCB_DECK, deployed: LCB_DECK.slice(0, 6), wanted, priority: {}, fusionGoal: {}, options: { ...appDefaultOptions(), observedGifts: [9191, 9419, 9423] }, run: { currentFloor: 2, stageFloor: 2, visits: { 1: 1004 }, giftStatus }, ui: defaultUi(), lang: 'ko', dark: true };
+    const upgraded = (await migrate(saved, 6)) as ReturnType<typeof useApp.getState>;
+    expect(upgraded.run).toEqual({ currentFloor: 2, stageFloor: 2, visits: { 1: 1004 }, giftStatus: { 9419: 'got', 9423: 'got', 9431: 'failed' }, startGifts: [] });
+    // The phantom ingredient is gone, so the plan routes for it again.
+    const plan = planRoute(planInputFor({ ...upgraded, run: upgraded.run }), data, indexes);
+    expect(plan.stats.requiredPacks).toBe(1);
+    expect(plan.floors.find((f) => f.floor === 2)!.packId).toBe(1005);
+    // A save from this version keeps whatever the player marked.
+    const same = (await migrate(saved, 7)) as ReturnType<typeof useApp.getState>;
+    expect(same.run.giftStatus).toEqual(giftStatus);
+    // A run still on floor 1 has nothing to clean.
+    const fresh = (await migrate({ ...saved, run: { currentFloor: 1, stageFloor: 1, visits: {}, giftStatus } }, 6)) as ReturnType<typeof useApp.getState>;
+    expect(fresh.run.giftStatus).toEqual(giftStatus);
   });
 
   it('keeps a fusion goal only for a wanted gift', () => {
@@ -1288,8 +1310,7 @@ describe('RunStage', () => {
 });
 
 describe('RunStage · start-of-run gifts', () => {
-  /** The app's default deck (LCB 수감자 ×12) with the reported goals: three pins, one a general drop, and a fusion. */
-  const LCB_DECK = [10101, 10201, 10301, 10401, 10501, 10601, 10701, 10801, 10901, 11001, 11101, 11201];
+  /** The reported goals on the default deck: three pins, one a general drop, and a fusion. */
   const PINS = [9191, 9419, 9423];
   const observable = (id: number) => {
     const gift = indexes.giftById.get(id);
