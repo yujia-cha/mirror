@@ -218,6 +218,20 @@ describe('identities', () => {
     expect(Object.keys(identityById.get(id)!.keywords)).toContain(keyword);
   });
 
+  it.each([
+    [10215, 'Charge', '거미집 약지 제자 — 생체 재료'],
+    [10614, 'Charge', '거미집 약지 아비 — 생체 재료'],
+    [10504, 'Laceration', 'N사 큰 망치 — 못'],
+  ])('identity %i inflicts the 특수 variant of %s (%s)', (id, keyword) => {
+    const info = identityById.get(id)!.keywords[keyword as 'Charge'];
+    expect(info?.specialSkills).toBeGreaterThan(0);
+  });
+
+  it('keeps a 특수-only inflictor apart from the base keyword', () => {
+    expect(identityById.get(10504)!.keywords.Laceration).toEqual({ skills: 0, specialSkills: 2 });
+    expect(identityById.get(10614)!.keywords.Charge!.skills).toBeGreaterThan(0);
+  });
+
   it('reads 흑운회 와카슈 료슈 as Kurokumo Clan', () => {
     const identity = identityById.get(10403)!;
     expect(identity.sinner.ko).toBe('료슈');

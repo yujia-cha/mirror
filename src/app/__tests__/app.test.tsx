@@ -13,7 +13,7 @@ import { analyseDeck, buildIndexes, defaultOptions, evaluateConditions } from '.
 import { conditionText, josa, reachedTierText } from '../condition-text.ts';
 import { appDefaultOptions, decodeShared, defaultUi, emptyRun, encodeShared, sanitizeOptions, sanitizeRun, sanitizeUi, sinnerOf, useApp } from '../store.ts';
 import { planInputFor } from '../lib/plan-input.ts';
-import { classifyGift, prioritiseGifts } from '../lib/gift-priority.ts';
+import { classifyGift, compareEntries, prioritiseGifts } from '../lib/gift-priority.ts';
 import { defaultDeck } from '../lib/default-deck.ts';
 import { DeckStep } from '../steps/DeckStep.tsx';
 import { GiftsStep } from '../steps/GiftsStep.tsx';
@@ -303,6 +303,23 @@ describe('gift priority', () => {
     expect(resonance?.unjudgeable).toBe(true);
   });
 
+  it('puts pack-bound gifts ahead of 범용 ones inside a group', () => {
+    const packBound = data.gifts.find((g) => g.acquisition.kind === 'packLimited' && g.conditions.length === 0)!;
+    const general = data.gifts.find((g) => g.acquisition.kind === 'general' && g.conditions.length === 0 && g.id < packBound.id)!;
+    const a = classifyGift(packBound, []);
+    const b = classifyGift(general, []);
+    // Both sit in "other" with no condition; the pack-bound one wins even with the larger id.
+    expect(compareEntries(a, b)).toBeLessThan(0);
+    expect(compareEntries(b, a)).toBeGreaterThan(0);
+    const groups = prioritiseGifts([general, packBound], new Map());
+    expect(groups.other.map((e) => e.gift.id)).toEqual([packBound.id, general.id]);
+    // A closer 범용 gift still trails a pack-bound one; two pack-bound gifts keep the closeness order.
+    const stats = statsFor(BURN_DECK, BURN_DECK.slice(0, 7));
+    const active = classifyGift(indexes.giftById.get(9088)!, evaluateConditions([9088], stats, indexes));
+    expect(active.group).toBe('active');
+    expect(compareEntries(active, a)).toBeGreaterThan(0);
+  });
+
   it('reads the shortfall off the worst condition', () => {
     const gift = indexes.giftById.get(9092)!; // 연성진동: 5 vibration inflictors
     const entry = classifyGift(gift, evaluateConditions([9092], statsFor([10216, 10512, 10916]), indexes));
@@ -417,6 +434,22 @@ describe('DeckStep', () => {
     const chip = screen.getAllByTitle(/출격 \d+명 · 편성 전체 \d+명/)[0]!;
     expect(chip.textContent).toMatch(/\d+\/\d+$/);
     expect(screen.getByText('출격 / 편성 12인')).toBeInTheDocument();
+  });
+
+  it('names each keyword on the identity chips without a skill count, marking the 특수 variants', async () => {
+    const user = userEvent.setup();
+    // 10614 거미집 약지 아비 uses 충전 and 특수 충전 (생체 재료); 10504 N사 큰 망치 only 못 (특수 출혈).
+    useApp.getState().setDeck([10614, 10504, 10101], 3);
+    renderDeck();
+    const chip = (title: RegExp) => screen.getAllByTitle(title)[0]!;
+    expect(chip(/^충전 또는 특수 충전/).textContent).toBe('충전(특수)');
+    expect(chip(/^특수 출혈만/).textContent).toBe('특수 출혈');
+    expect(chip(/^침잠 부여 공격 스킬 보유$/).textContent).toBe('침잠');
+    // 특수 shows in the search too.
+    await user.type(screen.getByLabelText(/전체 인격 검색/), '특수 충전');
+    const options = within(screen.getByRole('listbox')).getAllByRole('option');
+    expect(options.map((o) => o.textContent)).toEqual(expect.arrayContaining([expect.stringContaining('거미집 약지 제자'), expect.stringContaining('거미집 약지 아비')]));
+    for (const option of options) expect(option.textContent).not.toMatch(/충전\s*\d/);
   });
 
   it('refuses an eighth deployed identity', () => {

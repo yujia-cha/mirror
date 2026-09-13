@@ -237,12 +237,17 @@ export type ThemePack = z.infer<typeof themePackSchema>;
 // Identities
 // ---------------------------------------------------------------------------
 
-export const identityKeywordSchema = z.object({
-  /** Number of attack skills that inflict this keyword — the unit conditional gifts count. */
-  skills: z.number().int().positive(),
-  /** Inflicts a "특수" variant (특수 화상 etc.), which some conditions require. */
-  special: z.boolean(),
-});
+export const identityKeywordSchema = z
+  .object({
+    /** Attack skills that inflict or gain the base keyword — the unit conditional gifts count. */
+    skills: z.number().int().nonnegative(),
+    /**
+     * Attack skills that inflict or gain a "특수" variant (특수 충전 = 생체 재료, 특수 출혈 = 못 …).
+     * Only conditions that say "또는 특수 X" (`includesSpecial`) count these.
+     */
+    specialSkills: z.number().int().nonnegative(),
+  })
+  .refine((k) => k.skills + k.specialSkills > 0, { message: 'a keyword entry needs at least one skill' });
 
 export const identitySchema = z.object({
   id: z.number().int(),

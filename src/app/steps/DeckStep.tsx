@@ -4,7 +4,7 @@ import type { GameData, Identity } from '../../core/schema.ts';
 import type { DeckStats, GameIndexes } from '../../core/types.ts';
 import { pick, t, type Lang } from '../i18n.ts';
 import { sinnerOf, useApp } from '../store.ts';
-import { factionName, keywordName } from '../format.ts';
+import { factionName, identityKeywordLabel } from '../format.ts';
 import { identitiesFromFormationCode } from '../lib/formation-code.ts';
 import { defaultDeck } from '../lib/default-deck.ts';
 import { deckSummaryChips } from '../lib/deck-summary.ts';
@@ -30,7 +30,10 @@ function matches(identity: Identity, needles: string[], data: GameData): boolean
     identity.sinner.ko,
     identity.sinner.en,
     ...identity.factions.flatMap((f) => [factionName(f, data.enums, 'ko'), factionName(f, data.enums, 'en')]),
-    ...Object.keys(identity.keywords).flatMap((k) => [keywordName(k as never, data.enums, 'ko'), keywordName(k as never, data.enums, 'en')]),
+    ...Object.entries(identity.keywords).flatMap(([k, info]) => [
+      identityKeywordLabel(k as never, info, data.enums, 'ko').label,
+      identityKeywordLabel(k as never, info, data.enums, 'en').label,
+    ]),
   ]
     .join(' ')
     .toLowerCase();
@@ -44,13 +47,17 @@ function KeywordChips({ identity, data, lang }: { identity: Identity; data: Game
       <Chip title={t('deckKeywordUnknown', lang)}>?</Chip>
     ) : null;
   }
+  // Name only — 「침잠」, not 「침잠 5」. Whether a keyword is the 특수 variant is part of the name.
   return (
     <>
-      {entries.map(([keyword, info]) => (
-        <Chip key={keyword} title={t('deckKeywordSkills', lang, { keyword: keywordName(keyword as never, data.enums, lang), n: info.skills })}>
-          {keywordName(keyword as never, data.enums, lang)} <b className="font-semibold text-fg">{info.skills}</b>
-        </Chip>
-      ))}
+      {entries.map(([keyword, info]) => {
+        const { label, title } = identityKeywordLabel(keyword as never, info, data.enums, lang);
+        return (
+          <Chip key={keyword} title={title}>
+            {label}
+          </Chip>
+        );
+      })}
     </>
   );
 }

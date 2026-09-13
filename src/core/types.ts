@@ -72,8 +72,13 @@ export interface PlanInput {
 // ---------------------------------------------------------------------------
 
 export interface DeckStats {
-  /** Identities whose attack skills inflict each keyword, by counting scope. */
+  /**
+   * Identities whose attack skills inflict each keyword — base or 특수 variant — by counting scope.
+   * This is what a condition written 「[Charge] 횟수 또는 특수 충전을 …」 counts.
+   */
   keywordCounts: Record<'deployed' | 'formation' | 'reserve', Partial<Record<StatusKeyword, number>>>;
+  /** The same, counting only the base keyword: what 「[Laceration]을 부여하는 …」 counts. */
+  baseKeywordCounts: Record<'deployed' | 'formation' | 'reserve', Partial<Record<StatusKeyword, number>>>;
   factionCounts: Record<'deployed' | 'formation' | 'reserve', Record<string, number>>;
   deployed: number[];
   reserve: number[];

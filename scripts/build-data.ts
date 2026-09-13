@@ -24,6 +24,7 @@ import {
   readPersonalities,
   readPersonalitySkills,
   readPersonalityTexts,
+  readSpecialVariants,
   readStages,
   readThemeNames,
   readThemePacks,
@@ -91,7 +92,7 @@ const curated = {
     readJsonIfExists<Record<string, { ko?: string; en?: string }>>(repoPath('data/curated/factions.json')) ??
     {},
   identityKeywords:
-    readJsonIfExists<Record<string, { keywords?: Record<string, { skills: number; special: boolean }> }>>(
+    readJsonIfExists<Record<string, { keywords?: Record<string, { skills: number; specialSkills: number }> }>>(
       repoPath('data/curated/identity-keywords.json'),
     ) ?? {},
   conditions:
@@ -473,11 +474,14 @@ for (let sinner = 1; sinner <= 12; sinner += 1) {
   SINNER_NAMES[sinner] = loc(personalityKo.get(baseId)?.name, personalityEn.get(baseId)?.name);
 }
 
+/** 특수 variant buff ids (생체 재료 → 특수 충전 …), read off the game's own buff descriptions. */
+const specialVariants = readSpecialVariants();
+
 const identities: Identity[] = rawPersonalities
   .map((raw): Identity => {
     const sinnerId = sinnerIdFromIdentityId(raw.id);
     const curatedKeywords = curated.identityKeywords[String(raw.id)]?.keywords;
-    const derived = deriveIdentityKeywords(raw, skills);
+    const derived = deriveIdentityKeywords(raw, skills, specialVariants);
     const keywords = (curatedKeywords ?? derived) as Identity['keywords'];
     const keywordSource: Identity['keywordSource'] = curatedKeywords
       ? 'curated'
@@ -732,6 +736,9 @@ console.log(
 console.log(`  acquisition: ${summarize(gifts.map((g) => g.acquisition.kind))}`);
 console.log(`  conditions: ${summarize(gifts.flatMap((g) => g.conditions.map((c) => c.type)))}`);
 console.log(`  identity keywords: ${summarize(identities.map((i) => i.keywordSource))}`);
+console.log(
+  `  특수 variants: ${specialVariants.size} buff(s), ${identities.filter((i) => Object.values(i.keywords).some((k) => k.specialSkills > 0)).length} identities`,
+);
 if (missingText.length > 0) {
   console.log(`  ${missingText.length} gift(s) without Korean text: ${missingText.slice(0, 10).join(', ')}`);
 }

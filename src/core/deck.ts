@@ -30,22 +30,27 @@ export function analyseDeck(
   const groups: Record<Scope, number[]> = { deployed, formation: known, reserve };
 
   const keywordCounts = {} as DeckStats['keywordCounts'];
+  const baseKeywordCounts = {} as DeckStats['baseKeywordCounts'];
   const factionCounts = {} as DeckStats['factionCounts'];
   const identitiesWithoutKeywords: number[] = [];
 
   for (const scope of ['deployed', 'formation', 'reserve'] as Scope[]) {
     const keywords: Partial<Record<StatusKeyword, number>> = {};
+    const baseKeywords: Partial<Record<StatusKeyword, number>> = {};
     const factions: Record<string, number> = {};
     for (const id of groups[scope]) {
       const identity = indexes.identityById.get(id);
       if (!identity) continue;
-      for (const keyword of Object.keys(identity.keywords) as StatusKeyword[]) {
+      for (const [keyword, info] of Object.entries(identity.keywords) as [StatusKeyword, { skills: number }][]) {
         // One identity counts once per keyword, however many of its skills inflict it.
         keywords[keyword] = (keywords[keyword] ?? 0) + 1;
+        // A 특수-only inflictor (생체 재료, 못 …) is not a base inflictor.
+        if (info.skills > 0) baseKeywords[keyword] = (baseKeywords[keyword] ?? 0) + 1;
       }
       for (const faction of identity.factions) factions[faction] = (factions[faction] ?? 0) + 1;
     }
     keywordCounts[scope] = keywords;
+    baseKeywordCounts[scope] = baseKeywords;
     factionCounts[scope] = factions;
   }
 
@@ -53,7 +58,7 @@ export function analyseDeck(
     if (indexes.identityById.get(id)?.keywordSource === 'none') identitiesWithoutKeywords.push(id);
   }
 
-  return { keywordCounts, factionCounts, deployed, reserve, unknownIdentities, identitiesWithoutKeywords };
+  return { keywordCounts, baseKeywordCounts, factionCounts, deployed, reserve, unknownIdentities, identitiesWithoutKeywords };
 }
 
 /** The dominant status keyword of a deck, used when the caller asks for an automatic choice. */
@@ -68,8 +73,11 @@ export function dominantKeyword(stats: DeckStats): StatusKeyword | null {
 
 function conditionCount(condition: Condition, stats: DeckStats): number | null {
   switch (condition.type) {
-    case 'keywordSkillCount':
-      return stats.keywordCounts[condition.scope][condition.keyword] ?? 0;
+    case 'keywordSkillCount': {
+      // 「또는 특수 X」 counts the 특수 variants too; a plain 「[X]를 부여하는」 does not.
+      const counts = condition.includesSpecial ? stats.keywordCounts : stats.baseKeywordCounts;
+      return counts[condition.scope][condition.keyword] ?? 0;
+    }
     case 'factionCount': {
       const counts = stats.factionCounts[condition.scope];
       // "A 또는 B" counts an identity once even if it belongs to both.

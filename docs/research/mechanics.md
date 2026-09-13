@@ -229,7 +229,9 @@ KR `desc`에서 두 가지 문형이 반복된다.
 | 10914 R사 제4무리 순록팀 로쟈 | Sinking, Charge | ✓ |
 | 11216 새벽 사무소 대표 그레고르 | Combustion, Vibration | ✓ |
 
-183명 중 6명은 7키워드를 전혀 부여하지 않는다(정상). 특수 화상·특수 출혈 같은 변형은 스크립트명으로 완전히 잡히지 않으므로 `data/curated/identity-keywords.json`으로 보정한다.
+183명 중 5명은 7키워드를 전혀 부여하지 않는다(정상). 도출이 틀리면 `data/curated/identity-keywords.json`으로 보정한다.
+
+**특수 변형(특수 충전·특수 출혈·특수 화상·특수 침잠)** 은 별도 버프 id다. `localize/KR/BattleKeywords.json`에서 설명(`desc`)에 「- 특수 충전」처럼 **한 줄로 선 특수 X** 가 있는 버프가 그 키워드의 특수 변형이다(`readSpecialVariants()`): `ChargeBodyArt` 생체 재료→충전, `NailPersonality` 못·`RedApricotBlossom` 홍매화·`NiddleEGO` 바늘→출혈, `DarkFlame` 흑염→화상, `SheutFracture` 셰우트의 균열→침잠. 스킬에서는 `buffKeyword`로 나오거나(못·흑염), 생체 재료처럼 스크립트명(`MarkGiveChargeBodyArtTurn`)에만 나온다. 인격의 `keywords[K].specialSkills`가 이를 세고, 조건은 「또는 특수 X」가 있을 때(`includesSpecial`)만 특수 변형을 포함한다. 검증(2026-09-13): 10215 거미집 약지 제자·10614 거미집 약지 아비 = 충전 + 특수 충전, 10504 N사 큰 망치 = 특수 출혈만.
 
 ## 6. 남은 불확실성
 

@@ -13,7 +13,7 @@
     "keywords": {
       "Sinking": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 1,
@@ -50,7 +50,7 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -86,7 +86,7 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -124,11 +124,11 @@
     "keywords": {
       "Sinking": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Vibration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -164,7 +164,7 @@
     "keywords": {
       "Vibration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -201,11 +201,11 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Charge": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -240,11 +240,11 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -280,7 +280,7 @@
     "keywords": {
       "Sinking": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -317,7 +317,7 @@
     "keywords": {
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -354,11 +354,11 @@
     "keywords": {
       "Sinking": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Vibration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -396,7 +396,7 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -432,7 +432,7 @@
     "keywords": {
       "Combustion": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -469,11 +469,11 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -511,11 +511,11 @@
     "keywords": {
       "Burst": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       },
       "Vibration": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -555,15 +555,15 @@
     "keywords": {
       "Breath": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       },
       "Combustion": {
         "skills": 1,
-        "special": false
+        "specialSkills": 0
       },
       "Sinking": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -635,7 +635,7 @@
     "keywords": {
       "Charge": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -671,11 +671,11 @@
     "keywords": {
       "Breath": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       },
       "Burst": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -714,7 +714,7 @@
     "keywords": {
       "Laceration": {
         "skills": 1,
-        "special": false
+        "specialSkills": 3
       }
     },
     "rank": 3,
@@ -781,7 +781,7 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -817,7 +817,7 @@
     "keywords": {
       "Vibration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -855,7 +855,11 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
+      },
+      "Laceration": {
+        "skills": 0,
+        "specialSkills": 3
       }
     },
     "rank": 3,
@@ -893,7 +897,7 @@
     "keywords": {
       "Sinking": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -931,7 +935,7 @@
     "keywords": {
       "Charge": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -969,7 +973,7 @@
     "keywords": {
       "Combustion": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -1006,11 +1010,11 @@
     "keywords": {
       "Breath": {
         "skills": 1,
-        "special": false
+        "specialSkills": 0
       },
       "Burst": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -1048,11 +1052,11 @@
     "keywords": {
       "Breath": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -1088,11 +1092,11 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Sinking": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -1131,11 +1135,11 @@
     "keywords": {
       "Charge": {
         "skills": 4,
-        "special": false
+        "specialSkills": 6
       },
       "Laceration": {
         "skills": 6,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -1173,11 +1177,11 @@
     "keywords": {
       "Combustion": {
         "skills": 5,
-        "special": false
+        "specialSkills": 0
       },
       "Vibration": {
         "skills": 5,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -1215,7 +1219,7 @@
     "keywords": {
       "Laceration": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 1,
@@ -1252,11 +1256,11 @@
     "keywords": {
       "Burst": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       },
       "Charge": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -1291,7 +1295,7 @@
     "keywords": {
       "Breath": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -1327,9 +1331,13 @@
     "id": 10304,
     "keywordSource": "derived",
     "keywords": {
+      "Laceration": {
+        "skills": 0,
+        "specialSkills": 3
+      },
       "Vibration": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -1395,7 +1403,7 @@
     "keywords": {
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -1432,7 +1440,7 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -1470,7 +1478,7 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -1508,7 +1516,7 @@
     "keywords": {
       "Vibration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -1543,7 +1551,7 @@
     "keywords": {
       "Laceration": {
         "skills": 6,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -1580,11 +1588,11 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Combustion": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -1620,15 +1628,15 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Charge": {
         "skills": 6,
-        "special": false
+        "specialSkills": 0
       },
       "Sinking": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -1665,11 +1673,11 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Sinking": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -1707,11 +1715,11 @@
     "keywords": {
       "Breath": {
         "skills": 6,
-        "special": false
+        "specialSkills": 0
       },
       "Sinking": {
         "skills": 6,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -1749,7 +1757,7 @@
     "keywords": {
       "Breath": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 1,
@@ -1786,7 +1794,7 @@
     "keywords": {
       "Burst": {
         "skills": 1,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -1822,7 +1830,7 @@
     "keywords": {
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -1859,7 +1867,7 @@
     "keywords": {
       "Laceration": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -1896,7 +1904,7 @@
     "keywords": {
       "Charge": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -1933,15 +1941,15 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Burst": {
         "skills": 1,
-        "special": false
+        "specialSkills": 0
       },
       "Vibration": {
         "skills": 1,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -1977,7 +1985,7 @@
     "keywords": {
       "Combustion": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -2013,7 +2021,7 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -2051,7 +2059,7 @@
     "keywords": {
       "Vibration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -2087,7 +2095,7 @@
     "keywords": {
       "Laceration": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -2124,7 +2132,7 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -2160,15 +2168,15 @@
     "keywords": {
       "Breath": {
         "skills": 1,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 5,
-        "special": false
+        "specialSkills": 0
       },
       "Vibration": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -2205,11 +2213,11 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -2244,11 +2252,11 @@
     "keywords": {
       "Sinking": {
         "skills": 5,
-        "special": false
+        "specialSkills": 0
       },
       "Vibration": {
         "skills": 5,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -2286,15 +2294,15 @@
     "keywords": {
       "Breath": {
         "skills": 6,
-        "special": false
+        "specialSkills": 0
       },
       "Combustion": {
         "skills": 6,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 5,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -2334,7 +2342,7 @@
     "keywords": {
       "Vibration": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 1,
@@ -2371,7 +2379,7 @@
     "keywords": {
       "Combustion": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -2407,11 +2415,11 @@
     "keywords": {
       "Burst": {
         "skills": 1,
-        "special": false
+        "specialSkills": 0
       },
       "Charge": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -2444,8 +2452,13 @@
       "N_CORP_FNATIC"
     ],
     "id": 10504,
-    "keywordSource": "none",
-    "keywords": {},
+    "keywordSource": "derived",
+    "keywords": {
+      "Laceration": {
+        "skills": 0,
+        "specialSkills": 2
+      }
+    },
     "rank": 3,
     "season": 1,
     "sinner": {
@@ -2478,11 +2491,11 @@
     "keywords": {
       "Charge": {
         "skills": 1,
-        "special": false
+        "specialSkills": 0
       },
       "Vibration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -2519,11 +2532,11 @@
     "keywords": {
       "Charge": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -2558,7 +2571,7 @@
     "keywords": {
       "Laceration": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -2594,11 +2607,11 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -2634,7 +2647,7 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -2671,7 +2684,7 @@
     "keywords": {
       "Sinking": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -2707,11 +2720,11 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -2748,11 +2761,11 @@
     "keywords": {
       "Combustion": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       },
       "Vibration": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -2789,11 +2802,11 @@
     "keywords": {
       "Burst": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -2830,11 +2843,11 @@
     "keywords": {
       "Combustion": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -2871,11 +2884,11 @@
     "keywords": {
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Sinking": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -2914,11 +2927,11 @@
     "keywords": {
       "Burst": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       },
       "Sinking": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 1,
@@ -2954,7 +2967,7 @@
     "keywords": {
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -2991,7 +3004,7 @@
     "keywords": {
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -3028,7 +3041,7 @@
     "keywords": {
       "Combustion": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -3065,7 +3078,7 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -3101,11 +3114,11 @@
     "keywords": {
       "Burst": {
         "skills": 1,
-        "special": false
+        "specialSkills": 0
       },
       "Charge": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -3140,7 +3153,7 @@
     "keywords": {
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -3178,7 +3191,7 @@
     "keywords": {
       "Sinking": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -3215,7 +3228,7 @@
     "keywords": {
       "Vibration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -3251,7 +3264,7 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -3288,7 +3301,7 @@
     "keywords": {
       "Breath": {
         "skills": 6,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -3324,11 +3337,11 @@
     "keywords": {
       "Charge": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Sinking": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -3364,11 +3377,11 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Burst": {
         "skills": 5,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -3406,15 +3419,15 @@
     "keywords": {
       "Charge": {
         "skills": 4,
-        "special": false
+        "specialSkills": 6
       },
       "Combustion": {
         "skills": 1,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 5,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -3453,11 +3466,11 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -3494,7 +3507,7 @@
     "keywords": {
       "Vibration": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 1,
@@ -3531,7 +3544,7 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -3567,15 +3580,15 @@
     "keywords": {
       "Burst": {
         "skills": 1,
-        "special": false
+        "specialSkills": 0
       },
       "Charge": {
         "skills": 1,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 1,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -3612,7 +3625,7 @@
     "keywords": {
       "Laceration": {
         "skills": 1,
-        "special": false
+        "specialSkills": 1
       }
     },
     "rank": 2,
@@ -3648,11 +3661,11 @@
     "keywords": {
       "Burst": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       },
       "Sinking": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -3689,7 +3702,7 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -3725,11 +3738,11 @@
     "keywords": {
       "Breath": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -3764,7 +3777,7 @@
     "keywords": {
       "Vibration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -3801,7 +3814,7 @@
     "keywords": {
       "Charge": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -3840,7 +3853,7 @@
     "keywords": {
       "Sinking": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -3876,7 +3889,7 @@
     "keywords": {
       "Breath": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -3912,7 +3925,7 @@
     "keywords": {
       "Laceration": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -3948,11 +3961,11 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Charge": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -3988,11 +4001,11 @@
     "keywords": {
       "Burst": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       },
       "Combustion": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -4029,15 +4042,15 @@
     "keywords": {
       "Combustion": {
         "skills": 6,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 6,
-        "special": false
+        "specialSkills": 0
       },
       "Vibration": {
         "skills": 1,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -4073,11 +4086,11 @@
     "keywords": {
       "Combustion": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       },
       "Vibration": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -4114,7 +4127,7 @@
     "keywords": {
       "Vibration": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 1,
@@ -4150,11 +4163,11 @@
     "keywords": {
       "Charge": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       },
       "Sinking": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -4190,7 +4203,7 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -4227,11 +4240,11 @@
     "keywords": {
       "Burst": {
         "skills": 1,
-        "special": false
+        "specialSkills": 0
       },
       "Vibration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -4266,11 +4279,11 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Vibration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -4306,7 +4319,7 @@
     "keywords": {
       "Combustion": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -4342,11 +4355,11 @@
     "keywords": {
       "Sinking": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Vibration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -4382,15 +4395,15 @@
     "keywords": {
       "Breath": {
         "skills": 1,
-        "special": false
+        "specialSkills": 0
       },
       "Combustion": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -4427,11 +4440,11 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Sinking": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -4468,7 +4481,7 @@
     "keywords": {
       "Vibration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -4504,7 +4517,7 @@
     "keywords": {
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -4542,11 +4555,11 @@
     "keywords": {
       "Breath": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       },
       "Burst": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -4583,11 +4596,11 @@
     "keywords": {
       "Sinking": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       },
       "Vibration": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -4625,11 +4638,11 @@
     "keywords": {
       "Combustion": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -4668,11 +4681,11 @@
     "keywords": {
       "Breath": {
         "skills": 5,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 5,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -4709,7 +4722,7 @@
     "keywords": {
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 1,
@@ -4745,11 +4758,11 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -4818,7 +4831,7 @@
     "keywords": {
       "Laceration": {
         "skills": 2,
-        "special": false
+        "specialSkills": 2
       }
     },
     "rank": 2,
@@ -4854,11 +4867,11 @@
     "keywords": {
       "Charge": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       },
       "Vibration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -4894,7 +4907,7 @@
     "keywords": {
       "Breath": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -4930,7 +4943,7 @@
     "keywords": {
       "Sinking": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -4967,7 +4980,7 @@
     "keywords": {
       "Combustion": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -5003,7 +5016,7 @@
     "keywords": {
       "Vibration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -5038,7 +5051,7 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -5074,11 +5087,11 @@
     "keywords": {
       "Burst": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -5117,11 +5130,11 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -5157,7 +5170,7 @@
     "keywords": {
       "Sinking": {
         "skills": 6,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -5194,11 +5207,11 @@
     "keywords": {
       "Charge": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Sinking": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -5234,11 +5247,11 @@
     "keywords": {
       "Laceration": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       },
       "Sinking": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -5277,15 +5290,15 @@
     "keywords": {
       "Breath": {
         "skills": 5,
-        "special": false
+        "specialSkills": 0
       },
       "Combustion": {
         "skills": 6,
-        "special": false
+        "specialSkills": 0
       },
       "Vibration": {
         "skills": 6,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -5328,7 +5341,7 @@
     "keywords": {
       "Burst": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 1,
@@ -5365,11 +5378,11 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 1,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -5406,7 +5419,7 @@
     "keywords": {
       "Vibration": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -5442,11 +5455,11 @@
     "keywords": {
       "Breath": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       },
       "Sinking": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -5484,11 +5497,11 @@
     "keywords": {
       "Combustion": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 1,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -5524,7 +5537,7 @@
     "keywords": {
       "Burst": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -5561,7 +5574,7 @@
     "keywords": {
       "Vibration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -5597,7 +5610,7 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -5634,7 +5647,7 @@
     "keywords": {
       "Combustion": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -5671,7 +5684,7 @@
     "keywords": {
       "Vibration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -5707,7 +5720,7 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -5743,7 +5756,7 @@
     "keywords": {
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -5779,11 +5792,11 @@
     "keywords": {
       "Combustion": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       },
       "Vibration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -5821,11 +5834,11 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Combustion": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -5861,11 +5874,11 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -5903,7 +5916,7 @@
     "keywords": {
       "Burst": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 1,
@@ -5940,7 +5953,7 @@
     "keywords": {
       "Breath": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -5978,7 +5991,7 @@
     "keywords": {
       "Sinking": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -6014,7 +6027,7 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -6051,7 +6064,7 @@
     "keywords": {
       "Vibration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -6087,7 +6100,7 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -6124,7 +6137,7 @@
     "keywords": {
       "Combustion": {
         "skills": 3,
-        "special": false
+        "specialSkills": 3
       }
     },
     "rank": 3,
@@ -6160,7 +6173,7 @@
     "keywords": {
       "Sinking": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -6198,7 +6211,7 @@
     "keywords": {
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -6236,11 +6249,11 @@
     "keywords": {
       "Burst": {
         "skills": 1,
-        "special": false
+        "specialSkills": 0
       },
       "Charge": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -6275,7 +6288,7 @@
     "keywords": {
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -6313,7 +6326,7 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -6349,7 +6362,7 @@
     "keywords": {
       "Vibration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -6386,11 +6399,11 @@
     "keywords": {
       "Sinking": {
         "skills": 3,
-        "special": false
+        "specialSkills": 2
       },
       "Vibration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -6426,11 +6439,11 @@
     "keywords": {
       "Combustion": {
         "skills": 10,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 10,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -6469,7 +6482,7 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 1,
@@ -6505,7 +6518,7 @@
     "keywords": {
       "Combustion": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -6542,7 +6555,7 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -6578,7 +6591,7 @@
     "keywords": {
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -6616,15 +6629,15 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Charge": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       },
       "Vibration": {
         "skills": 2,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -6691,11 +6704,11 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -6732,7 +6745,7 @@
     "keywords": {
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 2,
@@ -6768,7 +6781,7 @@
     "keywords": {
       "Sinking": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -6803,11 +6816,11 @@
     "keywords": {
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Laceration": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -6844,7 +6857,7 @@
     "keywords": {
       "Combustion": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -6881,11 +6894,11 @@
     "keywords": {
       "Breath": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Burst": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -6921,11 +6934,11 @@
     "keywords": {
       "Laceration": {
         "skills": 5,
-        "special": false
+        "specialSkills": 0
       },
       "Vibration": {
         "skills": 5,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -6962,11 +6975,11 @@
     "keywords": {
       "Combustion": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       },
       "Sinking": {
         "skills": 3,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -7003,11 +7016,11 @@
     "keywords": {
       "Burst": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       },
       "Charge": {
         "skills": 4,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -7043,11 +7056,11 @@
     "keywords": {
       "Combustion": {
         "skills": 5,
-        "special": false
+        "specialSkills": 0
       },
       "Vibration": {
         "skills": 5,
-        "special": false
+        "specialSkills": 0
       }
     },
     "rank": 3,

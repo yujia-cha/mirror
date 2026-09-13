@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { loadGameDataFromDisk } from '../data/node.ts';
 import { buildIndexes, conflictGroups, defaultOptions, planAlternatives, planRoute, wantedRoots } from '../index.ts';
-import { analyseDeck, dominantKeyword } from '../deck.ts';
+import { analyseDeck, dominantKeyword, evaluateConditions } from '../deck.ts';
 import { expandRequirements } from '../requirements.ts';
 import { modeForFloor, observationCost } from '../search.ts';
 import type { PlanInput, PlanOptions } from '../types.ts';
@@ -216,6 +216,41 @@ describe('deck conditions', () => {
     // 10101 inflicts Sinking; 10914 inflicts Sinking and Charge.
     expect(stats.keywordCounts.formation.Sinking).toBe(2);
     expect(stats.keywordCounts.formation.Charge).toBe(1);
+  });
+
+  it('counts a 특수-only inflictor only for conditions that say 「또는 특수 X」', () => {
+    // 10504 N사 큰 망치 inflicts 못 (특수 출혈) and no plain 출혈; 10403 inflicts plain 출혈.
+    const stats = analyseDeck([10504, 10403], indexes, data.rules.deployment);
+    expect(indexes.identityById.get(10504)!.keywords.Laceration).toEqual({ skills: 0, specialSkills: 2 });
+    expect(stats.keywordCounts.formation.Laceration).toBe(2);
+    expect(stats.baseKeywordCounts.formation.Laceration).toBe(1);
+    // 혈향도래 reads 「[Laceration] … 또는 특수 출혈 …」 over the formation, so 못 counts.
+    const gift = indexes.giftById.get(9206)!;
+    const condition = gift.conditions.find((c) => c.type === 'keywordSkillCount')!;
+    expect(condition).toMatchObject({ keyword: 'Laceration', scope: 'formation', includesSpecial: true });
+    expect(evaluateConditions([9206], stats, indexes).find((r) => r.subject.kind === 'keyword')!.have).toBe(2);
+    // The same sentence without 「또는 특수 출혈」 would not count it.
+    const strict = buildIndexes({
+      ...data,
+      gifts: data.gifts.map((g) =>
+        g.id === 9206
+          ? { ...g, conditions: g.conditions.map((c) => (c.type === 'keywordSkillCount' ? { ...c, includesSpecial: false } : c)) }
+          : g,
+      ),
+    });
+    expect(evaluateConditions([9206], stats, strict).find((r) => r.subject.kind === 'keyword')!.have).toBe(1);
+  });
+
+  it('counts 특수 충전 (생체 재료) for 사원증, which says 「또는 특수 충전」', () => {
+    const stats = analyseDeck([10215, 10614], indexes, data.rules.deployment);
+    for (const id of [10215, 10614]) {
+      expect(indexes.identityById.get(id)!.keywords.Charge!.specialSkills).toBeGreaterThan(0);
+    }
+    const [report] = evaluateConditions([9043], stats, indexes);
+    // 사원증 has no formation condition; its text is an effect, so it may carry none at all.
+    if (report) expect(report.have).toBe(2);
+    expect(stats.keywordCounts.formation.Charge).toBe(2);
+    expect(stats.baseKeywordCounts.formation.Charge).toBe(2);
   });
 
   it('deploys the first `deployment.default` identities when nobody is named', () => {

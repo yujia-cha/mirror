@@ -5,6 +5,9 @@
  * satisfied, "near" when the worst condition is at least 60% there, and "other" otherwise or when
  * it has no condition at all. Full-resonance and unparsed conditions cannot be judged from a deck,
  * so their gifts stay in "other" and read as 판정 불가.
+ *
+ * Inside a group, gifts bound to a specific pack come first: a 테마팩 한정 gift (or an EXTREME
+ * clear reward) is what actually decides the route, while a 범용 gift may drop anywhere.
  */
 import type { Gift } from '../../core/schema.ts';
 import type { ConditionReport } from '../../core/types.ts';
@@ -42,9 +45,18 @@ export function classifyGift(gift: Gift, reports: ConditionReport[]): GiftEntry 
   return { gift, reports, group, ratio, lack, unjudgeable };
 }
 
-/** Stable order inside a group: closer first, then by id. */
+/** A gift only one pack (or one EXTREME boss) hands out, as opposed to one that may drop anywhere. */
+export function isPackBound(gift: Gift): boolean {
+  return gift.acquisition.kind === 'packLimited' || gift.acquisition.kind === 'clearReward';
+}
+
+/** Stable order inside a group: pack-bound first, then closer first, then by id. */
 export function compareEntries(a: GiftEntry, b: GiftEntry): number {
-  return (b.ratio ?? -1) - (a.ratio ?? -1) || a.gift.id - b.gift.id;
+  return (
+    Number(isPackBound(b.gift)) - Number(isPackBound(a.gift)) ||
+    (b.ratio ?? -1) - (a.ratio ?? -1) ||
+    a.gift.id - b.gift.id
+  );
 }
 
 export function prioritiseGifts(

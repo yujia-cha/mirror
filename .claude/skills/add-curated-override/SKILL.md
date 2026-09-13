@@ -15,13 +15,13 @@ description: Record a fact the game's static data does not express — an identi
 {
   "10716": {
     "_source": "인게임 확인 2026-09-11",
-    "keywords": { "Combustion": { "skills": 2, "special": false },
-                  "Vibration":  { "skills": 2, "special": false } }
+    "keywords": { "Combustion": { "skills": 2, "specialSkills": 0 },
+                  "Vibration":  { "skills": 2, "specialSkills": 0 } }
   }
 }
 ```
 
-`skills`는 해당 키워드를 부여하는 **공격 스킬 수**다(조건부 기프트가 세는 단위). `special: true`는 특수 화상·특수 출혈 같은 변형을 부여한다는 뜻이다. 여기에 적은 인격은 `keywordSource: "curated"`가 된다.
+`skills`는 해당 키워드를 부여하는 **공격 스킬 수**다(조건부 기프트가 세는 단위). `specialSkills`는 특수 충전(생체 재료)·특수 출혈(못) 같은 **특수 변형**을 부여·획득하는 공격 스킬 수다 — 「또는 특수 X」가 적힌 조건만 이를 센다. 둘 중 하나는 0보다 커야 한다. 여기에 적은 인격은 `keywordSource: "curated"`가 된다.
 
 ## 2. 조건 보정 — `conditions.json`
 
