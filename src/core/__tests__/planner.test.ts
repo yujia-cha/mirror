@@ -10,7 +10,7 @@ import { buildIndexes, conflictGroups, defaultOptions, planAlternatives, planRou
 import { analyseDeck, dominantKeyword, evaluateConditions } from '../deck.ts';
 import { expandRequirements } from '../requirements.ts';
 import { modeForFloor, observationCost } from '../search.ts';
-import type { PlanInput, PlanOptions } from '../types.ts';
+import type { PlanInput, PlanOptions, RoutePlan } from '../types.ts';
 
 const data = loadGameDataFromDisk();
 const indexes = buildIndexes(data);
@@ -354,9 +354,10 @@ describe('priority', () => {
 
   it('never covers less when one gift is raised to 반드시', () => {
     // Reported case: these 32 goals all fitted with everything 보통, and marking 데스페라도(9235)
-    // 반드시 dropped two others. The board is big enough to hit the node cap, so the order the
-    // search visits candidates in decides the answer — which is exactly what must not depend on
-    // a priority flag. Raising a priority may reorder the route, never shrink it.
+    // 반드시 dropped two others. Raising a priority may reorder the route, never shrink it — not
+    // when the visit order decides an approximate answer (the old failure), and not when the
+    // objective would rather route a required gift than let 기프트 관측 hand it over (9410, whose
+    // ingredient 얼어붙은 아우성 costs a floor that three other goals were using).
     const goals = [
       9092, 9096, 9167, 9176, 9191, 9211, 9214, 9235, 9239, 9254, 9274, 9410, 9703, 9704, 9705, 9726,
       9728, 9729, 9730, 9731, 9746, 9747, 9750, 9761, 9765, 9767, 9768, 9770, 9771, 9814, 9816, 9828,
@@ -386,6 +387,8 @@ describe('priority', () => {
     }
     // Raising every goal at once is the same question from the other end.
     expect(run(goals).stats.coveredWanted).toBe(base.stats.coveredWanted);
+    // And this board is settled exhaustively, so those answers are optimal, not merely good.
+    expect(base.warnings.map((w) => w.code)).not.toContain('search-capped');
   });
 
   it('still keeps a 반드시 gift when the floors genuinely cannot hold everything', () => {
@@ -400,6 +403,50 @@ describe('priority', () => {
     const dropped = (plan: ReturnType<typeof run>) => plan.unresolved.map((u) => u.giftId);
     expect(dropped(run([])).length).toBeGreaterThan(0);
     for (const giftId of goals) expect(dropped(run([giftId]))).not.toContain(giftId);
+  });
+});
+
+describe('shared ingredients', () => {
+  /*
+   * 장관 = 녹슨 칼자루(9713) + 조각난 칼날, 부동 = 9713 + 부서진 칼날.
+   * 절경 = 조각난 칼날 + 낡은 칼자루(9782), 탁마 = 부서진 칼날 + 9782.
+   * 9713 comes from 육참골단 and its 복각; 9782 only from the 복각.
+   */
+  const hard15 = (overrides: Partial<PlanOptions> = {}) => options({ lastFloor: 15, hardFromFloor: 1, ...overrides });
+  const floorOf = (result: RoutePlan, giftId: number): number[] =>
+    result.floors.filter((f) => f.pickups.some((p) => p.giftId === giftId)).map((f) => f.floor);
+
+  it('buys a copy per fusion from two different packs, and says the order matters', () => {
+    const result = planWithout({ wanted: want(9717, 9718), options: hard15() });
+    expect(result.stats.coveredWanted).toBe(2);
+    expect(result.unresolved).toEqual([]);
+    // Two floors, two packs: the game never offers a gift you are already holding.
+    expect(floorOf(result, 9713)).toHaveLength(2);
+    const packs = result.floors.filter((f) => f.pickups.some((p) => p.giftId === 9713)).map((f) => f.packId);
+    expect(new Set(packs).size).toBe(2);
+    const warning = result.warnings.find((w) => w.code === 'shared-ingredient');
+    expect(warning?.giftIds).toEqual([9713]);
+  });
+
+  it('reports the copy it cannot buy, not a pack conflict, when only one pack supplies it', () => {
+    const result = planWithout({ wanted: want(9783, 9784), options: hard15() });
+    expect(result.stats.coveredWanted).toBe(1);
+    const missing = result.unresolved.find((u) => u.giftId === 9782);
+    expect(missing?.reason).toBe('ingredient-shared');
+    expect(missing?.detail.ko).toContain('절경');
+    expect(missing?.detail.ko).toContain('탁마');
+    expect(result.unresolved.find((u) => u.giftId === 9784)?.reason).toBe('fusion-ingredient-unresolved');
+    // Nothing is promised twice, so the order warning has nothing to say either.
+    expect(result.warnings.map((w) => w.code)).not.toContain('shared-ingredient');
+  });
+
+  it('lets 기프트 관측 stand in for the second copy, saving the second pack', () => {
+    const result = plan({ wanted: want(9717, 9718), options: hard15() });
+    expect(result.stats.coveredWanted).toBe(2);
+    expect(result.start.observed.map((o) => o.giftId)).toContain(9713);
+    expect(result.stats.requiredPacks).toBe(1);
+    // One copy still comes off the floor; the observed one is in hand from the start.
+    expect(floorOf(result, 9713)).toHaveLength(1);
   });
 });
 

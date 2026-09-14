@@ -189,6 +189,8 @@ export type UnresolvedReason =
   | 'observation-budget'
   /** Every pack that supplies it is one the user gave up. */
   | 'pack-banned'
+  /** Two fusions eat the same ingredient and no second pack can hand over a second copy. */
+  | 'ingredient-shared'
   /** Marked as missed during the run. */
   | 'failed';
 
@@ -218,7 +220,9 @@ export type WarningCode =
   /** Pinned observations that were dropped: unknown, not observable, or over the limit. */
   | 'observation-trimmed'
   /** A pinned, banned or preferred pack that could not be honoured: unknown, not offered there, contradictory, or no floor left. */
-  | 'pack-option-dropped';
+  | 'pack-option-dropped'
+  /** Two fusions eat the same ingredient, so the first has to be fused before the second copy drops. */
+  | 'shared-ingredient';
 
 export interface PlanWarning {
   code: WarningCode;

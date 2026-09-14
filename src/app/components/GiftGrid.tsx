@@ -56,9 +56,7 @@ export function GiftTileGrid({
         const condition = conditionShort(report, enums, lang);
         const marked = selected || held;
         const lockedBy = parent && wanted.includes(parent.id) ? t('giftSubOf', lang, { parent: pick(parent.name, lang) }) : undefined;
-        const blockedBy = block
-          ? t(block.reason === 'included' ? 'giftBlockedIncluded' : 'giftBlockedEntangled', lang, { name: giftName(block.by) })
-          : undefined;
+        const blockedBy = block ? t('giftBlockedIncluded', lang, { name: giftName(block.by) }) : undefined;
         return (
           <div
             key={gift.id}
@@ -70,7 +68,7 @@ export function GiftTileGrid({
             data-selected={selected || undefined}
             data-locked={held || undefined}
             data-block={block?.reason}
-            data-entangled={entangled.has(gift.id) || block?.reason === 'entangled' || undefined}
+            data-entangled={entangled.has(gift.id) || undefined}
             title={blockedBy ?? lockedBy}
           >
             {marked ? (
@@ -78,7 +76,7 @@ export function GiftTileGrid({
                 <Check size={9} strokeWidth={3} />
               </span>
             ) : null}
-            {entangled.has(gift.id) || block?.reason === 'entangled' ? (
+            {entangled.has(gift.id) ? (
               <span className="absolute left-0.5 top-0.5 z-10 text-fg-2" aria-hidden title={blockedBy ?? t('giftEntangled', lang)}>
                 <Link2 size={11} />
               </span>

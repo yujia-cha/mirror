@@ -636,7 +636,7 @@ describe('GiftsStep', () => {
     expect(tile(9233).title).toContain('데스페라도');
   });
 
-  it('absorbs an ingredient that was already a goal, and locks the fusion that would fight over one', async () => {
+  it('absorbs an ingredient that was already a goal, and still lets a goal that shares one be chosen', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
     useApp.getState().toggleWanted(9233); // the ingredient first
@@ -644,12 +644,12 @@ describe('GiftsStep', () => {
     await user.click(screen.getByRole('button', { name: /기타/, expanded: false }));
     await user.click(within(tile(9235)).getByRole('button', { name: '데스페라도' }));
     expect(useApp.getState().wanted).toEqual([9235]);
-    // 장관 and 부동 both eat 녹슨 칼자루, so choosing one rules the other out.
+    // 장관 and 부동 both eat 녹슨 칼자루. That is 얽힘, not a block — the planner routes a copy each.
     await user.click(within(tile(9717)).getByRole('button', { name: '장관' }));
-    expect(tile(9718)).toHaveAttribute('data-block', 'entangled');
-    expect(within(tile(9718)).getByRole('button', { name: '부동' })).toBeDisabled();
-    expect(tile(9718).title).toContain('장관');
-    expect(useApp.getState().wanted).toEqual([9235, 9717]);
+    expect(tile(9718)).not.toHaveAttribute('data-block');
+    expect(within(tile(9718)).getByRole('button', { name: '부동' })).toBeEnabled();
+    await user.click(within(tile(9718)).getByRole('button', { name: '부동' }));
+    expect(useApp.getState().wanted).toEqual([9235, 9717, 9718]);
   });
 
   it('marks two goals that eat the same ingredient as 얽힘 and names it in the sheet', async () => {

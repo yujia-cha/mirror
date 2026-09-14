@@ -75,7 +75,6 @@ export const STRINGS = {
   giftSelect: { ko: '목표로 삼기', en: 'Make it a goal' },
   giftUnselect: { ko: '목표에서 빼기', en: 'Drop the goal' },
   giftBlockedIncluded: { ko: '{name} 조합에 이미 포함됨', en: 'Already part of {name}' },
-  giftBlockedEntangled: { ko: '{name}과(와) 재료가 겹쳐 함께 고를 수 없음', en: 'Shares an ingredient with {name}, so it cannot be chosen too' },
   giftEntangled: { ko: '얽힘', en: 'Entangled' },
   giftEntangledWith: { ko: '{name}과(와) 재료가 겹칩니다: {list}', en: 'shares ingredients with {name}: {list}' },
   giftDetail: { ko: '{name} 자세히', en: '{name} details' },
@@ -182,6 +181,7 @@ export const STRINGS = {
   unresolvedObservation: { ko: '관측 예산', en: 'Observation budget' },
   unresolvedChance: { ko: '확률 보상', en: 'Chance only' },
   unresolvedBanned: { ko: '포기한 팩', en: 'Pack given up' },
+  unresolvedShared: { ko: '재료 겹침', en: 'Ingredient shared' },
   unresolvedFailed: { ko: '수집 실패', en: 'Missed' },
   unresolvedDropped: { ko: '나머지 재료({names})만을 위한 방문은 취소했습니다.', en: 'Visits for the remaining ingredients ({names}) alone were dropped.' },
 
