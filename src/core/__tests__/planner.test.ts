@@ -347,6 +347,62 @@ describe('deck conditions', () => {
   });
 });
 
+describe('priority', () => {
+  /** The app's 반드시/보통: only the named gifts are `required`, the rest are best-effort. */
+  const wantWithMust = (giftIds: number[], must: number[]) =>
+    giftIds.map((giftId) => ({ giftId, required: must.includes(giftId) }));
+
+  it('never covers less when one gift is raised to 반드시', () => {
+    // Reported case: these 32 goals all fitted with everything 보통, and marking 데스페라도(9235)
+    // 반드시 dropped two others. The board is big enough to hit the node cap, so the order the
+    // search visits candidates in decides the answer — which is exactly what must not depend on
+    // a priority flag. Raising a priority may reorder the route, never shrink it.
+    const goals = [
+      9092, 9096, 9167, 9176, 9191, 9211, 9214, 9235, 9239, 9254, 9274, 9410, 9703, 9704, 9705, 9726,
+      9728, 9729, 9730, 9731, 9746, 9747, 9750, 9761, 9765, 9767, 9768, 9770, 9771, 9814, 9816, 9828,
+    ];
+    const deck = [10104, 10214, 10313, 10414, 10608, 10716, 10813, 10916, 11114, 11214, 11004, 10510];
+    const run = (must: number[]) =>
+      planRoute(
+        {
+          deck,
+          wanted: wantWithMust(goals, must),
+          options: options({
+            lastFloor: 15,
+            hardFromFloor: 1,
+            observedGifts: [9191],
+            deployed: [10104, 10414, 10716, 10813, 10916, 11114, 11214],
+          }),
+        },
+        data,
+        indexes,
+      );
+    const base = run([]);
+    expect(base.stats.coveredWanted).toBe(goals.length);
+    for (const giftId of [9235, 9410, 9761]) {
+      const raised = run([giftId]);
+      expect(raised.stats.coveredWanted).toBe(base.stats.coveredWanted);
+      expect(raised.unresolved.map((u) => u.giftId)).not.toContain(giftId);
+    }
+    // Raising every goal at once is the same question from the other end.
+    expect(run(goals).stats.coveredWanted).toBe(base.stats.coveredWanted);
+  });
+
+  it('still keeps a 반드시 gift when the floors genuinely cannot hold everything', () => {
+    // Five EXTREME clear rewards, five floors: one has to go, and it is never the required one.
+    const goals = [9250, 9251, 9252, 9253, 9254, 9255];
+    const run = (must: number[]) =>
+      planRoute(
+        { deck: BLADE_LINEAGE_DECK, wanted: wantWithMust(goals, must), options: options({ lastFloor: 15 }) },
+        noObservation,
+        indexes,
+      );
+    const dropped = (plan: ReturnType<typeof run>) => plan.unresolved.map((u) => u.giftId);
+    expect(dropped(run([])).length).toBeGreaterThan(0);
+    for (const giftId of goals) expect(dropped(run([giftId]))).not.toContain(giftId);
+  });
+});
+
 describe('observation cost', () => {
   it('rises by the step for each use in a run', () => {
     expect(observationCost(0, data.rules, false)).toBe(0);

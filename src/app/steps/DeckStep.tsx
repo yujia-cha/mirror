@@ -164,7 +164,7 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
           className="inline-flex h-9 items-center gap-1.5 rounded-sm border border-line bg-surface-2 px-3 text-sm font-medium"
           title={full ? t('deckDeployedFull', lang, { max }) : undefined}
         >
-          {t('deckDeployed', lang)} <span className="font-mono">{deployed.length}/{max}</span>
+          {t('deckDeployed', lang)} <span className="font-num">{deployed.length}/{max}</span>
         </span>
         <Button onClick={() => setDeck(defaultDeck(data), data.rules.deployment.default)} ariaLabel={t('deckDefault', lang)} className="h-9">
           <Users size={14} aria-hidden />
@@ -231,7 +231,7 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
             onChange={(event) => setCode(event.target.value)}
             aria-label={t('deckImportPlaceholder', lang)}
             placeholder={t('deckImportPlaceholder', lang)}
-            className="h-8 min-w-0 flex-1 rounded-sm border border-line-strong bg-surface px-2 font-mono text-xs outline-none"
+            className="h-8 min-w-0 flex-1 rounded-sm border border-line-strong bg-surface px-2 font-num text-xs outline-none"
           />
           <Button type="submit" variant="primary">
             {t('deckImportApply', lang)}

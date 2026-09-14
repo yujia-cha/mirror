@@ -30,7 +30,7 @@ npm test             # 단위 테스트
 npm run route -- --deck 10101,10203 --want 9088 --floors 1-5 --difficulty hard
 ```
 
-구조와 규칙은 [`CLAUDE.md`](CLAUDE.md), 게임 메커니즘 조사 기록은 [`docs/research/mechanics.md`](docs/research/mechanics.md), 데이터 출처는 [`docs/research/data-sources.md`](docs/research/data-sources.md)에 있습니다.
+루트가 어떻게 계산되는지는 [`docs/route-algorithm.md`](docs/route-algorithm.md)에 단계별로 적어 두었습니다(결과가 예상과 다를 때 먼저 보세요). 구조와 규칙은 [`CLAUDE.md`](CLAUDE.md), 게임 메커니즘 조사 기록은 [`docs/research/mechanics.md`](docs/research/mechanics.md), 데이터 출처는 [`docs/research/data-sources.md`](docs/research/data-sources.md)에 있습니다.
 
 코드를 리뷰하신다면 [`docs/review/`](docs/review/README.md)에 마일스톤별 요약과 읽는 순서, 검증 로그가 있습니다.
 

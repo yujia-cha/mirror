@@ -269,7 +269,7 @@ export function MetroMap({ plan, ctx, keywordLabel, run, variant = 'auto', detai
           {Array.from({ length: MAX_FLOOR }, (_, i) => i + 1).map((f) => (
             <g key={f}>
               <Station cx={x(f)} cy={LINE_Y} r={7} half={metro.overlap.has(f)} floor={f} {...stationProps(f)} />
-              <text x={x(f)} y={LINE_Y + 24} textAnchor="middle" fontSize={12} fontFamily="var(--font-mono)" fill="var(--color-fg)" fontWeight={run && f === run.currentFloor ? 700 : undefined}>
+              <text x={x(f)} y={LINE_Y + 24} textAnchor="middle" fontSize={12} fontFamily="var(--font-num)" fill="var(--color-fg)" fontWeight={run && f === run.currentFloor ? 700 : undefined}>
                 {f}
               </text>
             </g>
@@ -354,7 +354,7 @@ export function MetroMap({ plan, ctx, keywordLabel, run, variant = 'auto', detai
           {Array.from({ length: MAX_FLOOR }, (_, i) => i + 1).map((f) => (
             <g key={f}>
               <Station cx={LX} cy={y(f)} r={7} half={metro.overlap.has(f)} floor={f} {...stationProps(f)} />
-              <text x={LX - 16} y={y(f) + 4} textAnchor="end" fontSize={12} fontFamily="var(--font-mono)" fill="var(--color-fg)" fontWeight={run && f === run.currentFloor ? 700 : undefined}>
+              <text x={LX - 16} y={y(f) + 4} textAnchor="end" fontSize={12} fontFamily="var(--font-num)" fill="var(--color-fg)" fontWeight={run && f === run.currentFloor ? 700 : undefined}>
                 {f}
               </text>
             </g>

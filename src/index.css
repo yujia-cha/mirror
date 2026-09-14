@@ -3,6 +3,23 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
+ * Nunito (SIL OFL, src/assets/fonts/Nunito-OFL.txt) carries every number the app draws. Its round
+ * bowls stay readable at the 9-11px the tier chips and floor cells use, where a plain monospace
+ * face turns into a smudge. Latin only — Hangul falls back per glyph to the sans stack, so a
+ * chip like 「진동 3/5」 gets round digits without changing its Korean.
+ */
+@font-face {
+  font-family: 'Nunito';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  /* Relative so Vite fingerprints it and the GitHub Pages sub-path build rewrites it too. */
+  src: url('./assets/fonts/nunito-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/*
  * Grey-only palette (docs/design/ui-redesign.md). Acquisition certainty and state are told apart
  * by fill, dash and weight — never by hue. Hue is reserved for gift icons: the keyword badge and
  * the judgement ring. Dark mode swaps the same tokens on `.dark`.
@@ -43,6 +60,8 @@
 
   --font-sans: 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  /* Every number in the app. Swap this one line to try another face. */
+  --font-num: 'Nunito', var(--font-mono);
   --text-xs: 11px;
   --text-xs--line-height: 1.4;
   --text-sm: 13px;

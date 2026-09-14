@@ -20,6 +20,7 @@ import { loadGameDataFromDisk } from '../src/core/data/node.ts';
 import { buildIndexes, defaultOptions, planAlternatives, planRoute } from '../src/core/index.ts';
 import type { Keyword } from '../src/core/schema.ts';
 import type { PlanInput, PlanOptions } from '../src/core/types.ts';
+import { plannedGifts, type FusionGoalMap, type PriorityMap } from '../src/app/lib/plan-input.ts';
 import { flagValue, hasFlag } from './lib/io.ts';
 
 function numbers(text: string | undefined): number[] {
@@ -46,17 +47,31 @@ function parsePins(text: string | undefined): Record<number, number> {
   return out;
 }
 
-/** Accept a share hash from the web app so a user report can be reproduced verbatim. */
+/**
+ * Accept a share hash from the web app so a user report can be reproduced verbatim.
+ *
+ * The payload carries the app's own 반드시/보통 map and its 「재료도 목표」 choices, so the wanted
+ * list is built with the very function the app uses. Reading them matters: a plan where one gift
+ * is 반드시 and the rest are 보통 is not the same input as one where every gift is 반드시, and a
+ * report about priority cannot be reproduced without it.
+ */
 function fromShare(hash: string): PlanInput | null {
   const payload = hash.replace(/^#?s=/, '');
   const json = lzString.decompressFromEncodedURIComponent(payload);
   if (!json) return null;
   try {
-    const parsed = JSON.parse(json) as { deck?: number[]; wanted?: number[]; options?: Partial<PlanOptions> };
+    const parsed = JSON.parse(json) as {
+      deck?: number[];
+      deployed?: number[];
+      wanted?: number[];
+      priority?: PriorityMap;
+      fusionGoal?: FusionGoalMap;
+      options?: Partial<PlanOptions>;
+    };
     return {
       deck: parsed.deck ?? [],
-      wanted: (parsed.wanted ?? []).map((giftId) => ({ giftId, required: true })),
-      options: { ...defaultOptions(), ...parsed.options },
+      wanted: plannedGifts(parsed.wanted ?? [], parsed.priority ?? {}, parsed.fusionGoal ?? {}),
+      options: { ...defaultOptions(), ...parsed.options, ...(parsed.deployed ? { deployed: parsed.deployed } : {}) },
     };
   } catch {
     return null;

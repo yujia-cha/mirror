@@ -38,7 +38,7 @@ function ExclusiveIcons({ packId, ctx, exclusivesOf, justify, testId }: { packId
           </span>
         );
       })}
-      {more > 0 ? <span className="inline-flex h-5 items-center px-1 font-mono text-[10px] text-fg-3">{t('stageExclusiveMore', ctx.lang, { n: more })}</span> : null}
+      {more > 0 ? <span className="inline-flex h-5 items-center px-1 font-num text-[10px] text-fg-3">{t('stageExclusiveMore', ctx.lang, { n: more })}</span> : null}
     </div>
   );
 }
@@ -147,7 +147,7 @@ export function OtherPacks({
   return (
     <details className="rounded-md border border-line bg-surface" data-testid="other-packs">
       <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-fg-2">
-        {t('stageOtherPacks', lang)} <span className="font-mono text-xs text-fg-3">{packs.length}</span>
+        {t('stageOtherPacks', lang)} <span className="font-num text-xs text-fg-3">{packs.length}</span>
       </summary>
       <div className="flex flex-col gap-2 border-t border-line px-3 py-2">
         <label className="inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-surface-2 px-2.5 text-xs text-fg-2">

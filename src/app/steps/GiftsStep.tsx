@@ -176,7 +176,7 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
           className="flex h-9 w-full items-center justify-between border-b border-line bg-surface-2 px-3 text-left"
         >
           <span className="flex items-center gap-2 text-sm font-semibold">
-            {t(titleKey, lang)} <span className="font-mono text-xs text-fg-3">{entries.length}</span>
+            {t(titleKey, lang)} <span className="font-num text-xs text-fg-3">{entries.length}</span>
             {shut && chosen > 0 ? <Badge tone="neutral">{t('giftsSelected', lang, { n: chosen })}</Badge> : null}
           </span>
           <span className="text-fg-3">{shut ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</span>

@@ -72,15 +72,15 @@ export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
       ).map(([key, value]) => (
         <span key={key} className="inline-flex items-baseline gap-1.5">
           <span className="text-xs text-fg-3">{t(key, lang)}</span>
-          <span className="font-mono text-lg font-bold text-fg">{value}</span>
+          <span className="font-num text-lg font-bold text-fg">{value}</span>
         </span>
       ))}
       {failedCount > 0 ? <Badge tone="alert">{t('runFailedCount', lang, { n: failedCount })}</Badge> : null}
       {shown.unresolved.length > 0 ? <Badge tone="neutral">{t('routeUnresolvedCount', lang, { n: shown.unresolved.length })}</Badge> : null}
       {capped ? <Badge tone="approx">{t('routeApprox', lang)}</Badge> : null}
-      <Button variant="ghost" size="sm" className="ml-auto" onClick={copy} ariaLabel={t('routeCopy', lang)}>
+      {/* Icon only: the toast after a press says what happened, so the label lives in the tooltip. */}
+      <Button variant="ghost" size="sm" className="ml-auto" onClick={copy} title={t('routeCopy', lang)} ariaLabel={t('routeCopy', lang)}>
         <Copy size={13} aria-hidden />
-        {t('routeCopy', lang)}
       </Button>
     </div>
   );
@@ -106,7 +106,7 @@ export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
             >
               {gift ? <GiftIcon gift={gift} size={20} lang={lang} /> : null}
               <span>{gift ? t('routeVariantWithout', lang, { name: giftName(gift.id) }) : t('routeVariantAll', lang)}</span>
-              <span className="font-mono opacity-80">
+              <span className="font-num opacity-80">
                 {entry.plan.stats.coveredWanted}/{entry.plan.stats.totalWanted}
               </span>
             </button>
@@ -162,7 +162,7 @@ export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
                 <GiftIcon gift={gift} size={44} judgement={judgements.get(giftId) ?? null} title={giftTitle(giftId)} lang={lang} />
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="line-clamp-2 text-sm font-medium leading-tight">{giftName(giftId)}</span>
-                  <span className="font-mono text-xs text-fg-2">{judgeable ? `${worst.have}/${worst.need}` : t('giftUnjudgeable', lang)}</span>
+                  <span className="font-num text-xs text-fg-2">{judgeable ? `${worst.have}/${worst.need}` : t('giftUnjudgeable', lang)}</span>
                   <span className="sr-only">{reports.map((r) => conditionText(r, data.enums, lang)).join(' / ')}</span>
                 </span>
               </li>
