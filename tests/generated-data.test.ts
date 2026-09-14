@@ -227,6 +227,22 @@ describe('identities', () => {
     expect(info?.specialSkills).toBeGreaterThan(0);
   });
 
+  it.each([
+    [10611, { skills: 5, specialSkills: 0 }, '마침표 사무소 대표 — 탄환'],
+    [10414, { skills: 0, specialSkills: 2 }, '잔향・외로움 — 탄환 - 고독뿐'],
+    [10711, { skills: 3, specialSkills: 1 }, '마침표 해결사 — 탄환 + 로직 아틀리에'],
+  ])('identity %i spends ammo (%o, %s)', (id, counts) => {
+    expect(identityById.get(id)!.keywords.Bullet).toEqual(counts);
+  });
+
+  it('keeps 탄환 out of the gift keywords, since no gift, pack or start pool has it', () => {
+    expect(enums.keywords.map((k) => k.id)).not.toContain('Bullet');
+    expect(enums.identityOnlyKeywords).toEqual([{ id: 'Bullet', name: { ko: '탄환', en: 'Ammo' } }]);
+    expect(gifts.some((g) => (g.keyword as string) === 'Bullet')).toBe(false);
+    expect(packs.some((p) => (p.keywordAffinity as string | null) === 'Bullet')).toBe(false);
+    expect(Object.keys(rules.startGift.poolsByKeyword)).not.toContain('Bullet');
+  });
+
   it('keeps a 특수-only inflictor apart from the base keyword', () => {
     expect(identityById.get(10504)!.keywords.Laceration).toEqual({ skills: 0, specialSkills: 2 });
     expect(identityById.get(10614)!.keywords.Charge!.skills).toBeGreaterThan(0);

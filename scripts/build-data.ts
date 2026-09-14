@@ -23,6 +23,7 @@ import {
   readObservationData,
   readPersonalities,
   readPersonalitySkills,
+  readBattleKeywordNames,
   readPersonalityTexts,
   readSpecialVariants,
   readStages,
@@ -44,6 +45,7 @@ import {
 } from './lib/derive.ts';
 import { parseConditions } from './lib/parse-conditions.ts';
 import {
+  IDENTITY_KEYWORDS,
   KEYWORDS,
   STATUS_KEYWORDS,
   SINS,
@@ -537,12 +539,20 @@ const identities: Identity[] = rawPersonalities
 // ---------------------------------------------------------------------------
 
 const statusSet = new Set<string>(STATUS_KEYWORDS);
+const giftKeywordSet = new Set<string>(KEYWORDS);
+// 탄환 has no gift category row, so its name comes from the battle keywords instead.
+const battleKeywordKo = readBattleKeywordNames('KR');
+const battleKeywordEn = readBattleKeywordNames('EN');
 
 const enums: Enums = {
   keywords: KEYWORDS.map((id) => ({
     id,
     name: loc(categoryKo.get(id) ?? id, categoryEn.get(id) ?? id),
     status: statusSet.has(id),
+  })),
+  identityOnlyKeywords: IDENTITY_KEYWORDS.filter((id) => !giftKeywordSet.has(id)).map((id) => ({
+    id,
+    name: loc(battleKeywordKo.get(id) ?? id, battleKeywordEn.get(id) ?? id),
   })),
   factions: [...factionNameById]
     .map(([id, name]) => ({ id, name, deprecated: factionDeprecated.has(id) }))
@@ -739,6 +749,7 @@ console.log(`  identity keywords: ${summarize(identities.map((i) => i.keywordSou
 console.log(
   `  특수 variants: ${specialVariants.size} buff(s), ${identities.filter((i) => Object.values(i.keywords).some((k) => k.specialSkills > 0)).length} identities`,
 );
+console.log(`  탄환 identities: ${identities.filter((i) => i.keywords.Bullet).length}`);
 if (missingText.length > 0) {
   console.log(`  ${missingText.length} gift(s) without Korean text: ${missingText.slice(0, 10).join(', ')}`);
 }

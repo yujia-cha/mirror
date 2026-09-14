@@ -529,6 +529,15 @@
       }
     }
   ],
+  "identityOnlyKeywords": [
+    {
+      "id": "Bullet",
+      "name": {
+        "en": "Ammo",
+        "ko": "탄환"
+      }
+    }
+  ],
   "keywords": [
     {
       "id": "Combustion",

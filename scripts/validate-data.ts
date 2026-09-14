@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import type { z } from 'zod';
 import { hasFlag, readJson, readJsonIfExists, repoPath } from './lib/io.ts';
 import {
+  STATUS_KEYWORDS,
   enumsSchema,
   giftsFileSchema,
   identitiesFileSchema,
@@ -72,7 +73,7 @@ const identities: Identity[] | null = parseFile('identities.json', identitiesFil
 
 if (meta && enums && rules && gifts && packs && identities) {
   checkReferences(gifts, packs, identities, enums);
-  checkInvariants(meta, rules, gifts, packs, identities);
+  checkInvariants(meta, rules, gifts, packs, identities, enums);
   checkCuratedOverrides(gifts, packs, identities);
   checkFreshness();
 }
@@ -157,6 +158,7 @@ function checkInvariants(
   gifts: Gift[],
   packs: ThemePack[],
   identities: Identity[],
+  enums: Enums,
 ): void {
   const selectable = packs.filter((p) => p.selectable);
 
@@ -337,6 +339,26 @@ function checkInvariants(
   // description format changed, not that the game dropped the mechanic.
   if (!identities.some((i) => Object.values(i.keywords).some((k) => k.specialSkills > 0))) {
     strict('invariant', 'no identity inflicts a 특수 keyword variant; check readSpecialVariants() against BattleKeywords.json');
+  }
+
+  // 탄환 is read off the `[necessary:Bullet:n]` requirement tokens in skill scripts. None at all
+  // means that syntax changed, not that the game dropped ammo.
+  if (!identities.some((i) => i.keywords.Bullet)) {
+    strict('invariant', 'no identity uses 탄환; check the skill requirement tokens in scripts/lib/derive.ts');
+  }
+
+  for (const entry of enums.identityOnlyKeywords) {
+    if (entry.name.ko === entry.id || entry.name.en === entry.id) {
+      err('invariant', `identity-only keyword ${entry.id} has no localized name; check BattleKeywords.json`);
+    }
+  }
+
+  // `dominantKeyword` only ever offers a status keyword as an automatic start, because these are
+  // the pools that exist. A missing pool would silently hand the player no starting gift.
+  for (const keyword of STATUS_KEYWORDS) {
+    if ((rules.startGift.poolsByKeyword[keyword] ?? []).length === 0) {
+      strict('invariant', `status keyword ${keyword} has no starting gift pool`);
+    }
   }
 
   const noKeyword = identities.filter((i) => i.keywordSource === 'none');

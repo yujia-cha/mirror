@@ -2,8 +2,15 @@
  * Derivations shared by the build script and its tests: pack grouping, floor availability,
  * gift tiers, and identity keywords.
  */
-import type { AttackType, Difficulty, PackGroup, Sin, StatusKeyword } from '../../src/core/schema.ts';
-import { STATUS_KEYWORDS } from '../../src/core/schema.ts';
+import type {
+  AttackType,
+  Difficulty,
+  IdentityKeywordId,
+  PackGroup,
+  Sin,
+  StatusKeyword,
+} from '../../src/core/schema.ts';
+import { IDENTITY_KEYWORDS, STATUS_KEYWORDS } from '../../src/core/schema.ts';
 import type { RawPersonality, RawSkill, RawThemePack } from './raw.ts';
 
 /** `dungeonIdx` in the static data maps onto the four run modes. */
@@ -65,6 +72,15 @@ export const STATUS_KEYWORD_BY_KO: Record<string, StatusKeyword> = {
   충전: 'Charge',
 };
 
+/**
+ * The same map plus 탄환, for reading identity keywords. Pack dev names keep using the status-only
+ * map above so a pack can never end up with a 탄환 affinity.
+ */
+export const IDENTITY_KEYWORD_BY_KO: Record<string, IdentityKeywordId> = {
+  ...STATUS_KEYWORD_BY_KO,
+  탄환: 'Bullet',
+};
+
 const SIN_BY_KO: Record<string, Sin> = {
   분노: 'WRATH',
   색욕: 'LUST',
@@ -117,23 +133,39 @@ export function sinnerIdFromIdentityId(id: number): number {
 
 const STATUS_SET = new Set<string>(STATUS_KEYWORDS);
 
-export type IdentityKeywordCounts = Partial<Record<StatusKeyword, { skills: number; specialSkills: number }>>;
+export type IdentityKeywordCounts = Partial<
+  Record<IdentityKeywordId, { skills: number; specialSkills: number }>
+>;
 
 /**
- * Status keywords one skill inflicts, split into the base keyword (`buffKeyword: "Charge"`) and
- * the 특수 variants.
+ * A skill states the buff it needs inside its script name: `UseBullet[necessary:BulletGodok:1]`,
+ * `DmgUpByBullet1091607_50[optional:AccelBullet:::…]`. This is the only place ammo is named, since
+ * 탄환 is spent rather than inflicted and so never appears as a `buffKeyword`.
+ */
+const SKILL_REQUIREMENT = /\[(?:necessary|optional):([A-Za-z0-9_]+)/g;
+
+/** Every ammo buff the game ships carries `Bullet` in its id: 호표탄, 포자탄, LCA 균열탄, 탄환 - 고독 … */
+const AMMO_BUFF_ID = /Bullet/;
+
+/**
+ * Keywords one skill uses, split into the base keyword (`buffKeyword: "Charge"`, ammo required as
+ * plain `Bullet`) and the 특수 variants.
  *
- * A variant shows up either as a `buffKeyword` of its own (`NailPersonality`, `DarkFlame`) or —
+ * A 특수 variant shows up either as a `buffKeyword` of its own (`NailPersonality`, `DarkFlame`) or —
  * for 생체 재료 (특수 충전) — only in the names of the ability scripts that grant and spend it
  * (`MarkGiveChargeBodyArtTurn`, `MarkSubKeywordChargeBodyArt`), so a script name containing the
  * buff id counts too. Variant ids come from `readSpecialVariants()`, never from a hard-coded list.
+ *
+ * 탄환 is different: it is a resource the skill spends, so it is read off the requirement token
+ * instead. An ammo id the game never localizes (`BulletLament`, `AccelBullet`) is not marked
+ * 특수 anywhere, so it counts as plain 탄환.
  */
 function keywordsInSkill(
   skill: RawSkill,
-  specialVariants: Map<string, StatusKeyword>,
-): { base: Set<StatusKeyword>; special: Set<StatusKeyword> } {
-  const base = new Set<StatusKeyword>();
-  const special = new Set<StatusKeyword>();
+  specialVariants: Map<string, IdentityKeywordId>,
+): { base: Set<IdentityKeywordId>; special: Set<IdentityKeywordId> } {
+  const base = new Set<IdentityKeywordId>();
+  const special = new Set<IdentityKeywordId>();
   const visit = (node: unknown): void => {
     if (Array.isArray(node)) {
       for (const item of node) visit(item);
@@ -150,6 +182,10 @@ function keywordsInSkill(
       const script = obj['scriptName'];
       if (typeof script === 'string') {
         for (const [id, variant] of specialVariants) if (script.includes(id)) special.add(variant);
+        for (const [, required] of script.matchAll(SKILL_REQUIREMENT)) {
+          if (!required || !AMMO_BUFF_ID.test(required)) continue;
+          if (!specialVariants.has(required)) base.add('Bullet');
+        }
       }
       for (const value of Object.values(obj)) visit(value);
     }
@@ -159,7 +195,7 @@ function keywordsInSkill(
 }
 
 /**
- * Which status keywords an identity's base attack skills inflict, and how many skills do it.
+ * Which keywords an identity's base attack skills use, and how many skills do it.
  *
  * `attributeList` holds exactly the identity's base attack skills, so this counts attack skills
  * only — which is the unit conditional gifts measure ("부여하는 공격 스킬을 보유한 인격").
@@ -172,10 +208,10 @@ function keywordsInSkill(
 export function deriveIdentityKeywords(
   personality: RawPersonality,
   skills: Map<number, RawSkill>,
-  specialVariants: Map<string, StatusKeyword> = new Map(),
+  specialVariants: Map<string, IdentityKeywordId> = new Map(),
 ): IdentityKeywordCounts {
-  const baseCounts = new Map<StatusKeyword, number>();
-  const specialCounts = new Map<StatusKeyword, number>();
+  const baseCounts = new Map<IdentityKeywordId, number>();
+  const specialCounts = new Map<IdentityKeywordId, number>();
   for (const entry of personality.attributeList ?? []) {
     const skill = skills.get(entry.skillId);
     if (!skill) continue;
@@ -185,7 +221,7 @@ export function deriveIdentityKeywords(
     for (const kw of found.special) specialCounts.set(kw, (specialCounts.get(kw) ?? 0) + 1);
   }
   const out: IdentityKeywordCounts = {};
-  for (const kw of STATUS_KEYWORDS) {
+  for (const kw of IDENTITY_KEYWORDS) {
     const n = baseCounts.get(kw) ?? 0;
     const s = specialCounts.get(kw) ?? 0;
     if (n + s > 0) out[kw] = { skills: n, specialSkills: s };

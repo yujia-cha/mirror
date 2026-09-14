@@ -481,6 +481,24 @@ describe('DeckStep', () => {
     for (const option of options) expect(option.textContent).not.toMatch(/충전\s*\d/);
   });
 
+  it('shows 탄환 on the identities that spend ammo, marking the 특수 ones', async () => {
+    const user = userEvent.setup();
+    // 10611 마침표 사무소 대표 spends plain 탄환, 10414 잔향・외로움 only 탄환 - 고독,
+    // 10711 마침표 해결사 both.
+    useApp.getState().setDeck([10611, 10414, 10711], 3);
+    renderDeck();
+    const chip = (title: RegExp) => screen.getAllByTitle(title)[0]!;
+    expect(chip(/^탄환 소모/).textContent).toBe('탄환');
+    expect(chip(/^특수 탄환만 소모/).textContent).toBe('특수 탄환');
+    expect(chip(/^탄환 또는 특수 탄환 소모/).textContent).toBe('탄환(특수)');
+    // 탄환 is a keyword of the formation like any other, so the summary counts it.
+    expect(screen.getAllByTitle(/출격 \d+명 · 편성 전체 \d+명/).map((el) => el.textContent)).toEqual(
+      expect.arrayContaining([expect.stringContaining('탄환')]),
+    );
+    await user.type(screen.getByLabelText(/전체 인격 검색/), '탄환');
+    expect(within(screen.getByRole('listbox')).getAllByRole('option')).toHaveLength(13);
+  });
+
   it('refuses an eighth deployed identity', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
     renderDeck();
@@ -567,6 +585,14 @@ describe('GiftsStep', () => {
     const tiers = within(tile(9088)).getAllByText('T4'); // the tier survives only as the icon's corner chip
     expect(tiers).toHaveLength(1);
     expect(within(tile(9088)).getByTestId('gift-icon')).toContainElement(tiers[0]!);
+  });
+
+  it('keeps 탄환 out of the gift keyword filter', () => {
+    renderGifts();
+    const select = screen.getByLabelText('키워드') as HTMLSelectElement;
+    const labels = [...select.options].map((o) => o.textContent);
+    expect(labels).toContain('화상');
+    expect(labels).not.toContain('탄환');
   });
 
   it('shows the deciding condition as a count and folds every section', async () => {
