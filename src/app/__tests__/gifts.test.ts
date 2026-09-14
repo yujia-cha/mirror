@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { loadGameDataFromDisk } from '../../core/data/node.ts';
 import { analyseDeck, buildIndexes, evaluateConditions } from '../../core/index.ts';
 import { conditionShort, decidingReport } from '../lib/gift-condition.ts';
-import { entanglements } from '../lib/entangle.ts';
+import { blockedGifts, entanglements } from '../lib/entangle.ts';
 import { classifyGift } from '../lib/gift-priority.ts';
 
 const data = loadGameDataFromDisk();
@@ -49,5 +49,38 @@ describe('entangled goals', () => {
   it('leaves plain drops and lone fusions alone', () => {
     expect(entanglements([9267, 9105, 9142], indexes, SLOTS).size).toBe(0);
     expect(entanglements([9088], indexes, SLOTS).size).toBe(0);
+  });
+});
+
+describe('blocked gifts', () => {
+  it('blocks what a goal already carries, across keywords', () => {
+    // 데스페라도(관통) = 가시 올가미 + 부서진 소총 + 노이즈 섞인 무전기(침잠). Different keywords, so
+    // `upgradeOf` never links them and only the recipe says the second is already in.
+    const blocked = blockedGifts([9235], indexes, SLOTS);
+    expect(blocked.get(9233)).toEqual({ reason: 'included', by: 9235 });
+    expect(blocked.get(9145)).toEqual({ reason: 'included', by: 9235 });
+    // The goal itself stays pickable-off, and an unrelated gift is untouched.
+    expect(blocked.has(9235)).toBe(false);
+    expect(blocked.has(9088)).toBe(false);
+  });
+
+  it('blocks a fusion that would fight a goal over an ingredient', () => {
+    // 장관 = 녹슨 칼자루 + 조각난 칼날, 부동 = 녹슨 칼자루 + 부서진 칼날.
+    const blocked = blockedGifts([9717], indexes, SLOTS);
+    expect(blocked.get(9718)).toEqual({ reason: 'entangled', by: 9717 });
+    expect(blocked.get(9713)).toEqual({ reason: 'included', by: 9717 });
+  });
+
+  it('leaves a gift already chosen alone, and says 포함 before 얽힘', () => {
+    const blocked = blockedGifts([9717, 9718], indexes, SLOTS);
+    expect(blocked.has(9717)).toBe(false);
+    expect(blocked.has(9718)).toBe(false);
+    // 요리 비법 전서 is inside 진혼's recipe, so it reads as 포함, never as a clash.
+    expect(blockedGifts([9088], indexes, SLOTS).get(9157)).toEqual({ reason: 'included', by: 9088 });
+  });
+
+  it('blocks nothing when no goal is a fusion', () => {
+    expect(blockedGifts([], indexes, SLOTS).size).toBe(0);
+    expect(blockedGifts([9267, 9105], indexes, SLOTS).size).toBe(0);
   });
 });

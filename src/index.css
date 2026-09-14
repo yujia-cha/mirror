@@ -4,7 +4,7 @@
 
 /*
  * Grey-only palette (docs/design/ui-redesign.md). Acquisition certainty and state are told apart
- * by fill, dash and weight — never by hue. Hue is reserved for gift icons: the keyword border and
+ * by fill, dash and weight — never by hue. Hue is reserved for gift icons: the keyword badge and
  * the judgement ring. Dark mode swaps the same tokens on `.dark`.
  */
 @theme {
@@ -24,14 +24,20 @@
   /* Condition judgement, drawn as a ring around a gift icon (met / not met). */
   --color-ok: #2f8f5b;
   --color-bad: #c9403a;
-  /* Gift keyword, drawn as the gift icon's border. Attack types use line shape instead. */
-  --color-kw-combustion: #e0562f;
-  --color-kw-laceration: #c8283c;
+  /*
+   * Gift keyword, drawn as the badge in the icon's bottom-right corner. The three attack types
+   * share `kw-attack` and are told apart by the badge's shape. `kw-outline` is the hairline that
+   * keeps a badge readable over artwork — 호흡 is white, so it needs one.
+   */
+  --color-kw-combustion: #ec6b12;
+  --color-kw-laceration: #e0335f;
   --color-kw-vibration: #d9a400;
-  --color-kw-burst: #8b5cf6;
+  --color-kw-burst: #3f9a33;
   --color-kw-sinking: #2f6fdb;
-  --color-kw-breath: #1aa39a;
+  --color-kw-breath: #ffffff;
   --color-kw-charge: #f0a020;
+  --color-kw-attack: #1c1917;
+  --color-kw-outline: rgb(28 25 23 / 0.35);
   --color-transparent: transparent;
   --color-current: currentColor;
 
@@ -69,13 +75,16 @@
   --color-ink-fg: #1c1917;
   --color-ok: #4cc38a;
   --color-bad: #f0665e;
-  --color-kw-combustion: #f0785a;
-  --color-kw-laceration: #e35a6c;
+  --color-kw-combustion: #f9913f;
+  --color-kw-laceration: #f26a8d;
   --color-kw-vibration: #e8c04a;
-  --color-kw-burst: #a98bfa;
+  --color-kw-burst: #63c05a;
   --color-kw-sinking: #6a9aee;
-  --color-kw-breath: #4cc4bb;
+  --color-kw-breath: #ffffff;
   --color-kw-charge: #f5b95a;
+  /* 검정은 어두운 배경에서 사라지므로 중성 회색으로 뒤집는다. 모양이 셋을 가른다. */
+  --color-kw-attack: #a8a29e;
+  --color-kw-outline: rgb(0 0 0 / 0.5);
   --shadow-card: none;
   --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.5);
 }
