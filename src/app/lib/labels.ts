@@ -47,5 +47,6 @@ export const UNRESOLVED_LABEL: Record<UnresolvedReason, StringKey> = {
   'chance-only': 'unresolvedChance',
   'observation-budget': 'unresolvedObservation',
   'pack-banned': 'unresolvedBanned',
+  'ingredient-shared': 'unresolvedShared',
   failed: 'unresolvedFailed',
 };

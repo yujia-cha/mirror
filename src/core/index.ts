@@ -14,12 +14,14 @@ import type {
   PlanOptions,
   PlanWarning,
   Requirement,
+  RequirementRoute,
   RoutePlan,
   Unresolved,
 } from './types.ts';
 import { analyseDeck, evaluateConditions } from './deck.ts';
 import { expandRequirements, scarcity } from './requirements.ts';
 import { assignPacks, modeForFloor, observationCost, type SearchResult } from './search.ts';
+import { requirementKey } from './requirements.ts';
 import { chooseStart, observable } from './starting.ts';
 
 export { planAlternatives } from './alternatives.ts';
@@ -292,12 +294,16 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
   // route would visit a pack for, or a general drop that observation turns into a certainty.
   const budget = data.rules.giftObservation.max;
   const observed: ObservedGift[] = [];
-  const observe = (giftId: number, pinned: boolean, freedPack: number | null): void => {
-    for (const requirement of requirements) {
-      if (requirement.giftId === giftId && (requirement.via === 'route' || requirement.via === 'generalDrop')) {
-        requirement.via = 'observation';
-      }
-    }
+  /**
+   * Spend one slot. Observation hands the gift over once, so exactly one requirement changes hands
+   * — the copy named by `key` when the caller knows which one is stuck, else the first one.
+   */
+  const observe = (giftId: number, pinned: boolean, freedPack: number | null, key?: string): void => {
+    const open = requirements.filter(
+      (r) => r.giftId === giftId && (r.via === 'route' || r.via === 'generalDrop'),
+    );
+    const target = (key !== undefined ? open.find((r) => requirementKey(r) === key) : undefined) ?? open[0];
+    if (target) target.via = 'observation';
     observed.push({ giftId, pinned, freedPack });
   };
   const canObserve = (giftId: number): boolean => {
@@ -339,16 +345,18 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
     stats,
     options.startKeyword,
   );
-  for (const requirement of requirements) {
-    if (requirement.giftId === start.startGift && (requirement.via === 'route' || requirement.via === 'generalDrop')) {
-      requirement.via = 'startGift';
-    }
-  }
+  // One gift, so one copy: a second requirement for it still has to be routed.
+  const startTarget = requirements.find(
+    (r) => r.giftId === start.startGift && (r.via === 'route' || r.via === 'generalDrop'),
+  );
+  if (startTarget) startTarget.via = 'startGift';
 
   // ---- 6. Recommended observations and the pack search -------------------
-  const runSearch = () =>
+  const runSearch = (ignorePriority: boolean) =>
     assignPacks({
-      requirements: requirements.filter((r) => r.via === 'route'),
+      requirements: requirements
+        .filter((r) => r.via === 'route')
+        .map((r) => (ignorePriority && r.required ? { ...r, required: false } : r)),
       floors,
       options,
       rules: data.rules,
@@ -357,36 +365,65 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
     });
 
   /**
+   * 「반드시」 must never cost coverage.
+   *
+   * The search ranks required misses above every other term, so one required gift can drag the plan
+   * into sacrificing several optional ones — even when the rescue below was going to hand that gift
+   * over through an observation slot anyway. So whenever the priority-aware plan leaves something
+   * out, plan again with every goal equal and take that instead if it covers more AND every
+   * required gift it drops fits in the free slots. Priority still decides the genuine conflicts:
+   * when no slot can save the required gift, the priority-aware plan stands.
+   */
+  const searchWithFallback = (): SearchResult => {
+    const primary = runSearch(false);
+    if (midRun || primary.unresolvedGiftIds.length === 0) return primary;
+    if (!requirements.some((r) => r.via === 'route' && r.required)) return primary;
+    const blind = runSearch(true);
+    if (blind.unresolvedGiftIds.length >= primary.unresolvedGiftIds.length) return primary;
+    const dropped = blind.unresolvedGiftIds.filter((id) =>
+      requirements.some((r) => r.giftId === id && r.required),
+    );
+    if (dropped.length > budget - observed.length || !dropped.every(canObserve)) return primary;
+    return blind;
+  };
+
+  /**
    * The slots the pins left go, in order: to gifts the route cannot reach (directly, or by
    * observing whatever occupies the floor they need); then to gifts whose pack the route would
    * otherwise be forced to visit, so the run keeps more floors free. The search runs at most twice.
    */
-  let search = runSearch();
+  let search = searchWithFallback();
 
   // Observation happens at run start, so mid-run only the pins the player reports still apply.
   // b) rescue: what the search had to leave out
   if (!midRun && search.unresolvedGiftIds.length > 0 && observed.length < budget) {
     // Required gifts are rescued first; among equals the scarcer one, then the lower id.
     const isRequired = (giftId: number): number => (requirements.some((r) => r.giftId === giftId && r.required) ? 1 : 0);
-    const missed = [...search.unresolvedGiftIds].sort(
-      (a, b) => isRequired(b) - isRequired(a) || scarcity(a, indexes) - scarcity(b, indexes) || a - b,
-    );
+    const missed = search.unresolvedKeys
+      .map((key, i) => ({ key, giftId: search.unresolvedGiftIds[i]! }))
+      .sort(
+        (a, b) =>
+          isRequired(b.giftId) - isRequired(a.giftId) ||
+          scarcity(a.giftId, indexes) - scarcity(b.giftId, indexes) ||
+          a.giftId - b.giftId ||
+          a.key.localeCompare(b.key, 'en'),
+      );
     let changed = false;
-    for (const giftId of missed) {
+    for (const { key, giftId } of missed) {
       if (observed.length >= budget) break;
       if (canObserve(giftId)) {
-        observe(giftId, false, null);
+        observe(giftId, false, null, key);
         changed = true;
         continue;
       }
       // Not observable itself: observe the sole occupant of a floor its pack could use instead.
       const swap = soleOccupantToFree(giftId, search, requirements, floors, options, indexes, canObserve);
       if (swap) {
-        observe(swap.giftId, false, swap.packId);
+        observe(swap.giftId, false, swap.packId, swap.key);
         changed = true;
       }
     }
-    if (changed) search = runSearch();
+    if (changed) search = searchWithFallback();
   }
 
   // c) flexibility: free a forced pack whose only job is one observable gift
@@ -394,13 +431,13 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
     const forced = [...search.assignment.entries()]
       .filter(([floor, packId]) => options.pinnedPacks[floor] === undefined && !options.preferredPacks.includes(packId))
       .map(([floor, packId]) => {
-        const pickups = requirements.filter((r) => r.via === 'route' && search.supplier.get(r.giftId) === floor);
+        const pickups = requirements.filter((r) => r.via === 'route' && search.supplier.get(requirementKey(r)) === floor);
         return { floor, packId, pickups };
       })
       .filter(({ pickups }) => pickups.length === 1 && canObserve(pickups[0]!.giftId))
       .map((entry) => {
         const window = windowFor(entry.packId, entry.floor, modeForFloor(entry.floor, options), floors, options, search.assignment, indexes);
-        return { ...entry, width: window.to - window.from, giftId: entry.pickups[0]!.giftId };
+        return { ...entry, width: window.to - window.from, giftId: entry.pickups[0]!.giftId, key: requirementKey(entry.pickups[0]!) };
       })
       .sort(
         (a, b) =>
@@ -411,11 +448,11 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
       );
     const pick = forced[0];
     if (!pick) break;
-    observe(pick.giftId, false, pick.packId);
+    observe(pick.giftId, false, pick.packId, pick.key);
     // Dropping a floor's only requirement lowers the optimum by exactly one pack, so the edited
     // assignment stays optimal without another search.
     search.assignment.delete(pick.floor);
-    search.supplier.delete(pick.giftId);
+    search.supplier.delete(pick.key);
   }
 
   const startObserved = [
@@ -428,21 +465,27 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
   const generalDrops = requirements.filter((r) => r.via === 'generalDrop').map((r) => r.giftId);
 
   // ---- 7. Fusions, and ingredients no longer worth routing for ------------
-  const schedule = (): { fusions: FusionStep[]; obtainedAtFloor: Map<number, number> } => {
-    const obtainedAtFloor = new Map<number, number>();
+  const schedule = (): { fusions: FusionStep[]; obtainedAtFloor: Map<string, number>; resultFloor: Map<number, number> } => {
+    // Keyed by `requirementKey`: two fusions eating the same ingredient get one floor each.
+    const obtainedAtFloor = new Map<string, number>();
     for (const requirement of requirements) {
+      const key = requirementKey(requirement);
       if (requirement.via === 'startGift' || requirement.via === 'observation' || requirement.via === 'owned') {
-        obtainedAtFloor.set(requirement.giftId, 0);
+        obtainedAtFloor.set(key, 0);
       } else if (requirement.via === 'generalDrop') {
-        obtainedAtFloor.set(requirement.giftId, currentFloor);
+        obtainedAtFloor.set(key, currentFloor);
       } else if (requirement.via === 'route') {
-        const floor = search.supplier.get(requirement.giftId);
-        if (floor !== undefined) obtainedAtFloor.set(requirement.giftId, floor);
+        const floor = search.supplier.get(key);
+        if (floor !== undefined) obtainedAtFloor.set(key, floor);
       }
     }
     const fusions: FusionStep[] = [];
+    // A fusion result is not a requirement of its own, so a parent recipe reads it from here.
+    const resultFloor = new Map<number, number>();
+    const floorOf = (ingredient: number, result: number): number | undefined =>
+      obtainedAtFloor.get(requirementKey({ giftId: ingredient, neededFor: result })) ?? resultFloor.get(ingredient);
     for (const fusion of expansion.fusions) {
-      const floorsNeeded = fusion.ingredients.map((id) => obtainedAtFloor.get(id));
+      const floorsNeeded = fusion.ingredients.map((id) => floorOf(id, fusion.result));
       const unreachable = floorsNeeded.some((floor) => floor === undefined);
       const earliestFloor = unreachable ? 0 : Math.max(...(floorsNeeded as number[]), currentFloor);
       fusions.push({
@@ -453,9 +496,9 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
         exceedsShopSlots: fusion.ingredients.length > data.rules.fusion.maxShopSlots,
       });
       // A fusion result can itself be an ingredient, so it becomes available from that floor on.
-      if (!unreachable) obtainedAtFloor.set(fusion.result, earliestFloor);
+      if (!unreachable) resultFloor.set(fusion.result, earliestFloor);
     }
-    return { fusions, obtainedAtFloor };
+    return { fusions, obtainedAtFloor, resultFloor };
   };
   let scheduled = schedule();
 
@@ -493,8 +536,8 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
       const ids: number[] = [];
       for (const requirement of requirements) {
         if (requirement.neededFor !== result || requirement.via !== 'route') continue;
-        if (search.unresolvedGiftIds.includes(requirement.giftId)) continue; // this one is what is missing
-        const floor = search.supplier.get(requirement.giftId);
+        if (search.unresolvedKeys.includes(requirementKey(requirement))) continue; // this one is what is missing
+        const floor = search.supplier.get(requirementKey(requirement));
         if (floor !== undefined && passed.has(floor)) continue; // already picked up on a played floor
         requirement.via = 'dropped';
         ids.push(requirement.giftId);
@@ -502,20 +545,45 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
       if (ids.length > 0) droppedFor.set(result, ids.sort((a, b) => a - b));
     }
     if (droppedFor.size > 0) {
-      search = runSearch();
+      search = searchWithFallback();
       scheduled = schedule();
     }
   }
-  const { fusions, obtainedAtFloor } = scheduled;
+  const { fusions, obtainedAtFloor, resultFloor } = scheduled;
 
   const bannedPacks = new Set(options.bannedPacks);
-  for (const giftId of search.unresolvedGiftIds) {
+  for (const [i, giftId] of search.unresolvedGiftIds.entries()) {
     const gift = indexes.giftById.get(giftId);
     const packs = indexes.packsByGift.get(giftId) ?? [];
     const offeredSomewhere = (packId: number): boolean =>
       floors.some((floor) => (indexes.packsByFloor[modeForFloor(floor, options)].get(floor) ?? []).includes(packId));
     const anySlot = packs.some((packId) => !bannedPacks.has(packId) && offeredSomewhere(packId));
     const onlyBanned = !anySlot && packs.length > 0 && packs.some(offeredSomewhere);
+    /*
+     * A second copy that no second source could cover. The gift itself is reachable — another
+     * requirement for it did get a floor — so `pack-conflict` would send the reader hunting for a
+     * floor clash that is not there. What is missing is the copy, not the pack.
+     */
+    const otherCopyPlanned = requirements.some(
+      (r) =>
+        r.giftId === giftId &&
+        requirementKey(r) !== search.unresolvedKeys[i] &&
+        (r.via !== 'route' || search.supplier.has(requirementKey(r))),
+    );
+    if (otherCopyPlanned) {
+      const eaters = requirements
+        .filter((r) => r.giftId === giftId && r.neededFor !== null)
+        .map((r) => indexes.giftById.get(r.neededFor!)?.name.ko ?? String(r.neededFor));
+      unresolved.push({
+        giftId,
+        reason: 'ingredient-shared',
+        detail: {
+          ko: `${gift?.name.ko ?? giftId}는 한 런에서 한 번만 얻을 수 있는데 ${eaters.join('·')}이(가) 함께 먹습니다. 두 번째 몫을 줄 팩이 더 없습니다.`,
+          en: 'Two fusions eat this ingredient, and no second pack can supply the second copy.',
+        },
+      });
+      continue;
+    }
     unresolved.push({
       giftId,
       reason: anySlot ? 'pack-conflict' : onlyBanned ? 'pack-banned' : 'no-pack-in-range',
@@ -540,6 +608,34 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
               },
     });
   }
+  /*
+   * Two fusions eating one ingredient are planned with a copy each, from different packs (or one
+   * from 기프트 관측). The game will not offer a gift you are already holding, though, so the order
+   * matters in a way no plan can check: fuse the first, which consumes it, and only then does the
+   * second copy come back into the pool. Say so rather than let the route look unconditional.
+   */
+  {
+    const planned = new Set<RequirementRoute>(['route', 'observation', 'startGift', 'generalDrop', 'owned']);
+    const copies = new Map<number, number>();
+    for (const requirement of requirements) {
+      if (!planned.has(requirement.via)) continue;
+      // A routed copy the search could not place is not a copy the run will hold.
+      if (requirement.via === 'route' && !search.supplier.has(requirementKey(requirement))) continue;
+      copies.set(requirement.giftId, (copies.get(requirement.giftId) ?? 0) + 1);
+    }
+    const shared = [...copies].filter(([, n]) => n > 1).map(([giftId]) => giftId).sort((a, b) => a - b);
+    if (shared.length > 0) {
+      warnings.push({
+        code: 'shared-ingredient',
+        giftIds: shared,
+        detail: {
+          ko: `${shared.map((id) => indexes.giftById.get(id)?.name.ko ?? id).join('·')}은(는) 두 조합이 함께 먹습니다. 같은 기프트는 한 번에 하나만 가질 수 있으니, 먼저 조합해 소모한 뒤에야 두 번째 것이 다시 나옵니다.`,
+          en: 'Two fusions eat the same ingredient. A gift you hold is never offered again, so the first fusion has to happen before the second copy can drop.',
+        },
+      });
+    }
+  }
+
   if (search.unplacedPacks.length > 0) {
     warnings.push({
       code: 'pack-option-dropped',
@@ -555,7 +651,7 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
   const pickupsByFloor = new Map<number, FloorPlan['pickups']>();
   for (const requirement of requirements) {
     if (requirement.via !== 'route') continue;
-    const floor = search.supplier.get(requirement.giftId);
+    const floor = search.supplier.get(requirementKey(requirement));
     if (floor === undefined) continue;
     const packId = search.assignment.get(floor);
     const pack = packId !== undefined ? indexes.packById.get(packId) : undefined;
@@ -626,7 +722,12 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
   for (const fusion of fusions) {
     if (!fusion.unreachable) continue;
     const droppedIngredients = droppedFor.get(fusion.result);
-    const missing = fusion.ingredients.filter((id) => !obtainedAtFloor.has(id) && !droppedIngredients?.includes(id));
+    const missing = fusion.ingredients.filter(
+      (id) =>
+        !obtainedAtFloor.has(requirementKey({ giftId: id, neededFor: fusion.result })) &&
+        !resultFloor.has(id) &&
+        !droppedIngredients?.includes(id),
+    );
     unresolved.push({
       giftId: fusion.result,
       reason: 'fusion-ingredient-unresolved',
@@ -790,7 +891,7 @@ function soleOccupantToFree(
   options: PlanOptions,
   indexes: GameIndexes,
   canObserve: (giftId: number) => boolean,
-): { giftId: number; packId: number } | null {
+): { giftId: number; packId: number; key: string } | null {
   const banned = new Set(options.bannedPacks);
   const packs = (indexes.packsByGift.get(giftId) ?? []).filter((id) => !banned.has(id));
   const usable = floors.filter((floor) => {
@@ -802,10 +903,12 @@ function soleOccupantToFree(
     const packId = search.assignment.get(floor);
     if (packId === undefined) continue;
     const pickups = requirements
-      .filter((r) => r.via === 'route' && search.supplier.get(r.giftId) === floor)
-      .map((r) => r.giftId)
-      .sort((a, b) => a - b);
-    if (pickups.length === 1 && canObserve(pickups[0]!)) return { giftId: pickups[0]!, packId };
+      .filter((r) => r.via === 'route' && search.supplier.get(requirementKey(r)) === floor)
+      .sort((a, b) => a.giftId - b.giftId);
+    const only = pickups[0];
+    if (pickups.length === 1 && only && canObserve(only.giftId)) {
+      return { giftId: only.giftId, packId, key: requirementKey(only) };
+    }
   }
   return null;
 }

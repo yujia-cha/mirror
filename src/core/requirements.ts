@@ -77,6 +77,16 @@ function chooseMixedIngredients(gift: Gift, indexes: GameIndexes, stats: DeckSta
 }
 
 /**
+ * What identifies a requirement: the gift AND the fusion it feeds.
+ *
+ * Two fusions that eat the same ingredient are two requirements, not one, because the shop consumes
+ * what it fuses. Every map that says where a gift comes from is keyed by this, never by the gift id
+ * alone — the two copies come from two different floors, and one of them may not be gettable at all.
+ */
+export const requirementKey = (r: Pick<Requirement, 'giftId' | 'neededFor'>): string =>
+  `${r.giftId}:${r.neededFor ?? 'direct'}`;
+
+/**
  * Turn the wanted list into the gifts that must actually be picked up.
  *
  * A fusion result is not obtainable directly, so it is replaced by its ingredients (recursively).
@@ -95,7 +105,7 @@ export function expandRequirements(
   const seenFusions = new Set<number>();
 
   const addRequirement = (giftId: number, required: boolean, neededFor: number | null, via: Requirement['via'] = 'route'): void => {
-    const key = `${giftId}:${neededFor ?? 'direct'}`;
+    const key = requirementKey({ giftId, neededFor });
     const existing = requirements.get(key);
     if (existing) {
       existing.count += 1;

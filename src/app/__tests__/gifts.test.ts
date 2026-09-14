@@ -64,14 +64,16 @@ describe('blocked gifts', () => {
     expect(blocked.has(9088)).toBe(false);
   });
 
-  it('blocks a fusion that would fight a goal over an ingredient', () => {
-    // 장관 = 녹슨 칼자루 + 조각난 칼날, 부동 = 녹슨 칼자루 + 부서진 칼날.
+  it('does not block a fusion that shares an ingredient with a goal', () => {
+    // 장관 = 녹슨 칼자루 + 조각난 칼날, 부동 = 녹슨 칼자루 + 부서진 칼날. Sharing 녹슨 칼자루 is 얽힘,
+    // not a block: two packs (육참골단 and its 복각) can hand over a copy each, and 기프트 관측 a
+    // third. Only what 장관's own recipe eats is 포함.
     const blocked = blockedGifts([9717], indexes, SLOTS);
-    expect(blocked.get(9718)).toEqual({ reason: 'entangled', by: 9717 });
+    expect(blocked.has(9718)).toBe(false);
     expect(blocked.get(9713)).toEqual({ reason: 'included', by: 9717 });
   });
 
-  it('leaves a gift already chosen alone, and says 포함 before 얽힘', () => {
+  it('leaves a gift already chosen alone, and reads a recipe as 포함', () => {
     const blocked = blockedGifts([9717, 9718], indexes, SLOTS);
     expect(blocked.has(9717)).toBe(false);
     expect(blocked.has(9718)).toBe(false);
