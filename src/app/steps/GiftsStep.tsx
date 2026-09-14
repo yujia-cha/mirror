@@ -15,7 +15,7 @@ import { pick, t, type Lang } from '../i18n.ts';
 import { useApp } from '../store.ts';
 import { SIN_LABEL, badgeFor } from '../lib/labels.ts';
 import { prioritiseGifts, type GiftEntry, type GiftGroup } from '../lib/gift-priority.ts';
-import { entanglements } from '../lib/entangle.ts';
+import { blockedGifts, entanglements, ingredientsOf } from '../lib/entangle.ts';
 import { upgradeChildren } from '../lib/upgrade-children.ts';
 import { judgementOf } from '../lib/judgement.ts';
 import { useChipDrag } from '../lib/useChipDrag.ts';
@@ -87,9 +87,12 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
   // 조합 계승: a child (upgradeOf) never stands alone; it hangs under its parent.
   const childrenOf = useMemo(() => upgradeChildren(data), [data]);
 
-  // Two fusion goals can eat the same ingredient; both stay pickable but say so.
+  // Two fusion goals can eat the same ingredient; a state that already holds both still says so.
   const entangled = useMemo(() => entanglements(wanted, indexes, data.rules.fusion.maxShopSlots), [wanted, indexes, data]);
   const entangledIds = useMemo(() => new Set(entangled.keys()), [entangled]);
+  // What the current goals rule out: their own ingredients (포함) and the fusions that would fight
+  // them over one (얽힘).
+  const blocked = useMemo(() => blockedGifts(wanted, indexes, data.rules.fusion.maxShopSlots), [wanted, indexes, data]);
 
   const matchesFilters = (gift: Gift): boolean => {
     const needle = query.trim().toLowerCase();
@@ -125,7 +128,14 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
     return gift ? observable(gift, data.rules) : false;
   };
 
-  const toggle = (gift: Gift): void => toggleWanted(gift.id, (childrenOf.get(gift.id) ?? []).map((g) => g.id));
+  // Choosing a gift absorbs what it already carries: its upgrade children and its whole recipe tree.
+  const toggle = (gift: Gift): void => {
+    const carried = [
+      ...(childrenOf.get(gift.id) ?? []).map((g) => g.id),
+      ...(gift.fusion ? ingredientsOf(gift, indexes, data.rules.fusion.maxShopSlots) : []),
+    ];
+    toggleWanted(gift.id, carried);
+  };
 
   // Observation: the slots take a selected gift from the 「+」 list or from a dragged chip. A drop
   // on a filled slot replaces its gift; a drop elsewhere, or of a gift that cannot be observed,
@@ -173,7 +183,17 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
         </button>
         {shut ? null : (
           <div className={group === 'other' ? 'max-h-[60vh] overflow-y-auto' : undefined} data-testid={group === 'other' ? 'gift-scroller' : undefined}>
-            <GiftTileGrid tiles={tiles} wanted={wanted} entangled={entangledIds} enums={data.enums} lang={lang} onToggle={toggle} onOpen={setDetail} />
+            <GiftTileGrid
+              tiles={tiles}
+              wanted={wanted}
+              entangled={entangledIds}
+              blocked={blocked}
+              giftName={giftName}
+              enums={data.enums}
+              lang={lang}
+              onToggle={toggle}
+              onOpen={setDetail}
+            />
           </div>
         )}
       </Card>

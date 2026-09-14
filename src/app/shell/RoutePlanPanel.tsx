@@ -4,7 +4,7 @@
  * judgements. Wide enough for a phone drawer or a 336px desktop panel.
  */
 import { useRef, useState } from 'react';
-import { Copy, Hourglass, Star, X } from 'lucide-react';
+import { Copy, Star, X } from 'lucide-react';
 import { conflictGroups } from '../../core/index.ts';
 import { pick, t } from '../i18n.ts';
 import { useApp } from '../store.ts';
@@ -15,7 +15,7 @@ import { actionsFor, type UnresolvedAction } from '../lib/unresolved-actions.ts'
 import { GiftIcon } from '../components/GiftIcon.tsx';
 import { MetroMap } from '../components/MetroMap.tsx';
 import { PackConflicts } from '../components/PackConflicts.tsx';
-import { Badge, Button, Card, Notice, SectionTitle, Toast } from '../components/ui.tsx';
+import { Badge, Button, Card, SectionTitle, Toast } from '../components/ui.tsx';
 import { usePlan } from './PlanContext.tsx';
 
 export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
@@ -121,12 +121,6 @@ export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
       </div>
     ) : null;
 
-  const cappedBanner = capped ? (
-    <Notice strong icon={<Hourglass size={14} aria-hidden />}>
-      <b>{t('routeApprox', lang)}.</b> {pick(shown.warnings.find((w) => w.code === 'search-capped')?.detail, lang)}
-    </Notice>
-  ) : null;
-
   const actionLabel = (action: UnresolvedAction): string =>
     action.kind === 'observeGift'
       ? t('actionObserveGift', lang, { name: action.giftId !== undefined ? giftName(action.giftId) : '' })
@@ -183,7 +177,6 @@ export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
     <div className="flex flex-col gap-3" data-testid="route-plan">
       {summary}
       {variantTabs}
-      {cappedBanner}
       <MetroMap plan={shown} ctx={ctx} keywordLabel={keywordLabel} run={{ currentFloor: run.currentFloor }} variant="vertical" detailMode="sheet" />
       <PackConflicts
         groups={groups}

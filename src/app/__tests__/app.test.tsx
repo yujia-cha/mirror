@@ -521,32 +521,37 @@ describe('DeckStep', () => {
 });
 
 describe('GiftIcon', () => {
-  it('draws the keyword as the border (hue, or line shape for an attack type) and the judgement as a ring', () => {
+  it('puts the keyword in a corner badge (hue, or one ink with a shape for an attack type), the tier opposite it, and the judgement as a ring', () => {
     const icon = (id: number, judgement: 'met' | 'unmet' | null = null) => {
       const { unmount } = render(<GiftIcon gift={indexes.giftById.get(id)!} size={32} judgement={judgement} lang="ko" />);
       const el = screen.getByTestId('gift-icon');
-      return { el, unmount };
+      return { el, badge: screen.queryByTestId('gift-keyword'), unmount };
     };
     let r = icon(9088); // 진혼: Combustion
     expect(r.el).toHaveAttribute('data-keyword', 'Combustion');
-    expect(r.el.className).toContain('border-kw-combustion');
-    expect(r.el.className).not.toMatch(/ring-(ok|bad)/);
-    r.unmount();
-    r = icon(9032); // 꿈을 꾸는 전기양: Slash
-    expect(r.el).toHaveAttribute('data-keyword', 'Slash');
-    expect(r.el.className).toContain('border-dashed');
-    expect(r.el.className).not.toContain('border-kw-');
-    r.unmount();
-    r = icon(9012); // 오늘의 표정: Hit
-    expect(r.el.className).toContain('border-double');
-    r.unmount();
-    r = icon(9423); // 깨진 안경: no keyword
-    expect(r.el).toHaveAttribute('data-keyword', 'None');
+    expect(r.badge).toHaveAttribute('data-keyword', 'Combustion');
+    expect(r.badge!.className).toContain('bg-kw-combustion');
+    // The keyword left the border behind; the tile keeps one neutral line.
     expect(r.el.className).toContain('border-line');
     expect(r.el.className).not.toContain('border-kw-');
+    expect(r.el.className).not.toMatch(/ring-(ok|bad)/);
+    // Tier top-left, keyword bottom-right.
+    expect(within(r.el).getByText('T4').className).toContain('top-0');
+    expect(r.badge!.className).toContain('bottom-0.5');
+    r.unmount();
+    r = icon(9032); // 꿈을 꾸는 전기양: Slash — one ink, a diamond
+    expect(r.badge!.className).toContain('bg-kw-attack');
+    expect(r.badge!.className).toContain('rotate-45');
+    r.unmount();
+    r = icon(9012); // 오늘의 표정: Hit — the same ink, a square
+    expect(r.badge!.className).toContain('bg-kw-attack');
+    expect(r.badge!.className).toContain('rounded-none');
+    r.unmount();
+    r = icon(9423); // 깨진 안경: 범용 carries no badge
+    expect(r.el).toHaveAttribute('data-keyword', 'None');
+    expect(r.badge).toBeNull();
     r.unmount();
     r = icon(9088, 'met');
-    expect(r.el.className).toContain('border-kw-combustion');
     expect(r.el.className).toContain('ring-ok');
     r.unmount();
     r = icon(9088, 'unmet');
@@ -614,6 +619,37 @@ describe('GiftsStep', () => {
     expect(screen.queryByTestId('gift-tile')).toBeNull();
     await user.click(screen.getByRole('button', { name: /기타/, expanded: false }));
     expect(tile(9717)).toBeDefined();
+  });
+
+  it('locks what a chosen goal already carries, even when the keywords differ', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    renderGifts();
+    await user.click(screen.getByRole('button', { name: /기타/, expanded: false }));
+    // 노이즈 섞인 무전기(침잠) is an ingredient of 데스페라도(관통); nothing but the recipe says so.
+    expect(tile(9233)).not.toHaveAttribute('data-locked');
+    await user.click(within(tile(9235)).getByRole('button', { name: '데스페라도' }));
+    expect(useApp.getState().wanted).toEqual([9235]);
+    expect(tile(9233)).toHaveAttribute('data-locked');
+    expect(tile(9233)).toHaveAttribute('data-block', 'included');
+    expect(within(tile(9233)).getByRole('button', { name: '노이즈 섞인 무전기' })).toBeDisabled();
+    expect(tile(9233).title).toContain('데스페라도');
+  });
+
+  it('absorbs an ingredient that was already a goal, and locks the fusion that would fight over one', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9233); // the ingredient first
+    renderGifts();
+    await user.click(screen.getByRole('button', { name: /기타/, expanded: false }));
+    await user.click(within(tile(9235)).getByRole('button', { name: '데스페라도' }));
+    expect(useApp.getState().wanted).toEqual([9235]);
+    // 장관 and 부동 both eat 녹슨 칼자루, so choosing one rules the other out.
+    await user.click(within(tile(9717)).getByRole('button', { name: '장관' }));
+    expect(tile(9718)).toHaveAttribute('data-block', 'entangled');
+    expect(within(tile(9718)).getByRole('button', { name: '부동' })).toBeDisabled();
+    expect(tile(9718).title).toContain('장관');
+    expect(useApp.getState().wanted).toEqual([9235, 9717]);
   });
 
   it('marks two goals that eat the same ingredient as 얽힘 and names it in the sheet', async () => {
@@ -1263,7 +1299,7 @@ describe('RunStage', () => {
       </>,
     );
   const header = () => screen.getByTestId('floor-header');
-  const skipFloor = async (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole('button', { name: '다른 팩 입장' }));
+  const skipFloor = async (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole('button', { name: '넘기기' }));
   const lookBack = async (user: ReturnType<typeof userEvent.setup>, floor: number) =>
     user.click(within(header()).getAllByTestId('floor-cell').find((cell) => cell.getAttribute('data-floor') === String(floor))!);
   const pointer = { pointerId: 1, button: 0, clientX: 60, clientY: 200 };
@@ -1273,6 +1309,23 @@ describe('RunStage', () => {
     fireEvent.pointerMove(window, { ...pointer, clientY: pointer.clientY + dy });
     fireEvent.pointerUp(window, { ...pointer, clientY: pointer.clientY + dy });
   };
+
+  it('draws the fifteen floors alike, with no dot for the floors that hold a pack', () => {
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267);
+    renderStage();
+    const cells = within(header()).getAllByTestId('floor-cell');
+    expect(cells).toHaveLength(15);
+    for (const cell of cells) {
+      // The number is all a cell says; the pack stays in the label and the data attribute.
+      expect(cell.textContent).toMatch(/^\d+$/);
+      expect(cell.querySelector('.rounded-full')).toBeNull();
+      // No band shading: 1-5, 6-10 and 11-15 are drawn the same.
+      expect(cell.className).not.toContain('bg-hatch');
+      expect(cell.className).not.toContain('bg-surface-2');
+    }
+    expect(cells.some((cell) => cell.getAttribute('data-pack'))).toBe(true);
+  });
 
   it('asks for goals first, then walks to the recommended pack, enters it, marks its gifts and goes back', async () => {
     const user = userEvent.setup();
@@ -1287,7 +1340,7 @@ describe('RunStage', () => {
     expect(header().textContent).not.toMatch(/Hard|EXTREME|평행중첩/);
     expect(screen.queryByTestId('stage-pack')).toBeNull();
     expect(screen.getByText('계획된 팩 없음')).toBeInTheDocument();
-    expect(screen.getByTestId('other-entry-card')).toHaveTextContent('다른 팩 입장');
+    expect(screen.getByTestId('other-entry-card')).toHaveTextContent('넘기기');
     for (let i = 0; i < 3; i += 1) await skipFloor(user);
     expect(screen.getByTestId('stage-floor')).toHaveTextContent('4');
     expect(useApp.getState().run).toMatchObject({ currentFloor: 4, stageFloor: 4 });
@@ -1402,7 +1455,7 @@ describe('RunStage', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
     useApp.getState().toggleWanted(9267);
     renderStage(true);
-    expect(within(screen.getByTestId('other-entry-card')).getByRole('button', { name: '다른 팩 입장' })).toHaveTextContent('다음 층');
+    expect(within(screen.getByTestId('other-entry-card')).getByRole('button', { name: '넘기기' })).toHaveTextContent('다음 층');
     pull(screen.getByTestId('other-entry-card'), 90);
     expect(useApp.getState().run).toMatchObject({ currentFloor: 2, stageFloor: 2, visits: {} });
     for (let i = 0; i < 2; i += 1) await skipFloor(user);
@@ -1517,7 +1570,7 @@ describe('RunStage', () => {
     expect(useApp.getState().run).toMatchObject({ currentFloor: 16, stageFloor: 15 });
     expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'done');
     // Nothing in the header moves the run any more: the cards and the pack area do.
-    expect(within(header()).queryByRole('button', { name: /다른 팩 입장|다음 층|이전 층/ })).toBeNull();
+    expect(within(header()).queryByRole('button', { name: /넘기기|다음 층|이전 층/ })).toBeNull();
     expect(screen.queryByTestId('other-entry-card')).toBeNull();
     expect(within(screen.getByTestId('stage-done')).queryByRole('button')).toBeNull();
     expect(screen.getByTestId('stage-done')).not.toHaveTextContent('새 런');
@@ -1581,7 +1634,7 @@ describe('RunStage · start-of-run gifts', () => {
   it('takes the record back when a skipped floor 1 is reopened from the strip', async () => {
     const user = userEvent.setup();
     setup();
-    await user.click(screen.getByRole('button', { name: '다른 팩 입장' }));
+    await user.click(screen.getByRole('button', { name: '넘기기' }));
     expect(useApp.getState().run).toMatchObject({ currentFloor: 2, giftStatus: got(PINS), startGifts: PINS });
     await lookBack(user, 1);
     expect(useApp.getState().run).toMatchObject({ currentFloor: 1, stageFloor: 1, giftStatus: {}, startGifts: [] });
@@ -1604,7 +1657,7 @@ describe('RunStage · start-of-run gifts', () => {
   it('leaves a status the player changed by hand alone when the record is taken back', async () => {
     const user = userEvent.setup();
     setup();
-    await user.click(screen.getByRole('button', { name: '다른 팩 입장' }));
+    await user.click(screen.getByRole('button', { name: '넘기기' }));
     act(() => useApp.getState().setGiftStatus(9419, 'failed'));
     await lookBack(user, 1);
     expect(useApp.getState().run.giftStatus).toEqual({ 9419: 'failed' });
@@ -1637,7 +1690,7 @@ describe('GoalsPanel', () => {
   const tileIn = (root: HTMLElement, id: number) => within(root).getAllByTestId('gift-tile').find((el) => el.getAttribute('data-gift') === String(id))!;
   const goalTile = (id: number) => tileIn(goals(), id);
   const stageTile = (id: number) => tileIn(screen.getByTestId('exclusive-gifts'), id);
-  const skipFloor = async (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole('button', { name: '다른 팩 입장' }));
+  const skipFloor = async (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole('button', { name: '넘기기' }));
   /** Walk to floor 4 and enter 화왕지절 (1402), whose exclusive 9267 is the goal. */
   const enter1402 = async (user: ReturnType<typeof userEvent.setup>) => {
     for (let i = 0; i < 3; i += 1) await skipFloor(user);

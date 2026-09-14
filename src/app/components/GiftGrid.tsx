@@ -1,11 +1,15 @@
 /**
  * The gifts to pick from, as tiles rather than rows: portrait, name, and the one condition that
  * decides whether the deck activates it. Pressing the tile makes it a goal; pressing the name
- * opens its sheet. An upgrade child (조합 계승) follows its parent and locks once the parent is a
- * goal, because choosing the parent already carries it.
+ * opens its sheet.
+ *
+ * A tile locks when the goals already settle it: an upgrade child (조합 계승) whose parent is a
+ * goal, a gift some goal's recipe already consumes (포함), or a fusion that would fight a goal
+ * over an ingredient (얽힘). `title` says which goal did it.
  */
 import { CornerDownRight, Check, Link2 } from 'lucide-react';
 import type { Enums, Gift } from '../../core/schema.ts';
+import type { Block } from '../lib/entangle.ts';
 import { t, pick, type Lang } from '../i18n.ts';
 import type { GiftEntry } from '../lib/gift-priority.ts';
 import { conditionShort, decidingReport } from '../lib/gift-condition.ts';
@@ -22,6 +26,8 @@ export function GiftTileGrid({
   tiles,
   wanted,
   entangled,
+  blocked,
+  giftName,
   enums,
   lang,
   onToggle,
@@ -30,6 +36,9 @@ export function GiftTileGrid({
   tiles: GiftTileData[];
   wanted: readonly number[];
   entangled: ReadonlySet<number>;
+  /** Gifts the current goals rule out, and why. */
+  blocked: ReadonlyMap<number, Block>;
+  giftName: (id: number) => string;
   enums: Enums;
   lang: Lang;
   onToggle: (gift: Gift) => void;
@@ -40,11 +49,16 @@ export function GiftTileGrid({
       {tiles.map(({ entry, parent }) => {
         const gift = entry.gift;
         const name = pick(gift.name, lang);
-        const held = parent ? wanted.includes(parent.id) : false;
         const selected = wanted.includes(gift.id);
+        const block = selected ? undefined : blocked.get(gift.id);
+        const held = (parent ? wanted.includes(parent.id) : false) || block !== undefined;
         const report = decidingReport(entry.reports, entry.lack);
         const condition = conditionShort(report, enums, lang);
         const marked = selected || held;
+        const lockedBy = parent && wanted.includes(parent.id) ? t('giftSubOf', lang, { parent: pick(parent.name, lang) }) : undefined;
+        const blockedBy = block
+          ? t(block.reason === 'included' ? 'giftBlockedIncluded' : 'giftBlockedEntangled', lang, { name: giftName(block.by) })
+          : undefined;
         return (
           <div
             key={gift.id}
@@ -55,16 +69,17 @@ export function GiftTileGrid({
             data-gift={gift.id}
             data-selected={selected || undefined}
             data-locked={held || undefined}
-            data-entangled={entangled.has(gift.id) || undefined}
-            title={parent ? t('giftSubOf', lang, { parent: pick(parent.name, lang) }) : undefined}
+            data-block={block?.reason}
+            data-entangled={entangled.has(gift.id) || block?.reason === 'entangled' || undefined}
+            title={blockedBy ?? lockedBy}
           >
             {marked ? (
               <span className="absolute right-0.5 top-0.5 z-10 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-ink text-ink-fg" aria-hidden>
                 <Check size={9} strokeWidth={3} />
               </span>
             ) : null}
-            {entangled.has(gift.id) ? (
-              <span className="absolute left-0.5 top-0.5 z-10 text-fg-2" aria-hidden title={t('giftEntangled', lang)}>
+            {entangled.has(gift.id) || block?.reason === 'entangled' ? (
+              <span className="absolute left-0.5 top-0.5 z-10 text-fg-2" aria-hidden title={blockedBy ?? t('giftEntangled', lang)}>
                 <Link2 size={11} />
               </span>
             ) : null}
@@ -79,6 +94,7 @@ export function GiftTileGrid({
               disabled={held}
               aria-pressed={marked}
               aria-label={name}
+              title={blockedBy ?? lockedBy}
               className="inline-flex disabled:cursor-default"
             >
               <GiftIcon gift={gift} size={32} judgement={judgementOf(entry.reports)} lang={lang} />
