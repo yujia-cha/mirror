@@ -71,7 +71,7 @@ npm run route -- --deck 10101,... --want 9088,... --floors 1-5 --difficulty hard
 
 작업 성격에 맞는 서브에이전트를 쓴다: `game-data-researcher`(규칙·데이터 출처 조사), `data-pipeline-engineer`(scripts·data), `route-algorithm-engineer`(src/core), `frontend-engineer`(src/app), `qa-reviewer`(푸시 전 리뷰).
 
-게임 데이터나 루트 로직을 건드리기 전에 `md-domain` 스킬을 읽는다. 데이터 갱신은 `update-game-data`, 검증 실패는 `validate-data`, 보정 추가는 `add-curated-override`, 루트가 이상할 때는 `route-debug`, 배포는 `deploy`.
+루트 계산의 단계별 설명은 `docs/route-algorithm.md`에 있다(사용자용, 한국어). 게임 데이터나 루트 로직을 건드리기 전에 `md-domain` 스킬을 읽는다. 데이터 갱신은 `update-game-data`, 검증 실패는 `validate-data`, 보정 추가는 `add-curated-override`, 루트가 이상할 때는 `route-debug`, 배포는 `deploy`.
 
 ## 커밋
 

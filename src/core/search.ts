@@ -124,11 +124,20 @@ export function assignPacks(input: SearchInput): SearchResult {
     candidates.push({ giftId: requirement.giftId, packId: null, required: requirement.required, slots });
   }
 
-  // Most constrained first: fewest slots, required before optional, then id for determinism.
+  /*
+   * Most constrained first: fewest slots, then required before optional, then id for determinism.
+   *
+   * Constrainedness has to come first. The search is capped, so the order it visits candidates in
+   * decides which local optimum it settles on, and "fewest slots first" is what lets it place the
+   * tight gifts while the board is still open. Letting one `required` candidate jump the queue
+   * regardless of how loose it is used to make a single 반드시 gift *lower* the total coverage.
+   * Priority is not enforced here at all: `better()` compares `missedRequired` before everything
+   * else, so a plan that drops a required gift can never win however it was reached.
+   */
   const order = (c: Candidate): number => c.giftId ?? c.packId ?? 0;
   candidates.sort(
     (a, b) =>
-      Number(b.required) - Number(a.required) || a.slots.length - b.slots.length || order(a) - order(b),
+      a.slots.length - b.slots.length || Number(b.required) - Number(a.required) || order(a) - order(b),
   );
 
   const best = {

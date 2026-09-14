@@ -32,10 +32,10 @@ export function FloorHeader({ mode }: { mode: StageMode }) {
     <div className="flex flex-col gap-3" data-testid="floor-header">
       <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
         <div className="flex items-baseline gap-2">
-          <span className="font-mono text-4xl font-bold leading-none text-fg" data-testid="stage-floor">
+          <span className="font-num text-4xl font-bold leading-none text-fg" data-testid="stage-floor">
             {floor}
           </span>
-          <span className="font-mono text-sm text-fg-3">{t('stageOf', lang)}</span>
+          <span className="font-num text-sm text-fg-3">{t('stageOf', lang)}</span>
         </div>
         {entered !== undefined ? <Badge tone="sure">{packName(entered)}</Badge> : modeBadge(mode, lang)}
       </div>
@@ -62,7 +62,7 @@ export function FloorHeader({ mode }: { mode: StageMode }) {
                   f === floor ? 'border-ink ring-1 ring-ink' : 'border-line'
                 } ${state === 'entered' ? 'bg-ink text-ink-fg' : state === 'skipped' ? 'bg-surface-3 text-fg-3' : 'bg-surface text-fg-2'} disabled:cursor-default disabled:opacity-60`}
               >
-                <span className="font-mono">{f}</span>
+                <span className="font-num">{f}</span>
               </button>
             </li>
           );

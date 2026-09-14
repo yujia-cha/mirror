@@ -106,7 +106,7 @@ export function GiftIcon({
         </span>
       ) : null}
       {size >= 32 && gift.tier !== null ? (
-        <span className="absolute left-0 top-0 rounded-br-sm bg-surface px-0.5 font-mono text-[9px] leading-[11px] text-fg-2">T{gift.tier}</span>
+        <span className="absolute left-0 top-0 rounded-br-sm bg-surface px-0.5 font-num text-[9px] leading-[11px] text-fg-2">T{gift.tier}</span>
       ) : null}
       {badge ? (
         <span

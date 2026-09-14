@@ -149,7 +149,7 @@ export function GiftDetailSheet({
               const extra = reachedTierText(report, lang);
               return (
                 <div key={i} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
-                  <span className={`font-mono font-semibold ${met ? 'text-ok' : 'text-bad'}`}>{conditionShort(report, data.enums, lang)}</span>
+                  <span className={`font-num font-semibold ${met ? 'text-ok' : 'text-bad'}`}>{conditionShort(report, data.enums, lang)}</span>
                   <span className="text-fg-3">{conditionText(report, data.enums, lang)}</span>
                   {extra ? <span className="text-fg-3">{extra}</span> : null}
                 </div>
@@ -181,7 +181,7 @@ export function GiftDetailSheet({
           <details className="overflow-hidden rounded-sm border border-line" data-testid="gift-recipe">
             <summary className="cursor-pointer bg-surface-2 px-2.5 py-1.5 text-xs font-semibold text-fg-2">
               {t('giftMaterials', lang)}
-              {gift.fusion?.recipes[0] ? <span className="ml-1.5 font-mono text-[10px] font-normal text-fg-3">{gift.fusion.recipes[0].ingredients.length}</span> : null}
+              {gift.fusion?.recipes[0] ? <span className="ml-1.5 font-num text-[10px] font-normal text-fg-3">{gift.fusion.recipes[0].ingredients.length}</span> : null}
             </summary>
             <Recipe gift={gift} data={data} indexes={indexes} lang={lang} />
             {selected ? (

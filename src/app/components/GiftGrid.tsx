@@ -108,7 +108,7 @@ export function GiftTileGrid({
             >
               {name}
             </button>
-            <span className={`min-h-[13px] font-mono text-[10px] leading-[13px] ${report?.satisfied ? 'text-fg' : 'text-fg-3'}`}>{condition ?? ''}</span>
+            <span className={`min-h-[13px] font-num text-[10px] leading-[13px] ${report?.satisfied ? 'text-fg' : 'text-fg-3'}`}>{condition ?? ''}</span>
           </div>
         );
       })}

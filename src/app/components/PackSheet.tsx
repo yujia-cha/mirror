@@ -223,7 +223,7 @@ export function PackSheetBody({ packId, ctx }: { packId: number; ctx: PackContex
         </div>
       </div>
       <div className="text-xs font-medium text-fg-2">
-        {t('packGifts', ctx.lang)} <span className="font-mono text-fg-3">{gifts.length}</span>
+        {t('packGifts', ctx.lang)} <span className="font-num text-fg-3">{gifts.length}</span>
       </div>
       <ul className="divide-y divide-line border-t border-line">
         {gifts.map((id) => (

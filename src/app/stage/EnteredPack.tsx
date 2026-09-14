@@ -80,7 +80,7 @@ export function PackArea({ packId, floor, closing = false }: { packId: number; f
             <div className="flex min-w-0 flex-col gap-2">
               <div className="flex flex-wrap items-baseline gap-2">
                 <span className="text-sm font-semibold">{t('stageExclusives', lang)}</span>
-                <span className="font-mono text-xs text-fg-3">{exclusives.length}</span>
+                <span className="font-num text-xs text-fg-3">{exclusives.length}</span>
                 {goalCount > 0 ? <span className="text-xs text-fg-2">{`${t('stageGoalsFirst', lang)} ${goalCount}`}</span> : null}
               </div>
               {exclusives.length === 0 ? (

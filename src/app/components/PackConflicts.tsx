@@ -75,7 +75,7 @@ export function PackConflicts({ groups, others, ctx, priorityOf, setPriority, re
       <div className="flex min-h-9 flex-wrap items-center gap-1.5 border-b border-line px-3 py-1.5">
         <TriangleAlert size={14} aria-hidden />
         <span className="text-sm font-semibold">
-          {t('routeUnresolved', lang)} <span className="font-mono text-xs text-fg-3">{total}</span>
+          {t('routeUnresolved', lang)} <span className="font-num text-xs text-fg-3">{total}</span>
         </span>
         {groups.length > 0 ? <span className="text-xs text-fg-3">· {t('routeConflicts', lang, { n: groups.length })}</span> : null}
         <span className="ml-auto flex flex-wrap gap-1.5">

@@ -253,7 +253,7 @@ export function Segmented<T extends string | number>({
             role="radio"
             aria-checked={on}
             onClick={() => onChange(option.value)}
-            className={`flex h-[30px] min-w-[30px] items-center justify-center whitespace-nowrap px-2 font-mono text-xs ${
+            className={`flex h-[30px] min-w-[30px] items-center justify-center whitespace-nowrap px-2 font-num text-xs ${
               on ? 'bg-ink text-ink-fg' : 'bg-surface text-fg-2 hover:bg-surface-2'
             }`}
           >
