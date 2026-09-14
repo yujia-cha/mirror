@@ -323,6 +323,21 @@ describe('deck conditions', () => {
     expect(result.unresolved).toEqual([]);
   });
 
+  it('never picks 탄환 as the automatic start keyword, however many ammo identities the deck has', () => {
+    // Five ammo users; 탄환 outnumbers every status keyword in this formation.
+    const ammoDeck = [10611, 10711, 10414, 10512, 10514];
+    const stats = analyseDeck(ammoDeck, indexes, data.rules.deployment);
+    expect(stats.keywordCounts.formation.Bullet).toBe(5);
+    const keyword = dominantKeyword(stats);
+    expect(keyword).not.toBe('Bullet');
+    expect(keyword).not.toBeNull();
+    // 탄환 has no starting pool, so choosing it would leave the player with no starting gift.
+    expect(Object.keys(data.rules.startGift.poolsByKeyword)).not.toContain('Bullet');
+    const result = plan({ deck: ammoDeck, wanted: want(9003) });
+    expect(result.start.keyword).toBe(keyword);
+    expect(data.rules.startGift.poolsByKeyword[keyword!]!.length).toBeGreaterThan(0);
+  });
+
   it('picks the deck dominant keyword when asked for an automatic start', () => {
     const stats = analyseDeck(BLADE_LINEAGE_DECK, indexes, data.rules.deployment);
     const keyword = dominantKeyword(stats);

@@ -7,8 +7,8 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { localizeList, readJson, repoPath, staticList } from './io.ts';
-import type { Sin, StatusKeyword } from '../../src/core/schema.ts';
-import { STATUS_KEYWORD_BY_KO } from './derive.ts';
+import type { IdentityKeywordId, Sin } from '../../src/core/schema.ts';
+import { IDENTITY_KEYWORD_BY_KO } from './derive.ts';
 
 export const STATIC_DIR = repoPath('data/raw/static');
 export const LOCALIZE_DIR = repoPath('data/raw/localize');
@@ -291,22 +291,31 @@ export function readFactionNames(lang: Lang): Map<string, string> {
   return out;
 }
 
-const SPECIAL_VARIANT_LINE = /^-?\s*특수 (화상|출혈|진동|파열|침잠|호흡|충전)\s*$/m;
+const SPECIAL_VARIANT_LINE = /^-?\s*특수 (화상|출혈|진동|파열|침잠|호흡|충전|탄환)\s*$/m;
 
 /**
- * Buff ids the game declares as a 특수 variant of a status keyword, e.g. `ChargeBodyArt`
+ * Buff ids the game declares as a 특수 variant of a keyword, e.g. `ChargeBodyArt`
  * (생체 재료 → 특수 충전) or `NailPersonality` (못 → 특수 출혈).
  *
  * The only machine-readable signal is a bullet in the buff's Korean description that reads
  * exactly 「특수 충전」; buffs that merely *mention* a 특수 variant in a longer sentence are not
  * variants themselves, which is why the line has to stand alone.
  */
-export function readSpecialVariants(): Map<string, StatusKeyword> {
-  const out = new Map<string, StatusKeyword>();
+export function readSpecialVariants(): Map<string, IdentityKeywordId> {
+  const out = new Map<string, IdentityKeywordId>();
   for (const e of localizeFile('KR', 'BattleKeywords.json')) {
     const m = typeof e.desc === 'string' ? SPECIAL_VARIANT_LINE.exec(e.desc) : null;
-    const keyword = m ? STATUS_KEYWORD_BY_KO[m[1]!] : undefined;
+    const keyword = m ? IDENTITY_KEYWORD_BY_KO[m[1]!] : undefined;
     if (keyword) out.set(String(e.id), keyword);
+  }
+  return out;
+}
+
+/** Battle keyword display names (탄환 …), for keywords the gift categories do not carry. */
+export function readBattleKeywordNames(lang: Lang): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const e of localizeFile(lang, 'BattleKeywords.json')) {
+    if (e.name) out.set(String(e.id), e.name);
   }
   return out;
 }

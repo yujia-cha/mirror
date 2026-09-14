@@ -9,7 +9,7 @@ import {
   sinnerIdFromIdentityId,
   tierFromTags,
 } from './derive.ts';
-import type { StatusKeyword } from '../../src/core/schema.ts';
+import type { IdentityKeywordId, StatusKeyword } from '../../src/core/schema.ts';
 import type { RawSkill } from './raw.ts';
 
 describe('availabilityFor', () => {
@@ -207,6 +207,34 @@ describe('deriveIdentityKeywords', () => {
       Laceration: { skills: 1, specialSkills: 0 },
       Charge: { skills: 1, specialSkills: 0 },
     });
+  });
+
+  it('reads 탄환 off the skill requirement tokens, not from a buffKeyword', () => {
+    const variants = new Map<string, IdentityKeywordId>([['BulletGodok', 'Bullet']]);
+    const script = (id: number, scriptName: string): RawSkill => ({
+      id,
+      skillType: 'SKILL',
+      skillData: [{ coinList: [{ abilityScriptList: [{ scriptName }] }] }],
+    });
+    const skills = new Map<number, RawSkill>([
+      [1, script(1, 'UseBullet[necessary:Bullet:1]')],
+      [2, script(2, 'UseBullet[necessary:BulletGodok:1]')],
+      // An ammo the game never localizes is still ammo, just not a 특수 one.
+      [3, script(3, 'DmgUpByBullet1091607_50[optional:AccelBullet:1]')],
+      // A requirement that is not ammo, and a bare mention with no requirement, both count for nothing.
+      [4, script(4, 'GiveBuffOnSucceedAttack[necessary:Sinking:1]')],
+      [5, script(5, 'FullStopHongluAttackDmgUpByRatioUseOneBullet')],
+    ]);
+    const of = (skillIds: number[]) =>
+      deriveIdentityKeywords(
+        { id: 10611, attributeList: skillIds.map((skillId) => ({ skillId, number: 1 })) },
+        skills,
+        variants,
+      );
+    expect(of([1, 3])).toEqual({ Bullet: { skills: 2, specialSkills: 0 } });
+    expect(of([2])).toEqual({ Bullet: { skills: 0, specialSkills: 1 } });
+    expect(of([1, 2])).toEqual({ Bullet: { skills: 1, specialSkills: 1 } });
+    expect(of([4, 5])).toEqual({});
   });
 
   it('returns an empty map when the skill data is missing', () => {

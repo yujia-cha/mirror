@@ -352,6 +352,10 @@
     "id": 10110,
     "keywordSource": "derived",
     "keywords": {
+      "Bullet": {
+        "skills": 3,
+        "specialSkills": 0
+      },
       "Sinking": {
         "skills": 3,
         "specialSkills": 0
@@ -1943,6 +1947,10 @@
         "skills": 3,
         "specialSkills": 0
       },
+      "Bullet": {
+        "skills": 1,
+        "specialSkills": 0
+      },
       "Burst": {
         "skills": 1,
         "specialSkills": 0
@@ -2250,6 +2258,10 @@
     "id": 10414,
     "keywordSource": "derived",
     "keywords": {
+      "Bullet": {
+        "skills": 0,
+        "specialSkills": 2
+      },
       "Sinking": {
         "skills": 5,
         "specialSkills": 0
@@ -2759,6 +2771,10 @@
     "id": 10512,
     "keywordSource": "derived",
     "keywords": {
+      "Bullet": {
+        "skills": 0,
+        "specialSkills": 4
+      },
       "Combustion": {
         "skills": 4,
         "specialSkills": 0
@@ -2841,6 +2857,10 @@
     "id": 10514,
     "keywordSource": "derived",
     "keywords": {
+      "Bullet": {
+        "skills": 0,
+        "specialSkills": 3
+      },
       "Combustion": {
         "skills": 3,
         "specialSkills": 0
@@ -3302,6 +3322,10 @@
       "Breath": {
         "skills": 6,
         "specialSkills": 0
+      },
+      "Bullet": {
+        "skills": 5,
+        "specialSkills": 0
       }
     },
     "rank": 3,
@@ -3578,6 +3602,10 @@
     "id": 10703,
     "keywordSource": "derived",
     "keywords": {
+      "Bullet": {
+        "skills": 3,
+        "specialSkills": 0
+      },
       "Burst": {
         "skills": 1,
         "specialSkills": 0
@@ -3890,6 +3918,10 @@
       "Breath": {
         "skills": 4,
         "specialSkills": 0
+      },
+      "Bullet": {
+        "skills": 3,
+        "specialSkills": 1
       }
     },
     "rank": 3,
@@ -4238,6 +4270,10 @@
     "id": 10804,
     "keywordSource": "derived",
     "keywords": {
+      "Bullet": {
+        "skills": 2,
+        "specialSkills": 0
+      },
       "Burst": {
         "skills": 1,
         "specialSkills": 0
@@ -5292,6 +5328,10 @@
         "skills": 5,
         "specialSkills": 0
       },
+      "Bullet": {
+        "skills": 3,
+        "specialSkills": 0
+      },
       "Combustion": {
         "skills": 6,
         "specialSkills": 0
@@ -5790,6 +5830,10 @@
     "id": 11013,
     "keywordSource": "derived",
     "keywords": {
+      "Bullet": {
+        "skills": 0,
+        "specialSkills": 1
+      },
       "Combustion": {
         "skills": 2,
         "specialSkills": 0
@@ -6397,6 +6441,10 @@
     "id": 11114,
     "keywordSource": "derived",
     "keywords": {
+      "Bullet": {
+        "skills": 0,
+        "specialSkills": 1
+      },
       "Sinking": {
         "skills": 3,
         "specialSkills": 2
@@ -6704,6 +6752,10 @@
     "keywords": {
       "Breath": {
         "skills": 3,
+        "specialSkills": 0
+      },
+      "Bullet": {
+        "skills": 1,
         "specialSkills": 0
       },
       "Laceration": {

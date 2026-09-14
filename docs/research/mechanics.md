@@ -233,6 +233,8 @@ KR `desc`에서 두 가지 문형이 반복된다.
 
 **특수 변형(특수 충전·특수 출혈·특수 화상·특수 침잠)** 은 별도 버프 id다. `localize/KR/BattleKeywords.json`에서 설명(`desc`)에 「- 특수 충전」처럼 **한 줄로 선 특수 X** 가 있는 버프가 그 키워드의 특수 변형이다(`readSpecialVariants()`): `ChargeBodyArt` 생체 재료→충전, `NailPersonality` 못·`RedApricotBlossom` 홍매화·`NiddleEGO` 바늘→출혈, `DarkFlame` 흑염→화상, `SheutFracture` 셰우트의 균열→침잠. 스킬에서는 `buffKeyword`로 나오거나(못·흑염), 생체 재료처럼 스크립트명(`MarkGiveChargeBodyArtTurn`)에만 나온다. 인격의 `keywords[K].specialSkills`가 이를 세고, 조건은 「또는 특수 X」가 있을 때(`includesSpecial`)만 특수 변형을 포함한다. 검증(2026-09-13): 10215 거미집 약지 제자·10614 거미집 약지 아비 = 충전 + 특수 충전, 10504 N사 큰 망치 = 특수 출혈만.
 
+**탄환(`Bullet`)** 은 7키워드에 들어가지 않는다. `EgoGiftCategory.json`에 없고(기프트 키워드가 아니다), 탄환 기프트·탄환 키워드 팩·탄환 시작 기프트 풀이 모두 없다. 그래서 `IDENTITY_KEYWORDS`(7키워드 + 탄환)로만 다루고 `enums.identityOnlyKeywords`로 내보낸다. 탄환은 부여가 아니라 **소모**라 `buffKeyword`로 나오지 않고 스킬 스크립트의 요구 토큰에 나온다: `UseBullet[necessary:Bullet:1]`, `ConsumeAllBulletLamentWithoutNecessary[necessary:BulletLament:…]`, `[optional:AccelBullet:1]`. 탄환 계열 버프 id는 전부 `Bullet`을 포함하고, 그중 설명에 「- 특수 탄환」이 선 8종(호표탄·맹호표탄·포자탄[기본]·포자탄[산탄]·LCA 균열탄·탄환 - 고독·탄환 - 로직 아틀리에·작열 추진탄)이 특수 변형이다. 검증(2026-09-14): 13명 — 10611 마침표 사무소 대표 `{skills:5}`, 10414 잔향・외로움 `{specialSkills:2}`, 10711 마침표 해결사 `{skills:3, specialSkills:1}`.
+
 ## 6. 남은 불확실성
 
 | 항목 | 상태 |

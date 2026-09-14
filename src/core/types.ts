@@ -1,4 +1,4 @@
-import type { Difficulty, Gift, Identity, Keyword, StatusKeyword, ThemePack } from './schema.ts';
+import type { Difficulty, Gift, Identity, IdentityKeywordId, Keyword, ThemePack } from './schema.ts';
 
 // ---------------------------------------------------------------------------
 // Input
@@ -75,12 +75,13 @@ export interface PlanInput {
 
 export interface DeckStats {
   /**
-   * Identities whose attack skills inflict each keyword — base or 특수 variant — by counting scope.
-   * This is what a condition written 「[Charge] 횟수 또는 특수 충전을 …」 counts.
+   * Identities whose attack skills use each keyword — base or 특수 variant — by counting scope.
+   * This is what a condition written 「[Charge] 횟수 또는 특수 충전을 …」 counts. 탄환 is in here too,
+   * for the deck summary; no gift condition asks for it.
    */
-  keywordCounts: Record<'deployed' | 'formation' | 'reserve', Partial<Record<StatusKeyword, number>>>;
+  keywordCounts: Record<'deployed' | 'formation' | 'reserve', Partial<Record<IdentityKeywordId, number>>>;
   /** The same, counting only the base keyword: what 「[Laceration]을 부여하는 …」 counts. */
-  baseKeywordCounts: Record<'deployed' | 'formation' | 'reserve', Partial<Record<StatusKeyword, number>>>;
+  baseKeywordCounts: Record<'deployed' | 'formation' | 'reserve', Partial<Record<IdentityKeywordId, number>>>;
   factionCounts: Record<'deployed' | 'formation' | 'reserve', Record<string, number>>;
   deployed: number[];
   reserve: number[];

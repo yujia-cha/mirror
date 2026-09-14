@@ -31,6 +31,13 @@ export const STATUS_KEYWORDS = [
   'Charge',
 ] as const;
 
+/**
+ * What an identity's skills can be built around: the seven status keywords plus 탄환 (`Bullet`),
+ * the ammo certain skills spend. 탄환 is deliberately NOT a `Keyword`: no gift carries it, no
+ * theme pack has it as an affinity and no starting gift pool exists for it.
+ */
+export const IDENTITY_KEYWORDS = [...STATUS_KEYWORDS, 'Bullet'] as const;
+
 export const ATTACK_TYPES = ['Slash', 'Penetrate', 'Hit'] as const;
 
 export const SINS = ['WRATH', 'LUST', 'SLOTH', 'GLUTTONY', 'GLOOM', 'PRIDE', 'ENVY'] as const;
@@ -49,6 +56,7 @@ export const DIFFICULTIES = ['normal', 'hard', 'parallel', 'extreme'] as const;
 
 export const keywordSchema = z.enum(KEYWORDS);
 export const statusKeywordSchema = z.enum(STATUS_KEYWORDS);
+export const identityKeywordIdSchema = z.enum(IDENTITY_KEYWORDS);
 export const attackTypeSchema = z.enum(ATTACK_TYPES);
 export const sinSchema = z.enum(SINS);
 export const packGroupSchema = z.enum(PACK_GROUPS);
@@ -56,6 +64,7 @@ export const difficultySchema = z.enum(DIFFICULTIES);
 
 export type Keyword = z.infer<typeof keywordSchema>;
 export type StatusKeyword = z.infer<typeof statusKeywordSchema>;
+export type IdentityKeywordId = z.infer<typeof identityKeywordIdSchema>;
 export type AttackType = z.infer<typeof attackTypeSchema>;
 export type Sin = z.infer<typeof sinSchema>;
 export type PackGroup = z.infer<typeof packGroupSchema>;
@@ -239,7 +248,10 @@ export type ThemePack = z.infer<typeof themePackSchema>;
 
 export const identityKeywordSchema = z
   .object({
-    /** Attack skills that inflict or gain the base keyword — the unit conditional gifts count. */
+    /**
+     * Attack skills that inflict or gain the base keyword — the unit conditional gifts count.
+     * For 탄환 this counts the skills that spend ammo, which is what the keyword means there.
+     */
     skills: z.number().int().nonnegative(),
     /**
      * Attack skills that inflict or gain a "특수" variant (특수 충전 = 생체 재료, 특수 출혈 = 못 …).
@@ -261,7 +273,7 @@ export const identitySchema = z.object({
   factions: z.array(z.string()),
   /** `unitKeywordList` — trait tags, distinct from 소속. */
   traits: z.array(z.string()),
-  keywords: z.record(statusKeywordSchema, identityKeywordSchema),
+  keywords: z.record(identityKeywordIdSchema, identityKeywordSchema),
   keywordSource: z.enum(['derived', 'curated', 'none']),
   sins: z.array(sinSchema),
   attackTypes: z.array(attackTypeSchema),
@@ -275,6 +287,11 @@ export type Identity = z.infer<typeof identitySchema>;
 
 export const enumsSchema = z.object({
   keywords: z.array(z.object({ id: keywordSchema, name: localizedSchema, status: z.boolean() })),
+  /**
+   * Identity keywords that no gift uses, so they have no `keywords` row: 탄환 today. Kept apart so
+   * the gift filters and the start-keyword picker keep offering only keywords gifts actually have.
+   */
+  identityOnlyKeywords: z.array(z.object({ id: identityKeywordIdSchema, name: localizedSchema })),
   factions: z.array(z.object({ id: z.string(), name: localizedSchema, deprecated: z.boolean() })),
   sinners: z.array(z.object({ id: z.number().int(), name: localizedSchema })),
   sins: z.array(sinSchema),

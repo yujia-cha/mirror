@@ -1,4 +1,5 @@
-import type { Condition, Rules, StatusKeyword } from './schema.ts';
+import type { Condition, IdentityKeywordId, Rules, StatusKeyword } from './schema.ts';
+import { STATUS_KEYWORDS } from './schema.ts';
 import type { ConditionReport, DeckStats, GameIndexes } from './types.ts';
 
 type Scope = 'deployed' | 'formation' | 'reserve';
@@ -35,13 +36,16 @@ export function analyseDeck(
   const identitiesWithoutKeywords: number[] = [];
 
   for (const scope of ['deployed', 'formation', 'reserve'] as Scope[]) {
-    const keywords: Partial<Record<StatusKeyword, number>> = {};
-    const baseKeywords: Partial<Record<StatusKeyword, number>> = {};
+    const keywords: Partial<Record<IdentityKeywordId, number>> = {};
+    const baseKeywords: Partial<Record<IdentityKeywordId, number>> = {};
     const factions: Record<string, number> = {};
     for (const id of groups[scope]) {
       const identity = indexes.identityById.get(id);
       if (!identity) continue;
-      for (const [keyword, info] of Object.entries(identity.keywords) as [StatusKeyword, { skills: number }][]) {
+      for (const [keyword, info] of Object.entries(identity.keywords) as [
+        IdentityKeywordId,
+        { skills: number },
+      ][]) {
         // One identity counts once per keyword, however many of its skills inflict it.
         keywords[keyword] = (keywords[keyword] ?? 0) + 1;
         // A 특수-only inflictor (생체 재료, 못 …) is not a base inflictor.
@@ -61,10 +65,18 @@ export function analyseDeck(
   return { keywordCounts, baseKeywordCounts, factionCounts, deployed, reserve, unknownIdentities, identitiesWithoutKeywords };
 }
 
-/** The dominant status keyword of a deck, used when the caller asks for an automatic choice. */
+/**
+ * The dominant status keyword of a deck, used when the caller asks for an automatic choice.
+ *
+ * Only status keywords qualify: `rules.startGift.poolsByKeyword` has a pool for each of those and
+ * for the attack types, but none for 탄환, so picking 탄환 would hand the player no starting gift.
+ */
 export function dominantKeyword(stats: DeckStats): StatusKeyword | null {
   const counts = stats.keywordCounts.formation;
-  const entries = (Object.entries(counts) as [StatusKeyword, number][]).filter(([, n]) => n > 0);
+  const statusOnly = new Set<string>(STATUS_KEYWORDS);
+  const entries = (Object.entries(counts) as [StatusKeyword, number][]).filter(
+    ([keyword, n]) => n > 0 && statusOnly.has(keyword),
+  );
   if (entries.length === 0) return null;
   // Sort by count, then by keyword name so the answer is stable for tied decks.
   entries.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
