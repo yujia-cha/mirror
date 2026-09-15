@@ -11,6 +11,7 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { z } from 'zod';
 import { hasFlag, readJson, readJsonIfExists, repoPath } from './lib/io.ts';
+import { readPersonalities, staticDataPresent } from './lib/raw.ts';
 import {
   STATUS_KEYWORDS,
   enumsSchema,
@@ -28,6 +29,8 @@ import {
 } from '../src/core/schema.ts';
 
 const OUT = repoPath('public/data');
+/** The twelve sinners the game has had since launch; every one must be deckable. */
+const SINNER_COUNT = 12;
 const lenient = hasFlag('--lenient');
 
 const errors: string[] = [];
@@ -75,6 +78,7 @@ if (meta && enums && rules && gifts && packs && identities) {
   checkReferences(gifts, packs, identities, enums);
   checkInvariants(meta, rules, gifts, packs, identities, enums);
   checkCuratedOverrides(gifts, packs, identities);
+  checkCuratedIdentities(identities);
   checkFreshness();
 }
 
@@ -369,23 +373,79 @@ function checkInvariants(
     );
   }
 
-  // Identities present in the localization but missing from the static data cannot be planned with.
+  // An identity the localization names but the app does not ship cannot be put in a deck, and
+  // nothing else in the pipeline notices — every count downstream is derived from the same short
+  // list. `shipped` already includes the curated backfills, so this only fires on a gap nobody has
+  // filled yet, and the fix is to fill it.
   const localizedIdentities = readJsonIfExists<{ dataList?: { id: number }[] }>(
     repoPath('data/raw/localize/KR/Personalities.json'),
   );
   if (localizedIdentities?.dataList) {
-    const staticIds = new Set(identities.map((i) => i.id));
+    const shipped = new Set(identities.map((i) => i.id));
     const missing = localizedIdentities.dataList
       .map((e) => Number(e.id))
       // Identity ids are 1SSNN for sinners 01-12; anything else is a story or NPC row.
-      .filter((id) => id >= 10101 && id <= 11299 && !staticIds.has(id));
+      .filter((id) => id >= 10101 && id <= 11299 && !shipped.has(id));
     if (missing.length > 0) {
-      warn(
+      strict(
         'invariant',
-        `${missing.length} identity/identities exist in the localization but not in the static data ` +
-          `(${missing.join(', ')}); they cannot be used in a deck until upstream ships their data`,
+        `${missing.length} identity/identities exist in the localization but are not shipped ` +
+          `(${missing.join(', ')}); back them up in data/curated/identities.json, or wait for ` +
+          `upstream to ship their static data`,
       );
     }
+  }
+
+  // Every sinner must be represented: a whole file dropping out of the fetch would otherwise pass
+  // the total-count floor while leaving one of the twelve deck slots with nothing to put in it.
+  const bySinner = new Map<number, number>();
+  for (const identity of identities) bySinner.set(identity.sinnerId, (bySinner.get(identity.sinnerId) ?? 0) + 1);
+  for (let sinner = 1; sinner <= SINNER_COUNT; sinner += 1) {
+    const count = bySinner.get(sinner) ?? 0;
+    // The thinnest sinner has 14 today, so a floor of 10 catches a lost file without tripping on a
+    // season rollover.
+    if (count < 10) strict('invariant', `sinner ${sinner} has only ${count} identity/identities`);
+  }
+  const sinnerIds = new Set(enums.sinners.map((s) => s.id));
+  for (let sinner = 1; sinner <= SINNER_COUNT; sinner += 1) {
+    if (!sinnerIds.has(sinner)) err('invariant', `enums.sinners is missing sinner ${sinner}`);
+  }
+  for (const sinner of enums.sinners) {
+    if (!sinner.name.ko || !sinner.name.en) err('invariant', `sinner ${sinner.id} has no display name`);
+  }
+}
+
+/**
+ * A curated identity is a backfill, so it has to stay one: it must name an identity the game
+ * actually has, it must not shadow a static record, and it must reach the output.
+ */
+function checkCuratedIdentities(identities: Identity[]): void {
+  const curated = readJsonIfExists<Record<string, unknown>>(repoPath('data/curated/identities.json'));
+  if (!curated) return;
+  const localized = readJsonIfExists<{ dataList?: { id: number }[] }>(
+    repoPath('data/raw/localize/KR/Personalities.json'),
+  );
+  const localizedIds = new Set((localized?.dataList ?? []).map((e) => Number(e.id)));
+  const staticIds = staticDataPresent() ? new Set(readPersonalities().map((p) => p.id)) : null;
+  const shipped = new Set(identities.map((i) => i.id));
+
+  for (const key of Object.keys(curated)) {
+    if (key.startsWith('_')) continue;
+    const id = Number(key);
+    if (!Number.isFinite(id)) {
+      err('invariant', `curated identity key "${key}" is not an id`);
+      continue;
+    }
+    if (localizedIds.size > 0 && !localizedIds.has(id)) {
+      err('invariant', `curated identity ${id} is in no localization row; the game has no such identity`);
+    }
+    if (staticIds?.has(id)) {
+      err(
+        'invariant',
+        `curated identity ${id} now has static data; delete it from data/curated/identities.json`,
+      );
+    }
+    if (!shipped.has(id)) err('invariant', `curated identity ${id} did not reach public/data/identities.json`);
   }
 }
 

@@ -20,7 +20,13 @@ interface SourceEntry {
   remotePrefix: string;
   localPrefix: string;
   languages?: string[];
-  files: string[];
+  /**
+   * Remote paths under `remotePrefix`. A plain string is fetched for every language in
+   * `languages`; an object narrows one file to a subset of them — the identity skill text is only
+   * ever read in Korean, and mirroring the English copies would double the vendored bytes for
+   * nothing.
+   */
+  files: (string | { path: string; languages?: string[] })[];
 }
 
 interface Lock {
@@ -68,9 +74,11 @@ async function fetchSource(name: string, entry: SourceEntry, update: boolean): P
     }
   }
 
-  const targets = entry.languages
-    ? entry.languages.flatMap((lang) => entry.files.map((file) => ({ lang, file })))
-    : entry.files.map((file) => ({ lang: null as string | null, file }));
+  const targets = entry.files.flatMap((item) => {
+    const file = typeof item === 'string' ? item : item.path;
+    const languages = (typeof item === 'string' ? entry.languages : (item.languages ?? entry.languages)) ?? null;
+    return languages ? languages.map((lang) => ({ lang: lang as string | null, file })) : [{ lang: null as string | null, file }];
+  });
 
   let written = 0;
   const missing: string[] = [];

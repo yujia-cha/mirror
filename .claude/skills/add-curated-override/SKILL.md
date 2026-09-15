@@ -7,6 +7,8 @@ description: Record a fact the game's static data does not express — an identi
 
 `data/curated/**`는 정적 데이터가 말해주지 않는 사실을 사람이 적어 두는 곳이다. `build-data`가 **마지막에** 병합하므로 항상 원본을 이긴다. 모든 항목에는 `_source`로 근거를 남긴다(나무위키 링크, 인게임 확인 날짜, 스크린샷 경로 등).
 
+**예외가 하나 있다: `identities.json`은 override가 아니라 backfill이다**(6번). 정적 데이터가 아예 없는 인격을 채우는 곳이라, 상류가 그 id를 내보내기 시작하면 원본을 이기는 대신 빌드가 멈춘다.
+
 ## 1. 인격 키워드 보정 — `identity-keywords.json`
 
 스킬 데이터에서 도출한 키워드가 실제와 다를 때. 키는 인격 id(`1SSNN`).
@@ -67,6 +69,18 @@ description: Record a fact the game's static data does not express — an identi
 ## 5. 메모 — `gift-notes.json` / `pack-notes.json`
 
 UI에 그대로 노출되는 사용자 메모. 루트 계획에는 영향을 주지 않는다.
+
+## 6. 정적 데이터에 없는 인격 — `identities.json`
+
+현지화(`Personalities.json`)는 이름을 주는데 상류 OpenLethe에 personality 레코드가 없는 인격. 지금은 10116 「LCE E.G.O:: 차원찢개」(이상) 하나다. 백필 없이 두면 `data:validate`가 **에러**를 낸다.
+
+**다른 큐레이션 파일과 다른 점**:
+- **덮어쓰기가 아니다.** 같은 id의 정적 데이터가 생기면 `data:build`가 멈추고 이 항목을 지우라고 말한다. 손으로 적은 값이 진짜 데이터를 영원히 가리지 않게 하려는 것이다.
+- **이름·죄인·id는 적지 않는다.** 현지화에서 그대로 오고, 다른 인격과 같은 코드 경로를 지난다(그래서 `names-override.json`도 계속 먹는다).
+- **도출할 수 있으면 손으로 적지 않는다.** 키워드는 `localize/KR/Skills_personality-*.json`의 공식 스킬 원문에서 `scripts/lib/derive-text.ts`로 도출하고, `tests/text-derivation.test.ts`가 적어 둔 값이 원문과 같은지 검사한다. 그 도출 규칙은 정적 데이터가 있는 121명에게 미리 맞춰 두었다.
+- **모르는 필드는 비운다.** `factions`·`sins`·`attackTypes`를 비우면 계획이 그만큼 **적게** 센다. 근거 없이 채워 과대약속하는 것보다 낫다. 무엇을 왜 비웠는지 `_source`에 적는다.
+
+새 항목을 넣기 전에 먼저 확인할 것: 정말 상류에 없는가(`data:fetch -- --update` 후에도 없는가), 아니면 `sources.lock.json`의 파일 목록에 새 파일이 빠진 것인가.
 
 ## 마무리
 

@@ -57,6 +57,7 @@ import {
   type Localized,
   type Meta,
   type Rules,
+  type Sin,
   type ThemePack,
 } from '../src/core/schema.ts';
 
@@ -88,6 +89,24 @@ interface CuratedRules {
   [key: string]: unknown;
 }
 
+/**
+ * An identity the static data does not ship at all, written by hand.
+ *
+ * Only what cannot be derived: the name, the sinner and the id itself still come from the
+ * localization, through the same code path every other identity takes. A field left out is
+ * unknown, not empty-by-choice — see the `_source` each entry carries.
+ */
+interface CuratedIdentity {
+  _source?: string;
+  keywords?: Record<string, { skills: number; specialSkills: number }>;
+  rank?: number;
+  season?: number;
+  factions?: string[];
+  traits?: string[];
+  sins?: string[];
+  attackTypes?: string[];
+}
+
 const curated = {
   rules: readJsonIfExists<CuratedRules>(repoPath('data/curated/rules.json')) ?? {},
   factions:
@@ -97,6 +116,7 @@ const curated = {
     readJsonIfExists<Record<string, { keywords?: Record<string, { skills: number; specialSkills: number }> }>>(
       repoPath('data/curated/identity-keywords.json'),
     ) ?? {},
+  identities: readJsonIfExists<Record<string, CuratedIdentity>>(repoPath('data/curated/identities.json')) ?? {},
   conditions:
     readJsonIfExists<Record<string, { conditions?: Condition[] }>>(
       repoPath('data/curated/conditions.json'),
@@ -479,7 +499,7 @@ for (let sinner = 1; sinner <= 12; sinner += 1) {
 /** 특수 variant buff ids (생체 재료 → 특수 충전 …), read off the game's own buff descriptions. */
 const specialVariants = readSpecialVariants();
 
-const identities: Identity[] = rawPersonalities
+const derivedIdentities: Identity[] = rawPersonalities
   .map((raw): Identity => {
     const sinnerId = sinnerIdFromIdentityId(raw.id);
     const curatedKeywords = curated.identityKeywords[String(raw.id)]?.keywords;
@@ -531,8 +551,49 @@ const identities: Identity[] = rawPersonalities
       sins: [...sins].sort((a, b) => SINS.indexOf(a) - SINS.indexOf(b)),
       attackTypes: [...attackTypes].sort(),
     };
-  })
-  .sort((a, b) => a.id - b.id);
+  });
+
+/**
+ * Identities the static data does not ship, backfilled by hand from `data/curated/identities.json`.
+ *
+ * Today that is 10116 「LCE E.G.O:: 차원찢개」, which the localization names and gives skill text for
+ * while OpenLethe has no record of it anywhere. This is a backfill, not an override: the moment
+ * upstream ships the real thing the build stops and asks for the hand-written row to go, rather
+ * than quietly preferring it forever.
+ */
+const staticIdentityIds = new Set(derivedIdentities.map((identity) => identity.id));
+const curatedIdentities: Identity[] = curatedEntries(curated.identities).map(([key, entry]) => {
+  const id = Number(key);
+  if (!Number.isFinite(id)) fail(`curated identity key "${key}" is not an id`);
+  if (staticIdentityIds.has(id)) {
+    fail(
+      `curated identity ${id} now has static data upstream; ` +
+        `delete its entry from data/curated/identities.json so the real record is used`,
+    );
+  }
+  const sinnerId = sinnerIdFromIdentityId(id);
+  const title = loc(
+    personalityKo.get(id)?.title?.replace(/\s*\n\s*/g, ' '),
+    personalityEn.get(id)?.title?.replace(/\s*\n\s*/g, ' '),
+  );
+  if (!title.ko) fail(`curated identity ${id} is not in the localization either; there is nothing to name it`);
+  return {
+    id,
+    sinnerId,
+    sinner: SINNER_NAMES[sinnerId] ?? loc('', ''),
+    title: applyNameOverride(title, curated.names.identities?.[key]),
+    rank: Math.min(3, Math.max(1, entry.rank ?? 1)) as 1 | 2 | 3,
+    season: entry.season ?? 0,
+    factions: [...(entry.factions ?? [])].sort(),
+    traits: [...(entry.traits ?? [])].sort(),
+    keywords: (entry.keywords ?? {}) as Identity['keywords'],
+    keywordSource: 'curated',
+    sins: [...(entry.sins ?? [])].sort((a, b) => SINS.indexOf(a as Sin) - SINS.indexOf(b as Sin)) as Identity['sins'],
+    attackTypes: [...(entry.attackTypes ?? [])].sort() as Identity['attackTypes'],
+  };
+});
+
+const identities: Identity[] = [...derivedIdentities, ...curatedIdentities].sort((a, b) => a.id - b.id);
 
 // ---------------------------------------------------------------------------
 // Enums and rules

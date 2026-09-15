@@ -311,6 +311,37 @@ export function readSpecialVariants(): Map<string, IdentityKeywordId> {
   return out;
 }
 
+/** One identity skill as the localization writes it: `Skills_personality-*.json`. */
+export interface LocalizedSkill {
+  id: number;
+  levelList?: {
+    level?: number;
+    name?: string;
+    desc?: string;
+    coinlist?: { coindescs?: { desc?: string }[] }[] | null;
+  }[];
+}
+
+/**
+ * Identity skill text, keyed by skill id (`<identityId><2-digit suffix>`).
+ *
+ * Only Korean is vendored: this is read to work out which keywords a skill inflicts, and the
+ * grammar that marks an infliction (「… 부여」, 「… 증가」) is Korean. Coverage is partial — the
+ * mirror ships these files for the newer identities only — so callers must treat a missing skill
+ * as "unknown", never as "no keywords".
+ */
+export function readLocalizedPersonalitySkills(lang: Lang = 'KR'): Map<number, LocalizedSkill> {
+  const out = new Map<number, LocalizedSkill>();
+  for (const f of listFiles(join(LOCALIZE_DIR, lang), /^Skills_personality-[\w-]+\.json$/)) {
+    for (const s of localizeList<LocalizedSkill>(readJson(f))) {
+      const id = Number(s.id);
+      // First definition wins, as everywhere else in the localization readers.
+      if (Number.isFinite(id) && !out.has(id)) out.set(id, { ...s, id });
+    }
+  }
+  return out;
+}
+
 /** Battle keyword display names (탄환 …), for keywords the gift categories do not carry. */
 export function readBattleKeywordNames(lang: Lang): Map<string, string> {
   const out = new Map<string, string>();

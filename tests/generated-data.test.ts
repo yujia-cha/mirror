@@ -201,8 +201,22 @@ describe('gifts', () => {
 });
 
 describe('identities', () => {
-  it('covers the identities the static data ships', () => {
-    expect(identities).toHaveLength(183);
+  it('covers the 183 the static data ships plus the one backfilled by hand', () => {
+    expect(identities).toHaveLength(184);
+  });
+
+  it('backfills 10116 「LCE E.G.O:: 차원찢개」, which the localization names and the static data has not', () => {
+    const shredder = identityById.get(10116)!;
+    expect(shredder.title.ko).toBe('LCE E.G.O:: 차원찢개');
+    expect(shredder.sinnerId).toBe(1);
+    // 충전 · 파열, read out of the official skill text — see tests/text-derivation.test.ts.
+    expect(Object.keys(shredder.keywords).sort()).toEqual(['Burst', 'Charge']);
+    expect(shredder.keywordSource).toBe('curated');
+    // Nothing citable says what it belongs to or which sins it uses, so those stay empty: the
+    // planner undercounts rather than promising a faction condition it cannot back up.
+    expect(shredder.factions).toEqual([]);
+    expect(shredder.sins).toEqual([]);
+    expect(shredder.attackTypes).toEqual([]);
   });
 
   it('derives keywords from skills for all but a handful of identities', () => {

@@ -202,7 +202,19 @@ KR `desc`에서 두 가지 문형이 반복된다.
 
 ## 5. 인격
 
-`personality/personality-{01..12}.json` 합계 **183명**(로컬라이제이션 `Personalities.json`은 186행, EGO 장비·스킨 등 비플레이어 행 포함).
+`personality/personality-{01..12}.json`(+ 챕터 접미사 파일) 합계 **183명**. 앱이 내보내는 것은 **184명**이다 — 아래 「정적 데이터에 없는 인격」 참고.
+
+로컬라이제이션 `Personalities.json`은 186행인데, 그 중 재직 인격 대역(10101–11299)은 **184개**다. 나머지 둘(9999 베르길리우스, 40501)은 NPC·스토리 행이다. 즉 이름은 있는데 정적 레코드가 없는 인격이 **하나** 있다.
+
+### 정적 데이터에 없는 인격 — 10116 「LCE E.G.O:: 차원찢개」(이상)
+
+상류 OpenLethe에 personality·skill·passive 어디에도 레코드가 없다(최신 커밋과 게임 자체 파일 매니페스트 `static-data-info.json`까지 대조, 2026-09-15). 데이터가 낡아서가 아니라 상류가 아직 내보내지 않았다.
+
+다만 **현지화에는 공식 스킬 원문이 있다** — `localize/KR/Skills_personality-01.json`의 1011601~1011605. 그래서 `data/curated/identities.json`이 이 한 명을 백필하고, 키워드는 그 원문에서 도출한다(`scripts/lib/derive-text.ts`): 1011604 회피는 방어 스킬이라 빠지고 남은 네 스킬이 **충전·파열**을 준다. 소속·죄악·공격 유형은 인용할 출처가 없어 비워 둔다(과대약속 대신 과소집계).
+
+도출 규칙은 정적 데이터가 **둘 다 있는 121명**에게 돌려 맞춰 두었다(`tests/text-derivation.test.ts`): 의미 일치 112/121, **없는 키워드를 지어내는 경우 0**. 나머지 9명은 전부 텍스트가 덜 말하는 쪽이다(버프 id로만 부여하고 문장에 한국어 이름이 없음). 현지화 미러가 스킬 텍스트를 12개 파일로만 내보내므로 183명 중 121명만 대조할 수 있다는 점도 그대로 기록해 둔다.
+
+이런 누락이 다시 조용히 지나가지 않도록 `data:validate`가 **에러**를 낸다(예전에는 경고였다).
 
 ```jsonc
 {
@@ -229,7 +241,7 @@ KR `desc`에서 두 가지 문형이 반복된다.
 | 10914 R사 제4무리 순록팀 로쟈 | Sinking, Charge | ✓ |
 | 11216 새벽 사무소 대표 그레고르 | Combustion, Vibration | ✓ |
 
-183명 중 5명은 7키워드를 전혀 부여하지 않는다(정상). 도출이 틀리면 `data/curated/identity-keywords.json`으로 보정한다.
+184명 중 5명은 7키워드를 전혀 부여하지 않는다(정상). 도출이 틀리면 `data/curated/identity-keywords.json`으로 보정하고, 정적 레코드가 아예 없으면 `data/curated/identities.json`으로 백필한다.
 
 **특수 변형(특수 충전·특수 출혈·특수 화상·특수 침잠)** 은 별도 버프 id다. `localize/KR/BattleKeywords.json`에서 설명(`desc`)에 「- 특수 충전」처럼 **한 줄로 선 특수 X** 가 있는 버프가 그 키워드의 특수 변형이다(`readSpecialVariants()`): `ChargeBodyArt` 생체 재료→충전, `NailPersonality` 못·`RedApricotBlossom` 홍매화·`NiddleEGO` 바늘→출혈, `DarkFlame` 흑염→화상, `SheutFracture` 셰우트의 균열→침잠. 스킬에서는 `buffKeyword`로 나오거나(못·흑염), 생체 재료처럼 스크립트명(`MarkGiveChargeBodyArtTurn`)에만 나온다. 인격의 `keywords[K].specialSkills`가 이를 세고, 조건은 「또는 특수 X」가 있을 때(`includesSpecial`)만 특수 변형을 포함한다. 검증(2026-09-13): 10215 거미집 약지 제자·10614 거미집 약지 아비 = 충전 + 특수 충전, 10504 N사 큰 망치 = 특수 출혈만.
 

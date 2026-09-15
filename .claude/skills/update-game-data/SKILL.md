@@ -41,6 +41,8 @@ npm test
 - 팩 수·기프트 수가 늘었을 뿐이면 `scripts/validate-data.ts`의 기대 하한을 올리고, 커밋 메시지에 "MD8에서 팩 N개 추가" 같은 근거를 남긴다.
 - 범용 기프트 집합이 EXTREME 팩 풀과 더 이상 일치하지 않으면 파생 규칙이 깨졌을 가능성이 높다. `validate-data`의 경고만 보고 넘기지 말고 `docs/research/mechanics.md`를 다시 확인한다.
 - 조건 파서 스냅샷이 바뀌면 `npx vitest run scripts -u` 전에 **변경된 문장을 눈으로 읽는다**. 새 문형이 생겼다면 파서에 패턴을 추가하는 것이 맞다.
+- 「exist in the localization but are not shipped」 **에러**는 현지화가 이름을 주는 인격의 정적 레코드가 없다는 뜻이다. 먼저 `sources.lock.json`의 `personality/`·`skill/` 파일 목록에 상류의 새 파일이 빠졌는지 확인하고, 상류에 정말 없으면 `add-curated-override` 스킬의 6번을 따라 `data/curated/identities.json`에 백필한다.
+- 반대로 상류가 백필해 둔 인격을 내보내기 시작하면 `data:build`가 「now has static data upstream」으로 멈춘다. 그 항목을 지우면 된다 — 진짜 데이터가 손으로 적은 값보다 낫다.
 
 ## 5. 마무리
 

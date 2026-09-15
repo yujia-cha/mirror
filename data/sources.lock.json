@@ -99,10 +99,13 @@
       "ref": "main",
       "sha": "231a8bcfc347273e7769b70ebc4f9f3e2fecaa5a",
       "fetchedAt": "2026-09-11",
-      "note": "Official KR/EN localization JSON mirrored by the Chinese localization project (pack is CC BY-NC-SA 4.0; source text is Project Moon's).",
+      "note": "Official KR/EN localization JSON mirrored by the Chinese localization project (pack is CC BY-NC-SA 4.0; source text is Project Moon's). The KR-only Skills_personality-* files are the evidence for identities the static data does not ship: their skill text names the keywords each attack inflicts.",
       "remotePrefix": "",
       "localPrefix": "data/raw/localize",
-      "languages": ["KR", "EN"],
+      "languages": [
+        "KR",
+        "EN"
+      ],
       "files": [
         "EGOgift_MirrorDungeon.json",
         "EGOgift_MirrorDungeon_2.json",
@@ -127,6 +130,78 @@
         "EGOgift_walpu8.json",
         "MirrorDungeonTheme-1.json",
         "Personalities.json",
+        {
+          "path": "Skills_personality-01.json",
+          "languages": [
+            "KR"
+          ]
+        },
+        {
+          "path": "Skills_personality-02.json",
+          "languages": [
+            "KR"
+          ]
+        },
+        {
+          "path": "Skills_personality-03.json",
+          "languages": [
+            "KR"
+          ]
+        },
+        {
+          "path": "Skills_personality-04.json",
+          "languages": [
+            "KR"
+          ]
+        },
+        {
+          "path": "Skills_personality-05.json",
+          "languages": [
+            "KR"
+          ]
+        },
+        {
+          "path": "Skills_personality-06.json",
+          "languages": [
+            "KR"
+          ]
+        },
+        {
+          "path": "Skills_personality-07.json",
+          "languages": [
+            "KR"
+          ]
+        },
+        {
+          "path": "Skills_personality-08.json",
+          "languages": [
+            "KR"
+          ]
+        },
+        {
+          "path": "Skills_personality-09.json",
+          "languages": [
+            "KR"
+          ]
+        },
+        {
+          "path": "Skills_personality-10.json",
+          "languages": [
+            "KR"
+          ]
+        },
+        {
+          "path": "Skills_personality-11.json",
+          "languages": [
+            "KR"
+          ]
+        },
+        {
+          "path": "Skills_personality-12.json",
+          "languages": [
+            "KR"
+          ]
+        },
         "UnitKeyword.json",
         "UnitKeyword-a1c7p1.json",
         "UnitKeyword-a1c7p2.json",

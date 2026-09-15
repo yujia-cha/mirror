@@ -48,6 +48,9 @@ ObiterDicta가 쓰는 경로를 그대로 따를 수 있다. PC에 게임이 설
 - `EGOgift_MirrorDungeon{-StoryTheme,-StoryTheme_2,-EventTheme,-EventTheme_2,-mowe,-mowe-re,-ycgd}.json`
 - `EGOgift_{TwiningThreads,cultivation,pilgrimage,lcbcheckup-re,night-clean-up-re,tktRe,walpu4,walpu6,walpu8,a1c8p2}.json`
 - `MirrorDungeonTheme-1.json`, `Personalities.json`, `UnitKeyword.json`, `EgoGiftCategory.json`, `BattleKeywords.json`, `MirrorDungeonEgoGiftLockedDesc.json`, `DungeonStartBuffs_MD7.json`, `MirrorDungeonUI_7.json`, `TutorialMirrorDungeon.json`
+- **`Skills_personality-{01..12}.json` — KR만** (`files[]` 항목에 `{ "path": …, "languages": ["KR"] }`로 언어를 좁힌다). 앱은 스킬 텍스트를 렌더하지 않는다. 이것을 vendoring하는 이유는 하나다: **정적 데이터에 없는 인격의 키워드를 공식 문장에서 도출하는 근거**(`scripts/lib/derive-text.ts`, 지금은 10116 하나). 영어본은 같은 크기인데 도출에 쓰이지 않아 받지 않는다 — 부여를 나타내는 문법(「… 부여」·「… 증가」)이 한국어다.
+  - **커버리지가 부분적이다**: 12개 파일이 183명 중 121명만 덮는다(각 죄인의 가장 오래된 인격들은 스킬 텍스트가 미러 어디에도 없다). `tests/text-derivation.test.ts`가 이 수를 그대로 단언한다.
+  - 현지화 저장소에는 매니페스트가 없고 GitHub API가 샌드박스에서 막히는 경우가 많아, 파일이 사라지면 `data:fetch`의 404 보고가 유일한 신호다.
 
 ## 서버 재구현 코드 (규칙 확인용)
 
