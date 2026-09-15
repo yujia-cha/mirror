@@ -714,6 +714,29 @@ describe('GiftsStep', () => {
   };
   const tile = (id: number) => screen.getAllByTestId('gift-tile').find((el) => el.getAttribute('data-gift') === String(id))!;
 
+  it('marks a condition it cannot judge as such, not as unmet', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    renderGifts();
+    await user.click(screen.getByRole('button', { name: /^기타/, expanded: false }));
+    // 인연 얽힘 asks for a full resonance, which cannot be read off the deck — the tile says so
+    // rather than calling it unmet. The route panel no longer repeats the judgement anywhere.
+    const icon = within(tile(9208)).getByTestId('gift-icon');
+    expect(icon).toHaveAttribute('data-judgement', 'unknown');
+    expect(icon.getAttribute('aria-label')).toMatch(/^판정 불가 · 인연 얽힘/);
+    expect(screen.queryAllByLabelText(/^미충족 · 인연 얽힘/)).toHaveLength(0);
+  });
+
+  it('colours a gift icon by whether the deck meets its condition', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    renderGifts();
+    await user.click(screen.getByRole('button', { name: /^기타/, expanded: false }));
+    // 진혼 wants combustion, which this deck has; 먹장구름 wants sinking, which it does not.
+    expect(within(tile(9088)).getByTestId('gift-icon')).toHaveAttribute('data-judgement', 'met');
+    expect(within(tile(9211)).getByTestId('gift-icon')).toHaveAttribute('data-judgement', 'unmet');
+  });
+
   it('folds 요리 비법 전서 under 진혼, lets it be chosen alone, and locks it once 진혼 is chosen', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
@@ -1091,6 +1114,30 @@ describe('RoutePlanPanel', () => {
     expect(screen.queryByText(/별빛|합성|범용 드랍|나올 수 있음/)).toBeNull();
   });
 
+  it('rides no gift on a route block: the map is packs and floors alone', () => {
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267);
+    renderRoute();
+    const segment = within(rows()).getByTestId('segment');
+    // The portrait and the name stay; what the pack drops is the sheet behind it.
+    expect(within(segment).getByTestId('pack-image')).toBeInTheDocument();
+    expect(within(segment).queryByTestId('gift-icon')).toBeNull();
+  });
+
+  it('gives the start and the observations a line each at the head of the map', () => {
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267);
+    useApp.getState().toggleWanted(9423); // observable; the planner recommends observing it
+    renderRoute();
+    const cell = within(rows()).getByTestId('start-cell');
+    const start = within(cell).getByTestId('start-line');
+    const observed = within(cell).getByTestId('observed-line');
+    expect(observed).toHaveTextContent('관측');
+    expect(within(observed).getAllByTestId('observed-tile').length).toBeGreaterThan(0);
+    // They are two decisions, so nothing from one line leaks into the other.
+    expect(within(start).queryByTestId('observed-tile')).toBeNull();
+  });
+
   it('opens a pack in a sheet from its card, lists its gifts, and lets it be given up and restored', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
@@ -1141,15 +1188,6 @@ describe('RoutePlanPanel', () => {
     await user.click(within(observed).getByRole('button', { name: '닫기' }));
     expect(screen.queryByTestId('block-sheet')).toBeNull();
     expect(within(within(rows()).getByTestId('start-cell')).getByTestId('observed-tile')).toHaveAttribute('data-pinned');
-  });
-
-  it('marks a must-have gift with a star badge on its tile', () => {
-    useApp.getState().setDeck(BURN_DECK, 7);
-    useApp.getState().toggleWanted(9267);
-    useApp.getState().setPriority(9267, 'must');
-    renderRoute();
-    const icon = within(within(rows()).getByTestId('segment')).getByTestId('gift-icon');
-    expect(icon).toHaveAttribute('data-must', 'true');
   });
 
   it('groups a pack conflict by its floors and lets a pack be included or given up as a whole', async () => {
@@ -1237,29 +1275,6 @@ describe('RoutePlanPanel', () => {
     const full = { ...free, observedGifts: [9283, 9222, 9217] };
     expect(actionsFor(conflict(9423), indexes.giftById.get(9423), full, data.rules)).toEqual([{ kind: 'releaseObservations', patch: { observedGifts: [] } }]);
     expect(actionsFor(conflict(9283), indexes.giftById.get(9283), full, data.rules)).toEqual([]);
-  });
-
-  it('marks a condition it cannot judge as such, not as unmet', () => {
-    useApp.getState().setDeck(BURN_DECK, 7);
-    useApp.getState().toggleWanted(9208); // 인연 얽힘: full-resonance condition
-    renderRoute();
-    // The judgement sits on the icon border and its accessible name, in the condition card and
-    // on the map tile alike.
-    expect(screen.getAllByLabelText(/^판정 불가 · 인연 얽힘/).length).toBeGreaterThan(0);
-    expect(screen.queryAllByLabelText(/^미충족/)).toHaveLength(0);
-    const tile = within(screen.getByTestId('conditions')).getByTestId('gift-icon');
-    expect(tile).toHaveAttribute('data-judgement', 'unknown');
-  });
-
-  it('colours a gift icon by whether the deck meets its condition', () => {
-    useApp.getState().setDeck(BURN_DECK, 7);
-    useApp.getState().toggleWanted(9088); // 진혼: combustion condition this deck meets
-    useApp.getState().toggleWanted(9211); // 먹장구름: sinking condition it does not
-    renderRoute();
-    const card = screen.getByTestId('conditions');
-    const byName = (name: RegExp) => within(card).getByLabelText(name);
-    expect(byName(/^충족 · 진혼/)).toHaveAttribute('data-judgement', 'met');
-    expect(byName(/^미충족 · 먹장구름/)).toHaveAttribute('data-judgement', 'unmet');
   });
 
   it('toggles a goal between 보통 and 반드시 from its sheet; 포기 is not a priority any more', async () => {
@@ -2146,6 +2161,14 @@ describe('GoalsPanel', () => {
     // Only the chosen gifts: a fusion goal does not drag its ingredients in.
     expect(within(goals()).getAllByTestId('gift-tile').map((el) => el.getAttribute('data-gift'))).toEqual(['9267', '9283', '9410']);
     expect(screen.getByTestId('goals-panel')).toBeInTheDocument();
+  });
+
+  it('marks a must-have gift with a star badge on its tile', () => {
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267);
+    useApp.getState().setPriority(9267, 'must');
+    renderBoth();
+    expect(within(goalTile(9267)).getByTestId('gift-icon')).toHaveAttribute('data-must', 'true');
   });
 
   it('shares one record with the tiles of the entered pack, in both directions', async () => {

@@ -1,14 +1,14 @@
 /**
  * The whole route, as the right panel shows it: the counts, the alternative routes, the metro map
- * in its vertical form, the unresolved card with its pack-level choices, and the condition
- * judgements. Wide enough for a phone drawer or a 336px desktop panel.
+ * in its vertical form, and the unresolved card with its pack-level choices. Condition judgements
+ * are not repeated here — the item grid's tiles and the gift sheet already carry them. Wide enough
+ * for a phone page or a 336px desktop panel.
  */
 import { useRef, useState } from 'react';
 import { Copy, Star, X } from 'lucide-react';
 import { conflictGroups } from '../../core/index.ts';
 import { pick, t } from '../i18n.ts';
 import { useApp } from '../store.ts';
-import { conditionText } from '../condition-text.ts';
 import { planToText } from '../lib/plan-text.ts';
 import { priorityOf } from '../lib/plan-input.ts';
 import { actionsFor, type UnresolvedAction } from '../lib/unresolved-actions.ts';
@@ -19,7 +19,7 @@ import { Badge, Button, Card, SectionTitle, Toast } from '../components/ui.tsx';
 import { usePlan } from './PlanContext.tsx';
 
 export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
-  const { data, indexes, stats, lang, input, plan, shown, variants, variantIndex, setVariantIndex, variant, judgements, giftTitle, giftName, packName, keywordLabel, ctx } = usePlan();
+  const { data, indexes, lang, input, plan, shown, variants, variantIndex, setVariantIndex, variant, giftName, packName, keywordLabel, ctx } = usePlan();
   const wanted = useApp((s) => s.wanted);
   const priority = useApp((s) => s.priority);
   const options = useApp((s) => s.options);
@@ -157,36 +157,6 @@ export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
     tabsRef.current?.querySelectorAll<HTMLButtonElement>('[role=tab]')[1]?.focus();
   };
 
-  const conditionGifts = [...new Set(shown.conditions.map((c) => c.giftId))];
-  const conditions = (
-    <Card className="p-3.5" testId="conditions">
-      <SectionTitle right={t('routeConditionsBasis', lang, { n: stats.deployed.length })}>{t('routeConditions', lang)}</SectionTitle>
-      {conditionGifts.length === 0 ? (
-        <p className="mt-2 text-xs text-fg-3">—</p>
-      ) : (
-        <ul className="mt-2 grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(140px,1fr))]">
-          {conditionGifts.map((giftId) => {
-            const gift = indexes.giftById.get(giftId);
-            if (!gift) return null;
-            const reports = shown.conditions.filter((c) => c.giftId === giftId);
-            const judgeable = reports.every((r) => r.have !== null && r.need !== null);
-            const worst = reports.find((r) => !r.satisfied) ?? reports[0]!;
-            return (
-              <li key={giftId} className="flex items-center gap-2 rounded-sm border border-line px-2 py-1.5">
-                <GiftIcon gift={gift} size={44} judgement={judgements.get(giftId) ?? null} title={giftTitle(giftId)} lang={lang} />
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="line-clamp-2 text-sm font-medium leading-tight">{giftName(giftId)}</span>
-                  <span className="font-num text-xs text-fg-2">{judgeable ? `${worst.have}/${worst.need}` : t('giftUnjudgeable', lang)}</span>
-                  <span className="sr-only">{reports.map((r) => conditionText(r, data.enums, lang)).join(' / ')}</span>
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </Card>
-  );
-
   return (
     <div className="flex flex-col gap-3" data-testid="route-plan">
       {summary}
@@ -208,7 +178,6 @@ export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
         onSeeVariants={variants.length > 0 && !variant ? seeVariants : undefined}
         detailMode="sheet"
       />
-      {conditions}
       {otherWarnings.length > 0 ? (
         <Card className="p-3.5">
           <SectionTitle>{t('routeWarnings', lang)}</SectionTitle>
