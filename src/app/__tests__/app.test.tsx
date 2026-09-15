@@ -510,6 +510,14 @@ describe('DeckStep', () => {
     expect(useApp.getState().deck).toHaveLength(1);
   });
 
+  it('finds identities by the 초성 of the name too', async () => {
+    const user = userEvent.setup();
+    renderDeck();
+    await user.type(screen.getByLabelText(/전체 인격 검색/), 'ㄹㅇ');
+    const options = within(screen.getByRole('listbox')).getAllByRole('option');
+    expect(options.some((o) => o.textContent?.includes('리우'))).toBe(true);
+  });
+
   it('walks the search results with the keyboard, keeps the list up while picking, and closes on Escape', async () => {
     const user = userEvent.setup();
     renderDeck();
@@ -938,6 +946,17 @@ describe('GiftsStep', () => {
     renderPlanned(<GiftsStep data={data} indexes={indexes} stats={statsFor([])} lang="ko" onGoDeck={onGoDeck} />);
     await user.click(screen.getByRole('button', { name: '덱 탭으로' }));
     expect(onGoDeck).toHaveBeenCalledTimes(1);
+  });
+
+  it('finds a gift by the 초성 of its name', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    const { deck, deployed } = useApp.getState();
+    renderPlanned(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
+    // 「ㅈㄱㅁㄱ」 is how the name is reached on a Korean keyboard without committing to the vowels.
+    await user.type(screen.getByRole('textbox', { name: '기프트 검색' }), 'ㅈㄱㅁㄱ');
+    await user.click(screen.getByRole('button', { name: /기타/, expanded: false }));
+    expect(within(screen.getByTestId('gift-scroller')).getByRole('button', { name: '조그맣고 근사한 바이올린 자세히' })).toBeInTheDocument();
   });
 
   it('lets a chosen fusion result decide whether its ingredients are goals too', async () => {
@@ -1852,10 +1871,17 @@ describe('RunStage', () => {
     renderStage();
     for (let i = 0; i < 3; i += 1) await skipFloor(user);
     const others = screen.getByTestId('other-packs');
-    await user.type(within(others).getByRole('searchbox', { name: '이 층의 팩 검색' }), '2호선');
+    const search = within(others).getByRole('searchbox', { name: '이 층의 팩 검색' });
+    await user.type(search, '2호선');
     const packs = within(others).getAllByTestId('other-pack');
     expect(packs).toHaveLength(1);
     expect(packs[0]).toHaveAttribute('data-pack', '1109');
+    // The same pack answers to the 초성 of its name.
+    await user.clear(search);
+    await user.type(search, 'ㅎㅅ');
+    expect(within(others).getAllByTestId('other-pack').map((el) => el.getAttribute('data-pack'))).toContain('1109');
+    await user.clear(search);
+    await user.type(search, '2호선');
     await user.click(within(packs[0]!).getByRole('button', { name: '2호선' }));
     await user.click(screen.getByRole('button', { name: '굴레 목표에 추가' }));
     expect(useApp.getState().wanted).toEqual([9267, 9754]);

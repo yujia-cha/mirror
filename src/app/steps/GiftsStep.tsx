@@ -14,6 +14,7 @@ import { evaluateConditions, observable } from '../../core/index.ts';
 import type { ConditionReport, DeckStats, GameIndexes } from '../../core/types.ts';
 import { pick, t, type Lang } from '../i18n.ts';
 import { useApp } from '../store.ts';
+import { matchesQuery } from '../lib/hangul.ts';
 import { SIN_LABEL, badgeFor, tierLabel } from '../lib/labels.ts';
 import { prioritiseGifts, type GiftEntry, type GiftGroup } from '../lib/gift-priority.ts';
 import { blockedGifts, entanglements } from '../lib/entangle.ts';
@@ -98,7 +99,7 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
 
   const matchesFilters = (gift: Gift): boolean => {
     const needle = query.trim().toLowerCase();
-    if (needle && !`${gift.name.ko} ${gift.name.en}`.toLowerCase().includes(needle)) return false;
+    if (!matchesQuery(`${gift.name.ko} ${gift.name.en}`.toLowerCase(), needle)) return false;
     if (keyword !== 'all' && gift.keyword !== keyword) return false;
     if (tier !== 'all' && String(gift.tier) !== tier) return false;
     if (acquisition !== 'all' && gift.acquisition.kind !== acquisition) return false;

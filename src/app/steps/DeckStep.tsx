@@ -3,6 +3,7 @@ import { Check, Copy, Plus, Search, Users, X } from 'lucide-react';
 import type { GameData, Identity } from '../../core/schema.ts';
 import type { DeckStats, GameIndexes } from '../../core/types.ts';
 import { pick, t, type Lang } from '../i18n.ts';
+import { matchesQuery } from '../lib/hangul.ts';
 import { sinnerOf, useApp } from '../store.ts';
 import { factionName, identityKeywordLabel } from '../format.ts';
 import { identitiesFromFormationCode } from '../lib/formation-code.ts';
@@ -37,7 +38,7 @@ function matches(identity: Identity, needles: string[], data: GameData): boolean
   ]
     .join(' ')
     .toLowerCase();
-  return needles.some((needle) => haystack.includes(needle));
+  return needles.some((needle) => matchesQuery(haystack, needle));
 }
 
 function KeywordChips({ identity, data, lang }: { identity: Identity; data: GameData; lang: Lang }) {
