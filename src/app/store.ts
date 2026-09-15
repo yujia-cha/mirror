@@ -24,6 +24,12 @@ export interface UiState {
 export const PANEL_WIDTH = { min: 260, max: 560, default: 336 } as const;
 
 export interface SharedState {
+  /**
+   * The Mirror Dungeon the goals belong to. A season replaces the gift pool, so a link opened in
+   * another season would resolve nothing; absent means a link made before seasons existed, which
+   * can only have meant 7.
+   */
+  season?: number;
   /** Identity ids in formation order (at most 12, one per sinner). */
   deck: number[];
   /** Who fights, as a subset of `deck`; the order comes from the deck. */
@@ -38,6 +44,14 @@ export interface SharedState {
 
 interface AppState extends SharedState {
   fusionGoal: FusionGoalMap;
+  /** The season being planned. Undefined until the data says which one the app opened. */
+  season: number | undefined;
+  /**
+   * How many floors this season opens, from `rules.floors`. Not persisted — it is a fact about the
+   * data, re-read on every load — and defaulted to the longest run so a rehydrate before the data
+   * arrives cannot clamp a saved run away.
+   */
+  lastFloor: number;
   /** Progress of the run being played. Kept on this device only; never part of a share link. */
   run: RunState;
   ui: UiState;
@@ -82,11 +96,27 @@ interface AppState extends SharedState {
   setUi: (patch: Partial<UiState>) => void;
   setLang: (lang: Lang) => void;
   toggleDark: () => void;
+  /** Choose the season to plan. The run belongs to the old season's floors, so it is dropped. */
+  setSeason: (season: number) => void;
+  /**
+   * Take on the season that just loaded and drop what it has never heard of.
+   *
+   * A gift or pack id this season does not ship cannot be drawn, named or planned, so keeping it
+   * would leave a blank in the list. One this season ships but cannot award is a different thing
+   * and stays: the planner already explains it as 미해결. Returns what was dropped so the app can
+   * say so rather than letting choices disappear quietly.
+   */
+  adoptSeason: (info: { season: number; lastFloor: number; giftIds: Set<number>; packIds: Set<number> }) => {
+    gifts: number;
+    packs: number;
+  };
   applyShared: (shared: SharedState) => void;
 }
 
 const SINNER_COUNT = 12;
 const LEGACY_DEPLOYED = 6;
+/** Every share link made before links carried a season was a Mirror Dungeon 7 plan. */
+const LEGACY_SEASON = 7;
 
 /** Identity ids are 1SSNN, so the sinner a slot belongs to is derivable from the id. */
 export function sinnerOf(identityId: number): number {
@@ -99,12 +129,18 @@ function prefersDark(): boolean {
     : window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
-/** The app always plans the whole run: floors 1-15, which means Hard from floor 1. */
-export const APP_LAST_FLOOR = 15;
+/**
+ * The most floors any Mirror Dungeon has opened.
+ *
+ * This is a bound for saved and shared state, not a season's floor count: how far *this* season
+ * goes comes from `rules.floors` and reaches the store as `lastFloor` when the data loads. A season
+ * that opens only 1~5 is shorter; none has ever been longer.
+ */
+export const MAX_FLOOR_EVER = 15;
 
 /** The planner's defaults with the app's fixed floor range applied. */
 export function appDefaultOptions(): PlanOptions {
-  return { ...defaultOptions(), lastFloor: APP_LAST_FLOOR, hardFromFloor: 1 };
+  return { ...defaultOptions(), lastFloor: MAX_FLOOR_EVER, hardFromFloor: 1 };
 }
 
 /**
@@ -131,7 +167,7 @@ export function sanitizeOptions(raw: unknown): PlanOptions {
     }
   }
   out.pinnedPacks = pins;
-  out.lastFloor = APP_LAST_FLOOR;
+  out.lastFloor = MAX_FLOOR_EVER;
   out.hardFromFloor = 1;
   // Run progress lives in the `run` slice, never in shared or saved options.
   out.currentFloor = 1;
@@ -186,8 +222,13 @@ export function sanitizeUi(raw: unknown): UiState {
   return out;
 }
 
-/** The floor after the run: `currentFloor` reaches it once floor 15 is decided. */
-export const RUN_DONE_FLOOR = APP_LAST_FLOOR + 1;
+/** The floor after the longest possible run; `currentFloor` never exceeds it. */
+export const MAX_RUN_DONE_FLOOR = MAX_FLOOR_EVER + 1;
+
+/** The floor after this season's run: `currentFloor` reaching it means the run is over. */
+export function runDoneFloor(lastFloor: number): number {
+  return lastFloor + 1;
+}
 
 /** A saved run, kept only when it still makes sense: integer floors within the run, one floor per pack. */
 export function sanitizeRun(raw: unknown): RunState {
@@ -200,7 +241,7 @@ export function sanitizeRun(raw: unknown): RunState {
   if (source.visits && typeof source.visits === 'object') {
     for (const [floor, packId] of Object.entries(source.visits as Record<string, unknown>)) {
       const f = Number(floor);
-      if (!Number.isInteger(f) || f < 1 || f > APP_LAST_FLOOR || typeof packId !== 'number' || seen.has(packId)) continue;
+      if (!Number.isInteger(f) || f < 1 || f > MAX_FLOOR_EVER || typeof packId !== 'number' || seen.has(packId)) continue;
       seen.add(packId);
       out.visits[f] = packId;
     }
@@ -211,9 +252,9 @@ export function sanitizeRun(raw: unknown): RunState {
     }
   }
   const floor = typeof source.currentFloor === 'number' ? Math.round(source.currentFloor) : 1;
-  out.currentFloor = Math.min(RUN_DONE_FLOOR, Math.max(1, floor, ...Object.keys(out.visits).map((f) => Number(f) + 1)));
+  out.currentFloor = Math.min(MAX_RUN_DONE_FLOOR, Math.max(1, floor, ...Object.keys(out.visits).map((f) => Number(f) + 1)));
   const stage = typeof source.stageFloor === 'number' ? Math.round(source.stageFloor) : out.currentFloor;
-  out.stageFloor = Math.min(APP_LAST_FLOOR, out.currentFloor, Math.max(1, stage));
+  out.stageFloor = Math.min(MAX_FLOOR_EVER, out.currentFloor, Math.max(1, stage));
   // The start-of-run record only means something once floor 1 is behind, and only for gifts
   // still marked as collected.
   if (out.currentFloor > 1 && Array.isArray(source.startGifts)) {
@@ -314,7 +355,7 @@ function uniqueDeck(ids: number[]): number[] {
 
 export const useApp = create<AppState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       deck: [],
       deployed: [],
       wanted: [],
@@ -325,6 +366,8 @@ export const useApp = create<AppState>()(
       ui: defaultUi(),
       lang: 'ko',
       dark: prefersDark(),
+      season: undefined,
+      lastFloor: MAX_FLOOR_EVER,
 
       setDeckSlot: (sinnerId, identityId, autoDeployUpTo = 0) =>
         set((state) => {
@@ -400,7 +443,7 @@ export const useApp = create<AppState>()(
 
       visitPack: (packId, floor, settle) =>
         set((state) => {
-          if (!Number.isInteger(floor) || floor < 1 || floor > APP_LAST_FLOOR) return {};
+          if (!Number.isInteger(floor) || floor < 1 || floor > state.lastFloor) return {};
           const visits = withoutPack(state.run.visits, packId);
           visits[floor] = packId;
           return {
@@ -423,17 +466,17 @@ export const useApp = create<AppState>()(
       nextFloor: (settle) =>
         set((state) => {
           const { run } = state;
-          if (run.currentFloor >= RUN_DONE_FLOOR && run.stageFloor >= APP_LAST_FLOOR) return {};
+          if (run.currentFloor >= runDoneFloor(state.lastFloor) && run.stageFloor >= state.lastFloor) return {};
           const skipping = run.stageFloor === run.currentFloor;
           const currentFloor = skipping ? run.currentFloor + 1 : run.currentFloor;
-          const stageFloor = Math.min(APP_LAST_FLOOR, run.stageFloor + 1);
+          const stageFloor = Math.min(state.lastFloor, run.stageFloor + 1);
           return { run: { ...run, stageFloor, ...moveFrontier(run, currentFloor, settle) } };
         }),
       setStageFloor: (floor) =>
         set((state) => {
           if (!Number.isInteger(floor)) return {};
           const { run } = state;
-          const stageFloor = Math.min(APP_LAST_FLOOR, run.currentFloor, Math.max(1, floor));
+          const stageFloor = Math.min(state.lastFloor, run.currentFloor, Math.max(1, floor));
           // A skip right before the frontier holds no record, so stepping back onto it takes it back.
           const currentFloor = stageFloor === run.currentFloor - 1 && run.visits[stageFloor] === undefined ? stageFloor : run.currentFloor;
           return { run: { ...run, stageFloor, ...moveFrontier(run, currentFloor) } };
@@ -496,9 +539,46 @@ export const useApp = create<AppState>()(
       setUi: (patch) => set((state) => ({ ui: sanitizeUi({ ...state.ui, ...patch }) })),
       setLang: (lang) => set({ lang }),
       toggleDark: () => set((state) => ({ dark: !state.dark })),
+
+      setSeason: (season) =>
+        set((state) => (state.season === season ? {} : { season, run: emptyRun() })),
+
+      adoptSeason: ({ season, lastFloor, giftIds, packIds }) => {
+        const state = get();
+        const wanted = state.wanted.filter((id) => giftIds.has(id));
+        const observed = (state.options.observedGifts ?? []).filter((id) => giftIds.has(id));
+        const preferredPacks = state.options.preferredPacks.filter((id) => packIds.has(id));
+        const bannedPacks = state.options.bannedPacks.filter((id) => packIds.has(id));
+        const pinnedPacks = Object.fromEntries(
+          Object.entries(state.options.pinnedPacks).filter(
+            ([floor, packId]) => packIds.has(packId) && Number(floor) <= lastFloor,
+          ),
+        );
+        const droppedGifts = state.wanted.length - wanted.length;
+        const droppedPacks =
+          state.options.preferredPacks.length -
+          preferredPacks.length +
+          (state.options.bannedPacks.length - bannedPacks.length) +
+          (Object.keys(state.options.pinnedPacks).length - Object.keys(pinnedPacks).length);
+        // A run recorded on a longer season cannot be replayed on a shorter one.
+        const run =
+          state.run.currentFloor > lastFloor + 1 || state.run.stageFloor > lastFloor ? emptyRun() : state.run;
+        set({
+          season,
+          lastFloor,
+          run,
+          wanted,
+          priority: sanitizePriority(state.priority, wanted),
+          fusionGoal: sanitizeFusionGoal(state.fusionGoal, wanted),
+          options: { ...state.options, observedGifts: observed, preferredPacks, bannedPacks, pinnedPacks },
+        });
+        return { gifts: droppedGifts, packs: droppedPacks };
+      },
+
       // A link is someone's plan, not this device's run: the run record starts over with it.
       applyShared: (shared) =>
         set({
+          ...(shared.season === undefined ? {} : { season: shared.season }),
           deck: shared.deck,
           deployed: shared.deployed.filter((id) => shared.deck.includes(id)),
           wanted: shared.wanted,
@@ -548,6 +628,7 @@ export const useApp = create<AppState>()(
         options: state.options,
         lang: state.lang,
         dark: state.dark,
+        season: state.season,
       }),
     },
   ),
@@ -561,7 +642,8 @@ const HASH_PREFIX = '#s=';
 
 export function encodeShared(state: SharedState): string {
   const payload = JSON.stringify({
-    v: 4,
+    v: 5,
+    ...(state.season === undefined ? {} : { s: state.season }),
     deck: state.deck,
     deployed: state.deployed,
     wanted: state.wanted,
@@ -577,8 +659,16 @@ export function decodeShared(hash: string): SharedState | null {
   const json = lzString.decompressFromEncodedURIComponent(hash.slice(HASH_PREFIX.length));
   if (!json) return null;
   try {
-    const parsed = JSON.parse(json) as Partial<SharedState> & { v?: number };
+    const parsed = JSON.parse(json) as Partial<SharedState> & { v?: number; s?: unknown };
     if (!Array.isArray(parsed.deck) || !Array.isArray(parsed.wanted)) return null;
+    // v5 carries the season. Links before it could only have been Mirror Dungeon 7, and the `v`
+    // field — written since v1 and never read until now — is what says so.
+    const season =
+      typeof parsed.s === 'number' && Number.isInteger(parsed.s)
+        ? parsed.s
+        : (parsed.v ?? 0) < 5
+          ? LEGACY_SEASON
+          : undefined;
     const deck = parsed.deck.filter((n): n is number => typeof n === 'number');
     // v1 links carried no deployed list: the first six fought.
     const deployed = Array.isArray(parsed.deployed)
@@ -586,6 +676,7 @@ export function decodeShared(hash: string): SharedState | null {
       : deck.slice(0, LEGACY_DEPLOYED);
     const wanted = parsed.wanted.filter((n): n is number => typeof n === 'number');
     return {
+      ...(season === undefined ? {} : { season }),
       deck,
       deployed,
       wanted,

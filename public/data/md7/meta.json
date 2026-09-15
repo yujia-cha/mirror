@@ -5,7 +5,7 @@
     "identities": 185,
     "packs": 116
   },
-  "dataVersion": "7.2e52d646",
+  "dataVersion": "7.9682b798",
   "dungeon": {
     "id": 7,
     "name": {
@@ -13,6 +13,7 @@
       "ko": "이름과 거미의 거울"
     }
   },
+  "provisional": false,
   "schemaVersion": 1,
   "sources": {
     "eldritchtools": {

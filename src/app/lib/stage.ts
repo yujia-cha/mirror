@@ -5,20 +5,35 @@
  */
 import type { Difficulty, GameData } from '../../core/schema.ts';
 import type { GameIndexes, RoutePlan } from '../../core/types.ts';
-import { APP_LAST_FLOOR, RUN_DONE_FLOOR } from '../store.ts';
+import { runDoneFloor } from '../store.ts';
 import type { GiftStatus, RunState } from './plan-input.ts';
 
-/** The app plays floors 1-5 on Hard, 6-10 in 평행중첩 and 11-15 on EXTREME. */
-export function bandMode(floor: number): Extract<Difficulty, 'hard' | 'parallel' | 'extreme'> {
-  return floor >= 11 ? 'extreme' : floor >= 6 ? 'parallel' : 'hard';
+/** How many floors this season opens. The app always plans all of them. */
+export function lastFloorOf(data: GameData): number {
+  return Math.max(...Object.values(data.rules.floors).flat());
+}
+
+/**
+ * The app never plays Normal, so a floor is 평행중첩, EXTREME, or Hard. Which floors carry the two
+ * fixed bands is the season's business, so it comes from the data and not from 6 and 11.
+ */
+export function bandMode(
+  indexes: GameIndexes,
+  floor: number,
+): Extract<Difficulty, 'hard' | 'parallel' | 'extreme'> {
+  return indexes.fixedModeByFloor.get(floor) ?? 'hard';
 }
 
 export type StageMode = 'entered' | 'undecided' | 'skipped' | 'done';
 
 /** Entered: a pack is recorded; undecided: the frontier; skipped: passed without a pack; done: the run is over. */
-export function stageModeFor(run: Pick<RunState, 'currentFloor' | 'visits'>, floor: number): StageMode {
+export function stageModeFor(
+  run: Pick<RunState, 'currentFloor' | 'visits'>,
+  floor: number,
+  lastFloor: number,
+): StageMode {
   if (run.visits[floor] !== undefined) return 'entered';
-  if (run.currentFloor >= RUN_DONE_FLOOR && floor >= APP_LAST_FLOOR) return 'done';
+  if (run.currentFloor >= runDoneFloor(lastFloor) && floor >= lastFloor) return 'done';
   if (floor === run.currentFloor) return 'undecided';
   return floor < run.currentFloor ? 'skipped' : 'undecided';
 }
@@ -46,7 +61,7 @@ export function enterablePacks(plan: RoutePlan | null, floor: number): Enterable
 
 /** Every selectable pack the game can offer on `floor`. */
 export function packsOfferedOn(indexes: GameIndexes, floor: number): number[] {
-  return indexes.packsByFloor[bandMode(floor)].get(floor) ?? [];
+  return indexes.packsByFloor[bandMode(indexes, floor)].get(floor) ?? [];
 }
 
 /**

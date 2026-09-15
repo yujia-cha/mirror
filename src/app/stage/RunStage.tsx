@@ -22,6 +22,7 @@ const FOLD_MS = 200;
 export function RunStage({ onOpenGifts }: { onOpenGifts: () => void }) {
   const { indexes, lang, shown, ctx, exclusivesOf, stageMode, enter, next } = usePlan();
   const run = useApp((s) => s.run);
+  const lastFloor = useApp((s) => s.lastFloor);
   const floor = run.stageFloor;
   const routePacks = enterablePacks(shown, floor);
   const offered = packsOfferedOn(indexes, floor);
@@ -45,7 +46,7 @@ export function RunStage({ onOpenGifts }: { onOpenGifts: () => void }) {
   if (stageMode === 'done') {
     body = (
       <Card className="flex flex-col items-center gap-2.5 px-4 py-8 text-center" testId="stage-done">
-        <div className="text-sm font-semibold">{t('stageDone', lang)}</div>
+        <div className="text-sm font-semibold">{t('stageDone', lang, { last: lastFloor })}</div>
       </Card>
     );
   } else if (stageMode === 'entered' && entered !== undefined) {

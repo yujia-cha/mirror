@@ -6,9 +6,9 @@
  */
 import { useState } from 'react';
 import { Globe, Moon, PanelLeft, PanelRight, RotateCcw, Share2, Sun } from 'lucide-react';
-import type { GameData } from '../../core/schema.ts';
+import type { GameData, SeasonEntry } from '../../core/schema.ts';
 import type { DeckStats, GameIndexes } from '../../core/types.ts';
-import { t, type Lang } from '../i18n.ts';
+import { pick, t, type Lang } from '../i18n.ts';
 import { useApp, type LeftTab, type RightTab } from '../store.ts';
 import { defaultDeck } from '../lib/default-deck.ts';
 import { useDesktop } from '../lib/useMediaQuery.ts';
@@ -30,6 +30,8 @@ export function AppShell({
   stats,
   lang,
   dark,
+  seasons,
+  onSeason,
   onShare,
   onToggleLang,
   onToggleDark,
@@ -39,6 +41,9 @@ export function AppShell({
   stats: DeckStats;
   lang: Lang;
   dark: boolean;
+  /** Every published season. One of them means there is nothing to choose between. */
+  seasons: SeasonEntry[];
+  onSeason: (season: number) => void;
   onShare: () => void;
   onToggleLang: () => void;
   onToggleDark: () => void;
@@ -137,8 +142,42 @@ export function AppShell({
           <main className="flex min-w-0 flex-1 flex-col gap-3 px-4 pb-8 pt-3 lg:px-6 lg:pt-4">
             <RunStage onOpenGifts={openGifts} />
             <footer className="mt-auto border-t border-line pt-3 text-xs text-fg-3">
-              <p>
-                {t('dataVersion', lang)} {data.meta.dataVersion} · {data.meta.dungeon.name.ko}
+              <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                <span>
+                  {t('dataVersion', lang)} {data.meta.dataVersion}
+                </span>
+                <span aria-hidden>·</span>
+                {/*
+                  The season is named here already, so this is where it is chosen. Until a second
+                  season is published there is nothing to choose and the line reads as it always
+                  has — no control appears for a list of one.
+                */}
+                {seasons.length > 1 ? (
+                  <select
+                    className="rounded border border-line bg-surface px-1.5 py-0.5 text-xs text-fg-2"
+                    aria-label={t('season', lang)}
+                    data-testid="season-select"
+                    value={data.meta.dungeon.id}
+                    onChange={(event) => onSeason(Number(event.target.value))}
+                  >
+                    {seasons.map((entry) => (
+                      <option key={entry.id} value={entry.id}>
+                        {pick(entry.name, lang) || `MD${entry.id}`}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span>{pick(data.meta.dungeon.name, lang)}</span>
+                )}
+                {data.meta.provisional ? (
+                  <span
+                    className="text-warn"
+                    title={t('seasonProvisionalHint', lang)}
+                    data-testid="season-provisional"
+                  >
+                    {t('seasonProvisional', lang)}
+                  </span>
+                ) : null}
               </p>
               <p className="mt-1">{t('aboutData', lang)}</p>
             </footer>

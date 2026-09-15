@@ -2,7 +2,12 @@
  * Check public/data: schema, referential integrity, then domain invariants.
  *
  *   npm run data:validate
+ *   npm run data:validate -- --season 7  check that season instead of the one index.json opens
  *   npm run data:validate -- --lenient   downgrade static-data-dependent checks to warnings
+ *
+ * The domain checks compare the generated data against the raw snapshot in `data/raw`, which
+ * describes exactly one season, so they run against that season. Every other season on disk is a
+ * frozen build that nothing can change but a hand edit, so it gets the schema and index checks.
  *
  * Messages are prefixed [schema] / [ref] / [invariant] / [stale]; the validate-data skill explains
  * what each class usually means and how to fix it.
@@ -10,8 +15,9 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { z } from 'zod';
-import { hasFlag, readJson, readJsonIfExists, repoPath } from './lib/io.ts';
-import { readPersonalities, readThemePacks, staticDataPresent } from './lib/raw.ts';
+import { hasFlag, flagValue, readJson, readJsonIfExists, repoPath } from './lib/io.ts';
+import { readCommonData, readPersonalities, readThemePacks, staticDataPresent } from './lib/raw.ts';
+import { OUT, SEASON_FILES, outPath, outRelPath } from './lib/out.ts';
 import { derivedKeywords, readDerivedFetchedAt, readDerivedIdentities } from './lib/derived-source.ts';
 import {
   derivedFixedRecipes,
@@ -30,15 +36,16 @@ import {
   metaSchema,
   packsFileSchema,
   rulesSchema,
+  seasonIndexSchema,
   type Enums,
   type Gift,
   type Identity,
   type Meta,
   type Rules,
+  type SeasonIndex,
   type ThemePack,
 } from '../src/core/schema.ts';
 
-const OUT = repoPath('public/data');
 /** The twelve sinners the game has had since launch; every one must be deckable. */
 const SINNER_COUNT = 12;
 /**
@@ -73,23 +80,35 @@ function strict(kind: string, message: string): void {
   else err(kind, message);
 }
 
-function parseFile<S extends z.ZodTypeAny>(name: string, schema: S): z.infer<S> | null {
-  const path = join(OUT, name);
+function parseAt<S extends z.ZodTypeAny>(path: string, label: string, schema: S): z.infer<S> | null {
   if (!existsSync(path)) {
-    err('schema', `public/data/${name} is missing. Run: npm run data:build`);
+    err('schema', `${label} is missing. Run: npm run data:build`);
     return null;
   }
   const result = schema.safeParse(readJson(path));
   if (!result.success) {
     for (const issue of result.error.issues.slice(0, 25)) {
-      err('schema', `${name} ${issue.path.join('.')}: ${issue.message}`);
+      err('schema', `${label} ${issue.path.join('.')}: ${issue.message}`);
     }
     if (result.error.issues.length > 25) {
-      err('schema', `${name}: ${result.error.issues.length - 25} more schema issue(s)`);
+      err('schema', `${label}: ${result.error.issues.length - 25} more schema issue(s)`);
     }
     return null;
   }
   return result.data;
+}
+
+const index: SeasonIndex | null = parseAt(join(OUT, 'index.json'), 'public/data/index.json', seasonIndexSchema);
+const requestedSeason = flagValue('--season') ? Number(flagValue('--season')) : undefined;
+/**
+ * The season the raw snapshot describes, and so the one the domain checks below can speak about.
+ * Not `index.default`: the newest published season may be a frozen build whose raw data is gone.
+ */
+const season = requestedSeason ?? readCommonData()?.data.currentDungeonId ?? index?.default ?? 7;
+
+function parseFile<S extends z.ZodTypeAny>(name: string, schema: S): z.infer<S> | null {
+  const file = name.replace(/\.json$/, '') as Parameters<typeof outPath>[0];
+  return parseAt(outPath(file, season), outRelPath(file, season), schema);
 }
 
 const meta: Meta | null = parseFile('meta.json', metaSchema);
@@ -674,9 +693,80 @@ function checkCuratedOverrides(gifts: Gift[], packs: ThemePack[], identities: Id
   }
 }
 
+/**
+ * `index.json` against the season directories on disk.
+ *
+ * The app reads the index and nothing else to decide which seasons exist, so a directory that is
+ * not listed is invisible and an entry with no directory is a 404 at boot. Frozen seasons get
+ * their schema checked here — nothing but a hand edit can change them, and that is exactly what
+ * this catches.
+ */
+function checkSeasonIndex(): void {
+  if (!index) return;
+  const onDisk = existsSync(OUT)
+    ? readdirSync(OUT)
+        .filter((entry) => /^md\d+$/.test(entry) && statSync(join(OUT, entry)).isDirectory())
+        .map((entry) => Number(entry.slice(2)))
+        .sort((a, b) => a - b)
+    : [];
+  const listed = index.seasons.map((entry) => entry.id).sort((a, b) => a - b);
+  for (const id of onDisk) {
+    if (!listed.includes(id)) err('invariant', `public/data/md${id} exists but index.json does not list it`);
+  }
+  for (const id of listed) {
+    if (!onDisk.includes(id)) {
+      err('invariant', `index.json lists season ${id} but public/data/md${id} is missing`);
+      continue;
+    }
+    for (const name of SEASON_FILES) {
+      if (!existsSync(outPath(name, id))) err('schema', `${outRelPath(name, id)} is missing`);
+    }
+  }
+  if (!listed.includes(index.default)) {
+    err('invariant', `index.json opens season ${index.default}, which it does not list`);
+  }
+
+  // Each entry must still describe its season: the index is a copy, and a copy can go stale.
+  for (const entry of index.seasons) {
+    if (entry.id === season) {
+      if (meta && entry.dataVersion !== meta.dataVersion) {
+        err(
+          'invariant',
+          `index.json says season ${entry.id} is ${entry.dataVersion}, ${outRelPath('meta', entry.id)} says ` +
+            `${meta.dataVersion}. Run: npm run data:build`,
+        );
+      }
+      if (rules) {
+        const lastFloor = Math.max(...Object.values(rules.floors).flat());
+        if (entry.lastFloor !== lastFloor) {
+          err('invariant', `index.json says season ${entry.id} ends at floor ${entry.lastFloor}, rules.json says ${lastFloor}`);
+        }
+      }
+      if (meta && entry.provisional !== meta.provisional) {
+        err('invariant', `index.json and ${outRelPath('meta', entry.id)} disagree on whether season ${entry.id} is provisional`);
+      }
+    } else {
+      const frozenMeta = parseAt(outPath('meta', entry.id), outRelPath('meta', entry.id), metaSchema);
+      parseAt(outPath('rules', entry.id), outRelPath('rules', entry.id), rulesSchema);
+      if (frozenMeta && frozenMeta.dataVersion !== entry.dataVersion) {
+        err('invariant', `index.json says season ${entry.id} is ${entry.dataVersion}, its meta.json says ${frozenMeta.dataVersion}`);
+      }
+    }
+    if (entry.provisional) {
+      warn(
+        'invariant',
+        `season ${entry.id} is provisional: a selectable pack has no general gift pool, so general ` +
+          `gifts cannot be planned through it. Get the season's static data (npm run data:import).`,
+      );
+    }
+  }
+}
+
+checkSeasonIndex();
+
 /** Generated output older than its inputs means someone forgot to rebuild. */
 function checkFreshness(): void {
-  const metaPath = join(OUT, 'meta.json');
+  const metaPath = outPath('meta', season);
   if (!existsSync(metaPath)) return;
   const builtAt = statSync(metaPath).mtimeMs;
   const newer: string[] = [];
@@ -695,7 +785,7 @@ function checkFreshness(): void {
   if (newer.length > 0) {
     warn(
       'stale',
-      `${newer.length} input file(s) are newer than public/data (e.g. ${newer[0]}). Run: npm run data:build`,
+      `${newer.length} input file(s) are newer than the built season (e.g. ${newer[0]}). Run: npm run data:build`,
     );
   }
 }

@@ -29,6 +29,12 @@ export function buildIndexes(data: GameData): GameIndexes {
     packsByFloor[mode] = byFloor;
   }
 
+  // Floors the season plays at a fixed difficulty. Read from the data, not from 6 and 11: a season
+  // that opens only 1~5 has neither band, and the planner must not invent them.
+  const fixedModeByFloor = new Map<number, 'parallel' | 'extreme'>();
+  for (const floor of data.rules.floors.parallel) fixedModeByFloor.set(floor, 'parallel');
+  for (const floor of data.rules.floors.extreme) fixedModeByFloor.set(floor, 'extreme');
+
   const packsByGift = new Map<number, number[]>();
   for (const pack of packs) {
     for (const giftId of pack.giftPool) {
@@ -60,5 +66,14 @@ export function buildIndexes(data: GameData): GameIndexes {
     if (list.length >= minPacks) freelyAvailableGifts.add(giftId);
   }
 
-  return { giftById, packById, identityById, packs, packsByFloor, packsByGift, freelyAvailableGifts };
+  return {
+    giftById,
+    packById,
+    identityById,
+    packs,
+    packsByFloor,
+    fixedModeByFloor,
+    packsByGift,
+    freelyAvailableGifts,
+  };
 }

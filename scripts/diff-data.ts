@@ -4,13 +4,19 @@
  *
  *   npm run data:diff
  *   npm run data:diff -- --ref HEAD~3
+ *   npm run data:diff -- --season 7
+ *
+ * Season-owned files are compared inside their own directory; `identities.json` is shared, so it
+ * is compared once whatever season is selected.
  */
 import { execFileSync } from 'node:child_process';
 import { flagValue, readJson, repoPath } from './lib/io.ts';
+import { defaultSeason, outPath, outRelPath } from './lib/out.ts';
 import type { Gift, Identity, Meta, ThemePack } from '../src/core/schema.ts';
 import { sourceRevision } from './lib/changelog.ts';
 
 const ref = flagValue('--ref') ?? 'HEAD';
+const season = Number(flagValue('--season') ?? defaultSeason() ?? 7);
 
 function fromGit<T>(path: string): T | null {
   try {
@@ -66,8 +72,8 @@ function diffSet<T extends Named>(kind: string, before: T[] | null, after: T[]):
   show('changed', changed);
 }
 
-const meta = readJson<Meta>(repoPath('public/data/meta.json'));
-const prevMeta = fromGit<Meta>('public/data/meta.json');
+const meta = readJson<Meta>(outPath('meta', season));
+const prevMeta = fromGit<Meta>(outRelPath('meta', season));
 
 console.log(`dataVersion: ${prevMeta?.dataVersion ?? '(none)'} -> ${meta.dataVersion}`);
 if (prevMeta) {
@@ -80,24 +86,23 @@ if (prevMeta) {
 
 diffSet(
   'gifts',
-  fromGit<Gift[]>('public/data/gifts.json'),
-  readJson<Gift[]>(repoPath('public/data/gifts.json')),
+  fromGit<Gift[]>(outRelPath('gifts', season)),
+  readJson<Gift[]>(outPath('gifts', season)),
 );
 diffSet(
   'packs',
-  fromGit<ThemePack[]>('public/data/packs.json'),
-  readJson<ThemePack[]>(repoPath('public/data/packs.json')),
+  fromGit<ThemePack[]>(outRelPath('packs', season)),
+  readJson<ThemePack[]>(outPath('packs', season)),
 );
 diffSet(
   'identities',
-  fromGit<Identity[]>('public/data/identities.json'),
-  readJson<Identity[]>(repoPath('public/data/identities.json')),
+  fromGit<Identity[]>(outRelPath('identities', season)),
+  readJson<Identity[]>(outPath('identities', season)),
 );
 
 // rules.json is small but high impact: show the literal lines that moved.
-const rulesPath = 'public/data/rules.json';
-const prevRules = fromGit<unknown>(rulesPath);
-const nextRules = readJson<unknown>(repoPath(rulesPath));
+const prevRules = fromGit<unknown>(outRelPath('rules', season));
+const nextRules = readJson<unknown>(outPath('rules', season));
 if (prevRules && JSON.stringify(prevRules) !== JSON.stringify(nextRules)) {
   console.log('rules: changed');
   const a = JSON.stringify(prevRules, null, 2).split('\n');

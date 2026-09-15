@@ -13,15 +13,17 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { appendRow, changelogRow } from './lib/changelog.ts';
 import { flagValue, readJson, repoPath } from './lib/io.ts';
+import { defaultSeason, outPath, outRelPath } from './lib/out.ts';
 import type { Meta } from '../src/core/schema.ts';
 
 const ref = flagValue('--ref') ?? 'HEAD';
+const season = Number(flagValue('--season') ?? defaultSeason() ?? 7);
 const date = flagValue('--date') ?? new Date().toISOString().slice(0, 10);
 const changelogPath = repoPath('docs/research/changelog.md');
 
 function committedMeta(): Meta | null {
   try {
-    const text = execFileSync('git', ['show', `${ref}:public/data/meta.json`], {
+    const text = execFileSync('git', ['show', `${ref}:${outRelPath('meta', season)}`], {
       cwd: repoPath(''),
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -33,12 +35,12 @@ function committedMeta(): Meta | null {
 }
 
 const before = committedMeta();
-const after = readJson<Meta>(repoPath('public/data/meta.json'));
+const after = readJson<Meta>(outPath('meta', season));
 
 // meta.json carries the dataVersion (a hash of every input), the source shas and the counts, so an
 // identical one means the refresh produced exactly what is already committed.
 if (before && JSON.stringify(before) === JSON.stringify(after)) {
-  console.log(`changelog: public/data/meta.json이 ${ref}와 같습니다 — 기록할 변경이 없습니다`);
+  console.log(`changelog: ${outRelPath('meta', season)}이 ${ref}와 같습니다 — 기록할 변경이 없습니다`);
   process.exit(0);
 }
 

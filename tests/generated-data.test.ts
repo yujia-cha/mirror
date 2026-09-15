@@ -14,10 +14,23 @@ import {
   metaSchema,
   packsFileSchema,
   rulesSchema,
+  seasonIndexSchema,
 } from '../src/core/schema.ts';
 
+const DATA = resolve(process.cwd(), 'public/data');
+const index = seasonIndexSchema.parse(JSON.parse(readFileSync(resolve(DATA, 'index.json'), 'utf8')));
+/** The season `index.json` opens: the one the vendored raw data describes. */
+const season = index.default;
+/** Season-owned files live in the season's directory; `enums` and `identities` are shared. */
 const read = (name: string): unknown =>
-  JSON.parse(readFileSync(resolve(process.cwd(), 'public/data', name), 'utf8'));
+  JSON.parse(
+    readFileSync(
+      ['meta.json', 'rules.json', 'gifts.json', 'packs.json'].includes(name)
+        ? resolve(DATA, `md${season}`, name)
+        : resolve(DATA, name),
+      'utf8',
+    ),
+  );
 
 const meta = metaSchema.parse(read('meta.json'));
 const enums = enumsSchema.parse(read('enums.json'));

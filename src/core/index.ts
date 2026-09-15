@@ -105,7 +105,7 @@ function normaliseOptions(
   for (const [floorText, packId] of Object.entries(next.pinnedPacks ?? {})) {
     const floor = Number(floorText);
     const offered = Number.isInteger(floor) && floor >= 1 && floor <= lastFloor
-      ? (indexes.packsByFloor[modeForFloor(floor, { ...next, lastFloor })].get(floor) ?? [])
+      ? (indexes.packsByFloor[modeForFloor(floor, { ...next, lastFloor }, indexes)].get(floor) ?? [])
       : [];
     if (known(packId) && offered.includes(packId) && !bannedSet.has(packId)) pinnedPacks[floor] = packId;
     else if (typeof packId === 'number') dropped.push(packId);
@@ -158,8 +158,8 @@ function windowFor(
   // Hard-only pack never wanders into Normal floors), offered there, and not pinned to another.
   const candidates = (id: number, own: number): number[] =>
     floors.filter((g) => {
-      if (modeForFloor(g, options) !== modeForFloor(own, options)) return false;
-      if (!(indexes.packsByFloor[modeForFloor(g, options)].get(g) ?? []).includes(id)) return false;
+      if (modeForFloor(g, options, indexes) !== modeForFloor(own, options, indexes)) return false;
+      if (!(indexes.packsByFloor[modeForFloor(g, options, indexes)].get(g) ?? []).includes(id)) return false;
       const pinnedHere = options.pinnedPacks[g];
       return pinnedHere === undefined || pinnedHere === id;
     });
@@ -436,7 +436,7 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
       })
       .filter(({ pickups }) => pickups.length === 1 && canObserve(pickups[0]!.giftId))
       .map((entry) => {
-        const window = windowFor(entry.packId, entry.floor, modeForFloor(entry.floor, options), floors, options, search.assignment, indexes);
+        const window = windowFor(entry.packId, entry.floor, modeForFloor(entry.floor, options, indexes), floors, options, search.assignment, indexes);
         return { ...entry, width: window.to - window.from, giftId: entry.pickups[0]!.giftId, key: requirementKey(entry.pickups[0]!) };
       })
       .sort(
@@ -556,7 +556,7 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
     const gift = indexes.giftById.get(giftId);
     const packs = indexes.packsByGift.get(giftId) ?? [];
     const offeredSomewhere = (packId: number): boolean =>
-      floors.some((floor) => (indexes.packsByFloor[modeForFloor(floor, options)].get(floor) ?? []).includes(packId));
+      floors.some((floor) => (indexes.packsByFloor[modeForFloor(floor, options, indexes)].get(floor) ?? []).includes(packId));
     const anySlot = packs.some((packId) => !bannedPacks.has(packId) && offeredSomewhere(packId));
     const onlyBanned = !anySlot && packs.length > 0 && packs.some(offeredSomewhere);
     /*
@@ -672,7 +672,7 @@ export function planRoute(input: PlanInput, data: GameData, indexes: GameIndexes
   let observationIndex = 0;
 
   const floorPlans: FloorPlan[] = rows.map((floor): FloorPlan => {
-    const mode = modeForFloor(floor, options);
+    const mode = modeForFloor(floor, options, indexes);
     const isPassed = floor < currentFloor;
     const packId = isPassed ? (passed.get(floor) ?? null) : (search.assignment.get(floor) ?? null);
     const pinned = packId !== null && (isPassed || options.pinnedPacks[floor] === packId);
@@ -896,7 +896,7 @@ function soleOccupantToFree(
   const packs = (indexes.packsByGift.get(giftId) ?? []).filter((id) => !banned.has(id));
   const usable = floors.filter((floor) => {
     if (options.pinnedPacks[floor] !== undefined) return false;
-    const offered = indexes.packsByFloor[modeForFloor(floor, options)].get(floor) ?? [];
+    const offered = indexes.packsByFloor[modeForFloor(floor, options, indexes)].get(floor) ?? [];
     return packs.some((id) => offered.includes(id));
   });
   for (const floor of usable.sort((a, b) => a - b)) {

@@ -39,7 +39,23 @@ OpenLethe의 거울 던전 캡처는 **얼어 있어 새 시즌이 오지 않는
    npm run data:import -- <추출한 static-data 폴더> --write   # 적용
    ```
    새 시즌 파일명(`mirror-dungeon-common-data-md8.json` 등)은 스크립트가 찾아 알려 준다. **`sources.lock.json`에 손으로 더한다** — 스크립트는 lock을 고치지 않는다.
-4. 추출이 불가능하면 그 시즌은 **팩 한정·조합·시작 기프트까지만** 계획할 수 있다. 범용 기프트 경로가 꺼진 상태를 사용자에게 알리는 것이 검증 에러의 목적이다.
+4. 추출이 불가능하면 그 시즌은 **팩 한정·조합·시작 기프트까지만** 계획할 수 있다. 그 상태로 배포하려면 `data/curated/seasons/md{n}/rules.json`에 적는다:
+   ```json
+   {
+     "provisional": true,
+     "floors": { "normal": [1,2,3,4,5], "hard": [1,2,3,4,5], "parallel": [], "extreme": [] },
+     "_floors_source": "인게임 확인 — 시즌 초기에는 1~5층만 열린다"
+   }
+   ```
+   `provisional`은 범용 풀 없음을 **에러에서 경고로** 낮춘다. 그래야 새 시즌이 **지난 시즌 빌드를 막지 않는다**. 반쪽인 시즌은 `index.json`의 기본이 되지 않고(데이터가 온전한 가장 새 시즌이 기본이다), 앱 푸터가 「데이터 일부 미확인」이라고 말한다. 원본을 넣어 범용 풀이 채워지면 `provisional`을 지운다 — 그 순간 자동으로 기본 시즌이 된다.
+
+### 시즌 생성물의 모양
+
+- 생성물은 시즌별 `public/data/md{n}/{meta,rules,gifts,packs}.json`과 공용 `public/data/{enums,identities,index}.json`으로 갈린다.
+- **한 번에 한 시즌만 굽는다.** `data/raw/static`은 한 시즌의 스냅숏이므로, md8 스냅숏이 들어오면 **md7은 다시 구울 수 없다** — md7 디렉터리는 커밋된 채로 얼려 두고 건드리지 않는다. 다시 구워야 하면 그 시즌을 구웠던 커밋을 체크아웃한다.
+- `index.json`은 디렉터리를 훑어 매 빌드마다 다시 쓴다. 지난 시즌을 지우면 목록에서도 사라진다.
+- 층 범위는 `rules.floors`가 유일한 출처다. 시즌 파일에 없으면 1~5 / 6~10 / 11~15가 기본.
+- `npm run data:build -- --season 7`로 스냅숏이 아직 가진 시즌을 골라 구울 수 있다.
 
 새 시즌은 `data/curated/rules.json`의 상수(별빛·조합 확률·관측 비용·강화 비용)도 바뀔 수 있다. 파생 미러에는 없으므로 인게임 확인 후 `_source`와 함께 적는다.
 
@@ -57,7 +73,7 @@ OpenLethe의 거울 던전 캡처는 **얼어 있어 새 시즌이 오지 않는
 
 ## 5. 마무리
 
-- `public/data/meta.json`의 `dataVersion`은 빌드가 자동으로 정한다(던전 id + 입력 전체의 해시). 입력이 그대로면 값도 그대로다.
+- `public/data/md{n}/meta.json`의 `dataVersion`은 빌드가 자동으로 정한다(던전 id + 입력 전체의 해시). 입력이 그대로면 값도 그대로다.
 - `npm run data:changelog` — `docs/research/changelog.md`에 한 줄 추가한다. **커밋 전에** 돌려야 한다(비교 대상이 git에 남아 있는 이전 `meta.json`이라서). 시즌/패치 같은 맥락은 그 줄에 손으로 덧붙인다.
 - 커밋: `data: MD7 2026-09-04 패치 반영 (기프트 +6, 팩 +2)` 형태로 수치를 넣는다.
 

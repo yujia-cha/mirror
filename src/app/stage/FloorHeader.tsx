@@ -8,15 +8,15 @@
  * and `data-pack` — it no longer gets a dot of its own.
  */
 import { t, type Lang } from '../i18n.ts';
-import { APP_LAST_FLOOR, useApp } from '../store.ts';
+import { useApp } from '../store.ts';
 import { stageModeFor, type StageMode } from '../lib/stage.ts';
 import { Badge } from '../components/ui.tsx';
 import { usePlan } from '../shell/PlanContext.tsx';
 
 /** The entered pack is named by the caller; here only the pack-less states get a badge. */
-function modeBadge(mode: StageMode, lang: Lang) {
+function modeBadge(mode: StageMode, lang: Lang, lastFloor: number) {
   if (mode === 'skipped') return <Badge tone="neutral">{t('stageSkipped', lang)}</Badge>;
-  if (mode === 'done') return <Badge tone="sure">{t('stageDone', lang)}</Badge>;
+  if (mode === 'done') return <Badge tone="sure">{t('stageDone', lang, { last: lastFloor })}</Badge>;
   return null;
 }
 
@@ -24,9 +24,11 @@ export function FloorHeader({ mode }: { mode: StageMode }) {
   const { lang, shown, packName } = usePlan();
   const run = useApp((s) => s.run);
   const setStageFloor = useApp((s) => s.setStageFloor);
+  const lastFloor = useApp((s) => s.lastFloor);
   const floor = run.stageFloor;
   const entered = run.visits[floor];
-  const floors = Array.from({ length: APP_LAST_FLOOR }, (_, i) => i + 1);
+  // One cell per floor this season opens — fifteen today, fewer in a season that has opened less.
+  const floors = Array.from({ length: lastFloor }, (_, i) => i + 1);
 
   return (
     <div className="flex flex-col gap-3" data-testid="floor-header">
@@ -35,16 +37,16 @@ export function FloorHeader({ mode }: { mode: StageMode }) {
           <span className="font-num text-4xl font-bold leading-none text-fg" data-testid="stage-floor">
             {floor}
           </span>
-          <span className="font-num text-sm text-fg-3">{t('stageOf', lang)}</span>
+          <span className="font-num text-sm text-fg-3">{t('stageOf', lang, { last: lastFloor })}</span>
         </div>
-        {entered !== undefined ? <Badge tone="sure">{packName(entered)}</Badge> : modeBadge(mode, lang)}
+        {entered !== undefined ? <Badge tone="sure">{packName(entered)}</Badge> : modeBadge(mode, lang, lastFloor)}
       </div>
       <ol className="flex gap-1" aria-label={t('tabRoutePlan', lang)} data-testid="floor-strip">
         {floors.map((f) => {
-          const state = stageModeFor(run, f);
+          const state = stageModeFor(run, f, lastFloor);
           const planned = shown?.floors.find((entry) => entry.floor === f)?.packId ?? null;
           const shownPack = run.visits[f] ?? (state === 'undecided' ? planned : null);
-          const reachable = f <= Math.min(run.currentFloor, APP_LAST_FLOOR);
+          const reachable = f <= Math.min(run.currentFloor, lastFloor);
           return (
             <li key={f} className="min-w-0 flex-1">
               <button

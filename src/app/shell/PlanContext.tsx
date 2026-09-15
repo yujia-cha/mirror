@@ -15,7 +15,7 @@ import { keywordName } from '../format.ts';
 import { conditionText } from '../condition-text.ts';
 import { judgementsByGift, type Judgement } from '../lib/judgement.ts';
 import { planInputFor, priorityOf } from '../lib/plan-input.ts';
-import { autoFailedFor, exclusivesIndex, stageModeFor, type StageMode } from '../lib/stage.ts';
+import { autoFailedFor, exclusivesIndex, lastFloorOf, stageModeFor, type StageMode } from '../lib/stage.ts';
 import { entanglements, ingredientsOf } from '../lib/entangle.ts';
 import { upgradeChildren } from '../lib/upgrade-children.ts';
 import { useDesktop } from '../lib/useMediaQuery.ts';
@@ -95,9 +95,12 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
   // gesture closes the sheet and the next one the page.
   usePageHistory(detailGift !== null, closeSheet, !desktop);
 
+  // How far the run goes is the season's, not the app's: `options.lastFloor` only bounds what a
+  // saved or shared plan may claim.
+  const lastFloor = useMemo(() => lastFloorOf(data), [data]);
   const input = useMemo(
-    () => planInputFor({ deck, deployed, wanted, priority, options, fusionGoal, run }),
-    [deck, deployed, wanted, priority, options, fusionGoal, run],
+    () => planInputFor({ deck, deployed, wanted, priority, options, fusionGoal, run }, { lastFloor }),
+    [deck, deployed, wanted, priority, options, fusionGoal, run, lastFloor],
   );
   const plan = useMemo(() => (input.wanted.length === 0 ? null : planRoute(input, data, indexes)), [input, data, indexes]);
   const variants = useMemo(
@@ -188,7 +191,7 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
       ctx,
       exclusivesOf,
       startGifts,
-      stageMode: stageModeFor(run, run.stageFloor),
+      stageMode: stageModeFor(run, run.stageFloor, lastFloor),
       enter,
       next,
       leave,
@@ -199,6 +202,7 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
     indexes,
     stats,
     lang,
+    lastFloor,
     input,
     plan,
     shown,
