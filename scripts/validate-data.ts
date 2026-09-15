@@ -11,6 +11,17 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { z } from 'zod';
 import { hasFlag, readJson, readJsonIfExists, repoPath } from './lib/io.ts';
+import { readPersonalities, readThemePacks, staticDataPresent } from './lib/raw.ts';
+import { derivedKeywords, readDerivedFetchedAt, readDerivedIdentities } from './lib/derived-source.ts';
+import {
+  derivedFixedRecipes,
+  derivedMdPresent,
+  derivedTier,
+  readDerivedAvailability,
+  readDerivedGifts,
+  readDerivedPacks,
+  readDerivedStartPools,
+} from './lib/derived-md.ts';
 import {
   STATUS_KEYWORDS,
   enumsSchema,
@@ -28,6 +39,23 @@ import {
 } from '../src/core/schema.ts';
 
 const OUT = repoPath('public/data');
+/** The twelve sinners the game has had since launch; every one must be deckable. */
+const SINNER_COUNT = 12;
+/**
+ * How many identities may read differently in the derived source before it is worth a look.
+ * Measured at 11 of 179; the budget leaves room for a patch without hiding a broken derivation.
+ */
+const KEYWORD_DISAGREEMENT_BUDGET = 15;
+/**
+ * Packs and gifts the derived source lists that we deliberately leave out, so the roster checks
+ * below only speak up about genuinely new content.
+ *
+ * 3001 is the hidden pack 「뽕.황」, which cannot be chosen or observed, and 9242 is its gift.
+ * 9831-9839 belong to pack 1122 「선의의 순례」, a story-dungeon pack the game does not offer in
+ * Mirror Dungeon at all.
+ */
+const DERIVED_ONLY_PACKS = [3001] as const;
+const DERIVED_ONLY_GIFTS = [9242, 9831, 9832, 9833, 9834, 9835, 9836, 9837, 9838, 9839] as const;
 const lenient = hasFlag('--lenient');
 
 const errors: string[] = [];
@@ -75,6 +103,8 @@ if (meta && enums && rules && gifts && packs && identities) {
   checkReferences(gifts, packs, identities, enums);
   checkInvariants(meta, rules, gifts, packs, identities, enums);
   checkCuratedOverrides(gifts, packs, identities);
+  checkCuratedIdentities(identities);
+  checkDerivedMirrorDungeon(gifts, packs, rules);
   checkFreshness();
 }
 
@@ -369,23 +399,234 @@ function checkInvariants(
     );
   }
 
-  // Identities present in the localization but missing from the static data cannot be planned with.
+  // The roster is the union of every source, not any one of them.
+  //
+  // The check this replaces only compared against the localization, so an identity that was late in
+  // BOTH the static data and the localization was invisible — which is exactly how 10616 동부 섕크
+  // 협회 3과 sat missing without a word. Any source knowing an identity we do not ship is an error,
+  // whichever source it is.
+  const shipped = new Set(identities.map((i) => i.id));
+  // Identity ids are 1SSNN for sinners 01-12; anything else is a story or NPC row.
+  const playable = (id: number): boolean => id >= 10101 && id <= 11299;
+  const roster = new Map<number, string[]>();
+  const noteRoster = (id: number, source: string): void => {
+    if (!playable(id) || shipped.has(id)) return;
+    roster.set(id, [...(roster.get(id) ?? []), source]);
+  };
+
   const localizedIdentities = readJsonIfExists<{ dataList?: { id: number }[] }>(
     repoPath('data/raw/localize/KR/Personalities.json'),
   );
-  if (localizedIdentities?.dataList) {
-    const staticIds = new Set(identities.map((i) => i.id));
-    const missing = localizedIdentities.dataList
-      .map((e) => Number(e.id))
-      // Identity ids are 1SSNN for sinners 01-12; anything else is a story or NPC row.
-      .filter((id) => id >= 10101 && id <= 11299 && !staticIds.has(id));
-    if (missing.length > 0) {
+  for (const entry of localizedIdentities?.dataList ?? []) noteRoster(Number(entry.id), '현지화');
+  for (const id of readDerivedIdentities().keys()) noteRoster(id, '파생 미러');
+
+  if (roster.size > 0) {
+    const named = [...roster].map(([id, sources]) => `${id} (${sources.join(', ')})`);
+    strict(
+      'invariant',
+      `${roster.size} identity/identities are known upstream but not shipped: ${named.join('; ')}. ` +
+        `Run \`npm run data:fetch -- --update\`; if they are still absent everywhere, ` +
+        `write them into data/curated/identities.json`,
+    );
+  }
+
+  // The vendored copy going stale is the failure mode behind every missing identity so far, and it
+  // is silent by nature: nothing in the data says it is old. The derived source stamps its own
+  // refresh time, so compare it against when we last fetched.
+  const derivedAt = readDerivedFetchedAt();
+  const fetchedAt = meta.sources['eldritchtools']?.fetchedAt;
+  if (derivedAt && fetchedAt) {
+    const days = (Date.parse(derivedAt) - Date.parse(fetchedAt)) / 86_400_000;
+    if (days > 14) {
       warn(
         'invariant',
-        `${missing.length} identity/identities exist in the localization but not in the static data ` +
-          `(${missing.join(', ')}); they cannot be used in a deck until upstream ships their data`,
+        `the derived source upstream is ${Math.floor(days)} days newer than our fetch ` +
+          `(${derivedAt.slice(0, 10)} vs ${fetchedAt}); run \`npm run data:fetch -- --update\``,
       );
     }
+  }
+
+  // What the derived source says the keywords are, against what we derived ourselves. It is the
+  // weaker reading — it misses a keyword our static derivation finds on 10 of 179 identities — so a
+  // disagreement is a prompt to look, not a failure.
+  const derivedIdentitiesByid = readDerivedIdentities();
+  const keywordDisagreements: number[] = [];
+  for (const identity of identities) {
+    const entry = derivedIdentitiesByid.get(identity.id);
+    if (!entry?.skillKeywordList) continue;
+    const theirs = derivedKeywords(entry);
+    // Ammo is a resource the derived list does not track at all, so it is left out of the compare.
+    const ours = new Set(Object.keys(identity.keywords).filter((k) => k !== 'Bullet'));
+    const same = ours.size === theirs.size && [...ours].every((k) => theirs.has(k as never));
+    if (!same) keywordDisagreements.push(identity.id);
+  }
+  if (keywordDisagreements.length > KEYWORD_DISAGREEMENT_BUDGET) {
+    warn(
+      'invariant',
+      `${keywordDisagreements.length} identities disagree with the derived source on keywords ` +
+        `(${keywordDisagreements.slice(0, 12).join(', ')}…); expected at most ` +
+        `${KEYWORD_DISAGREEMENT_BUDGET}. A jump here usually means a derivation broke`,
+    );
+  }
+
+  // Every sinner must be represented: a whole file dropping out of the fetch would otherwise pass
+  // the total-count floor while leaving one of the twelve deck slots with nothing to put in it.
+  const bySinner = new Map<number, number>();
+  for (const identity of identities) bySinner.set(identity.sinnerId, (bySinner.get(identity.sinnerId) ?? 0) + 1);
+  for (let sinner = 1; sinner <= SINNER_COUNT; sinner += 1) {
+    const count = bySinner.get(sinner) ?? 0;
+    // The thinnest sinner has 14 today, so a floor of 10 catches a lost file without tripping on a
+    // season rollover.
+    if (count < 10) strict('invariant', `sinner ${sinner} has only ${count} identity/identities`);
+  }
+  const sinnerIds = new Set(enums.sinners.map((s) => s.id));
+  for (let sinner = 1; sinner <= SINNER_COUNT; sinner += 1) {
+    if (!sinnerIds.has(sinner)) err('invariant', `enums.sinners is missing sinner ${sinner}`);
+  }
+  for (const sinner of enums.sinners) {
+    if (!sinner.name.ko || !sinner.name.en) err('invariant', `sinner ${sinner.id} has no display name`);
+  }
+}
+
+/**
+ * The Mirror Dungeon data, checked against the only living source for it.
+ *
+ * OpenLethe's capture is frozen, so nothing in our own files can tell us the game moved on. These
+ * comparisons can: the moment a new season lands in the derived mirror, the rosters stop matching.
+ * They are warnings rather than errors because that source is a supplement — it knows less than the
+ * static data on several axes — so a disagreement is a prompt to look, not a broken build.
+ */
+function checkDerivedMirrorDungeon(gifts: Gift[], packs: ThemePack[], rules: Rules): void {
+  if (!derivedMdPresent()) return;
+  const theirPacks = readDerivedPacks();
+  const theirGifts = readDerivedGifts();
+  const theirFloors = readDerivedAvailability();
+  const theirStart = readDerivedStartPools();
+
+  const report = (label: string, found: number[], expected: readonly number[], hint: string): void => {
+    const sorted = [...found].sort((a, b) => a - b);
+    if (JSON.stringify(sorted) === JSON.stringify([...expected])) return;
+    const added = sorted.filter((id) => !expected.includes(id));
+    warn(
+      'invariant',
+      `${label}: ${sorted.length} (expected ${expected.length})` +
+        `${added.length > 0 ? `, new: ${added.join(', ')}` : ''}. ${hint}`,
+    );
+  };
+
+  // A pack the static data never shipped has no general gift pool, because this source carries
+  // none. That is not a small gap: it is the difference between "this pack can drop 187 general
+  // gifts" and "this pack drops nothing but its exclusives", and the planner would believe the
+  // latter. Say so as an error — a route built on it would be quietly wrong.
+  if (staticDataPresent()) {
+    const staticPackIds = new Set(readThemePacks().map((pack) => pack.id));
+    const poolless = packs
+      .filter((pack) => pack.selectable && !staticPackIds.has(pack.id))
+      .map((pack) => `${pack.id} ${pack.name.ko || pack.name.en}`);
+    if (poolless.length > 0) {
+      err(
+        'invariant',
+        `${poolless.length} pack(s) are backfilled from the derived source and have no general gift ` +
+          `pool: ${poolless.join(', ')}. General gifts cannot be planned through them — get the ` +
+          `season's static data (npm run data:import; see docs/research/data-sources.md)`,
+      );
+    }
+  }
+
+  // Rosters. A new season shows up here first, as packs and gifts we have never heard of.
+  const ourPackIds = new Set(packs.map((p) => p.id));
+  report(
+    'packs the derived source knows and we do not ship',
+    [...theirPacks.keys()].filter((id) => !ourPackIds.has(id)),
+    DERIVED_ONLY_PACKS,
+    'A new Mirror Dungeon season has probably started; see docs/research/data-sources.md.',
+  );
+  const ourGiftIds = new Set(gifts.map((g) => g.id));
+  report(
+    'gifts the derived source knows and we do not ship',
+    [...theirGifts.keys()].filter((id) => !ourGiftIds.has(id)),
+    DERIVED_ONLY_GIFTS,
+    'A new Mirror Dungeon season has probably started; see docs/research/data-sources.md.',
+  );
+
+  // Floors, fusion and start pools all agreed exactly when measured, so any drift is real news.
+  const sameFloors = (a: number[], b: number[]): boolean => JSON.stringify([...a].sort((x, y) => x - y)) === JSON.stringify([...b].sort((x, y) => x - y));
+  const floorDrift = packs
+    .filter((pack) => pack.selectable && theirFloors.has(pack.id))
+    .filter((pack) => {
+      const theirs = theirFloors.get(pack.id)!;
+      return (['normal', 'hard', 'parallel', 'extreme'] as const).some(
+        (bucket) => !sameFloors(pack.availability[bucket], theirs[bucket]),
+      );
+    })
+    .map((pack) => pack.id);
+  if (floorDrift.length > 0) {
+    warn('invariant', `${floorDrift.length} pack(s) disagree with the derived source on floors: ${floorDrift.join(', ')}`);
+  }
+
+  const recipeDrift = gifts
+    .filter((gift) => (gift.fusion?.recipes?.length ?? 0) > 0 && theirGifts.has(gift.id))
+    .filter((gift) => {
+      const ours = gift.fusion!.recipes.map((r) => [...r.ingredients].sort((a, b) => a - b).join(',')).sort();
+      const theirs = derivedFixedRecipes(theirGifts.get(gift.id)!).map((r) => r.join(',')).sort();
+      return JSON.stringify(ours) !== JSON.stringify(theirs);
+    })
+    .map((gift) => gift.id);
+  if (recipeDrift.length > 0) {
+    warn('invariant', `${recipeDrift.length} fusion recipe(s) disagree with the derived source: ${recipeDrift.join(', ')}`);
+  }
+
+  const startDrift = [...theirStart].filter(([keyword, ids]) => {
+    const ours = rules.startGift.poolsByKeyword[keyword as keyof typeof rules.startGift.poolsByKeyword];
+    return !ours || JSON.stringify([...ours].sort((a, b) => a - b)) !== JSON.stringify(ids);
+  });
+  if (startDrift.length > 0) {
+    warn('invariant', `${startDrift.length} start gift pool(s) disagree with the derived source: ${startDrift.map(([k]) => k).join(', ')}`);
+  }
+
+  const tierDrift = gifts
+    .filter((gift) => theirGifts.has(gift.id))
+    .filter((gift) => {
+      const theirs = derivedTier(theirGifts.get(gift.id)!);
+      return theirs !== null && theirs !== gift.tier;
+    })
+    .map((gift) => gift.id);
+  if (tierDrift.length > 0) {
+    warn('invariant', `${tierDrift.length} gift tier(s) disagree with the derived source: ${tierDrift.slice(0, 12).join(', ')}`);
+  }
+}
+
+/**
+ * A curated identity is a backfill, so it has to stay one: it must name an identity the game
+ * actually has, it must not shadow a static record, and it must reach the output.
+ */
+function checkCuratedIdentities(identities: Identity[]): void {
+  const curated = readJsonIfExists<Record<string, unknown>>(repoPath('data/curated/identities.json'));
+  if (!curated) return;
+  const localized = readJsonIfExists<{ dataList?: { id: number }[] }>(
+    repoPath('data/raw/localize/KR/Personalities.json'),
+  );
+  const localizedIds = new Set((localized?.dataList ?? []).map((e) => Number(e.id)));
+  const staticIds = staticDataPresent() ? new Set(readPersonalities().map((p) => p.id)) : null;
+  const shipped = new Set(identities.map((i) => i.id));
+
+  for (const key of Object.keys(curated)) {
+    if (key.startsWith('_')) continue;
+    const id = Number(key);
+    if (!Number.isFinite(id)) {
+      err('invariant', `curated identity key "${key}" is not an id`);
+      continue;
+    }
+    if (localizedIds.size > 0 && !localizedIds.has(id)) {
+      err('invariant', `curated identity ${id} is in no localization row; the game has no such identity`);
+    }
+    if (staticIds?.has(id)) {
+      err(
+        'invariant',
+        `curated identity ${id} now has static data; delete it from data/curated/identities.json`,
+      );
+    }
+    if (!shipped.has(id)) err('invariant', `curated identity ${id} did not reach public/data/identities.json`);
   }
 }
 

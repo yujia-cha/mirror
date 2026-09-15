@@ -12,6 +12,7 @@ npm run build          # 타입 검사 + 프로덕션 빌드
 npm test               # 단위 테스트
 npm run check          # lint + typecheck + test + data:validate  ← 커밋 전 필수
 npm run data:fetch     # 원본 게임 데이터 내려받기 (sources.lock.json 기준)
+npm run data:import -- <폴더>   # 클라이언트에서 추출한 static-data를 data/raw에 넣기 (--write로 적용)
 npm run data:build     # data/raw + data/curated → public/data
 npm run data:validate  # 스키마 · 참조 무결성 · 도메인 불변식 검사
 npm run data:diff      # 이전 커밋 대비 데이터 변경 요약
@@ -24,6 +25,7 @@ npm run route -- --deck 10101,... --want 9088,... --floors 1-5 --difficulty hard
 | 경로 | 성격 | 규칙 |
 |---|---|---|
 | `data/raw/**` | vendoring된 게임 원본 | 손으로 고치지 않는다. `data:fetch`가 덮어쓴다 |
+| `data/raw/derived/**` | 커뮤니티가 가공한 보조 원본 | 같다. 정적 데이터가 없는 인격을 채우는 데만 쓴다 |
 | `data/curated/**` | 사람이 적는 보정·상수 | 모든 항목에 `_source` 근거를 남긴다 |
 | `public/data/**` | 생성물 (커밋 대상) | 손으로 고치지 않는다. `data:build`로만 만든다 |
 | `src/core/**` | 순수 TS 로직 | React·DOM·fetch 금지(ESLint가 막는다). 결정적이어야 한다 |
@@ -45,6 +47,9 @@ npm run route -- --deck 10101,... --want 9088,... --floors 1-5 --difficulty hard
 
 ## 코드 규칙
 
+- **인격 데이터는 세 층으로 만든다**: 정적 데이터(OpenLethe) > 자동 백필(eldritchtools 파생 미러 + KR 스킬 원문) > 수기(`data/curated/identities.json`). 각 층은 위층에 없는 것만 채우고, **아래층이 위층을 가리면 `data:build`가 멈춘다**. 키워드만은 항상 KR 스킬 원문에서 도출한다 — 파생 미러는 179명 중 10명에서 덜 알기 때문에 교차검증용이다. 자세한 것은 `docs/research/data-sources.md`.
+- **거울 던전 데이터도 세 층이다**: 정적(OpenLethe) > 폴백(eldritchtools를 원본 모양으로 합성, `scripts/lib/derived-md.ts`) > 직접 추출(`npm run data:import`). OpenLethe의 MD 캡처는 얼어 있어 새 시즌이 오지 않으므로, 폴백이 팩·층·전용 기프트·조합·시작 풀을 메운다. **팩별 범용 기프트 풀만은 어디서도 못 얻는다** — 추측하지 않고 `data:validate`가 에러로 막는다. 시즌 선택은 `currentDungeonId`가 가장 큰 파일을 고르는 데이터 주도라, md8 파일이 어떤 경로로든 들어오면 자동으로 집힌다.
+- **출처가 조용히 멈추는 것이 이 프로젝트의 주된 고장이다.** 검증은 「어느 출처든 아는데 우리가 안 내보내는 인격」을 에러로 잡는다(한 출처만 보면 둘 다 늦을 때 침묵한다). 파생 미러의 `meta.json` 시각으로 vendoring 복사본이 낡았는지도 경고한다.
 - 게임 상수는 코드에 박지 않고 `data/curated/rules.json`에 둔다.
 - 스키마는 `src/core/schema.ts`(Zod) 한 곳에서 정의하고 파이프라인·앱·테스트가 공유한다.
 - UI 문자열은 `src/app/i18n/`에 두고 **한국어 우선**, 영어는 보조로 병기한다.
@@ -61,12 +66,16 @@ npm run route -- --deck 10101,... --want 9088,... --floors 1-5 --difficulty hard
 - **관측 지정은 아이템 탭의 슬롯**(`ObserveSlots`, `rules.giftObservation.max`개)에서 한다: 검색·필터 아래, 선택 칩 위. 빈 칸 「+」→ 관측 가능한 선택 기프트 목록 팝오버, 채운 칸은 아이콘·이름·✕. 찬 칸에 칩을 놓으면 교체. 상세 시트의 관측 버튼도 같은 `toggleObserved`를 부른다.
 - 좌측 패널 탭은 **덱·아이템** 둘이다. 시작 키워드와 포함·포기한 팩 목록은 아이템 탭 하단의 `RouteOptions` 카드에 있다(옛 `leftTab: 'settings'`는 `sanitizeUi`가 `'gifts'`로 접는다).
 - **헤더의 초기화(`resetAll`)가 유일한 초기화**다: 덱을 LCB 기본으로, 아이템·우선순위·조합 목표·옵션·런을 처음 상태로 되돌리고 `ui`·`lang`·`dark`는 남긴다. 「새 런」·「옵션 초기화」는 없다(무대 종료 카드는 제목만).
-- 우측 패널의 **「목표」 탭**(`GoalsPanel`)은 `wanted` 전체를 — 재료는 빼고 고른 것만 — 추적기와 같은 `GiftTile` 토글로 보여 주고, 무대 팩 타일·추적기와 `run.giftStatus` 한 곳을 공유한다(누르면 획득 ↔ 해제, 실패는 층을 떠날 때의 자동 실패만). 타일은 **길게 누르기(1초)·우클릭·모서리 ⓘ**로 기프트 상세 시트를 연다(`useLongPress`, `PlanContext.openGift`가 시트를 한 번만 호스팅).
+- 우측 패널의 **「목표」 탭**(`GoalsPanel`)은 `wanted` 전체를 — 재료는 빼고 고른 것만 — 추적기와 같은 `GiftTile` 토글로 보여 주고, 무대 팩 타일·추적기와 `run.giftStatus` 한 곳을 공유한다(누르면 획득 ↔ 해제, 실패는 층을 떠날 때의 자동 실패만). 타일은 **길게 누르기(1초)·우클릭·모서리 ⓘ**로 기프트 상세 시트를 연다(`useLongPress`, `PlanContext.openGift`).
 - **난이도를 글자로 쓰지 않는다**(앱은 항상 Hard/EXTREME). 무대 헤더는 「N / 15」, 팩 시트의 층은 「4~5층 · 6~10층」, 노선도 띠에 라벨 없음. **층 스트립 열다섯 칸은 같은 모양**이다(1~5·6~10·11~15 띠 구분 없음, 팩 표시 점 없음 — 팩은 `title`·`aria-label`·`data-pack`에만). 노선도는 **범례·세그먼트 문구(「N층 고정」「추천 N」…)·관측 알약 없이** 채움·점선·굵기만으로 말하고, 무대·패널의 조작 안내문도 두지 않는다(법적 고지·데이터 버전은 유지).
 - `GiftIcon`의 **네 모서리**가 각각 하나씩 말한다: 좌상 티어, 우상 획득/실패, 좌하 반드시, **우하 키워드 배지**. 배지는 7개 상태 키워드가 색(`--color-kw-*`), 참격·관통·타격은 한 가지 잉크(`--color-kw-attack`)에 모양으로 가른다(마름모·원·사각). **범용은 배지를 그리지 않는다.** **조건 판정은 바깥 링**(`ring-ok`/`ring-bad`/회색)이다. 팔레트에서 색조를 쓰는 곳은 이 둘뿐이다.
 - 무대의 「다른 팩」 목록은 팩 이름 옆에 **그 팩의 전용 기프트 아이콘**(최대 5 + 「+n」, 원하는 것은 링)을 둔다(`other-pack-gifts`).
 - 패널 안에서 여는 시트는 `createPortal`로 `document.body`에 붙인다. 패널이 `@container`라 그 안의 `position: fixed`는 패널 기준이 된다.
-- 앱은 **항상 런 화면**이다(단계 없음). `run.currentFloor`는 아직 결정하지 않은 첫 층(프런티어), `run.stageFloor`는 무대에 보이는 층이고, **건너뜀 = 지난 층에 방문 없음**(가짜 팩 id를 쓰지 않는다). 패널 열림·탭은 `ui` 슬라이스(기기 저장). 층을 떠날 때의 획득/실패 정리(`settle`)는 `PlanContext`의 `enter`/`next`가 한다. 무대의 입장·다음 층·돌아가기는 **당기기 제스처**(`usePullGesture`, 세로 72px)와 버튼이 같은 동작이고, **돌아가기(`leave`) = 방문 취소 + 그 팩 전용 기프트 상태 초기화**다. 1층을 처음 떠날 때 'got'으로 기록한 시작 기프트(관측·시작 기프트)는 `run.startGifts`에 남기고, **1층으로 돌아오면(입장 취소·건너뜀 취소) 그 기록도 취소한다**(`moveFrontier`). 무대 헤더에는 버튼이 없다 — 뒤로는 층 스트립(`setStageFloor`), 앞으로는 카드와 팩 영역이다.
+- **기프트 상세 시트는 `PlanProvider`가 유일하게 호스팅한다** — 아이템 탭도 자기 시트를 두지 않고 `usePlan().openGift`를 부른다. 패널 안에 호스팅하면 모바일에서 패널이 닫힐 때 시트가 함께 언마운트된다.
+- **떠 있는 레이어는 최상위 하나만 반응한다**: `useDismiss`는 모듈 스택을 두고 맨 위 레이어에만 Escape·바깥 포인터를 넘긴다. 리스너가 전부 `document`에 붙는데 시트는 `document.body`로 포털되므로, 스택이 없으면 시트 안의 누름이 그 아래 모든 레이어에게 「바깥」으로 읽힌다. 시트의 Escape는 `DetailSurface`가 직접 처리한다(전파를 멈추면 네이티브 이벤트도 멈춰 document 리스너에 닿지 않는다).
+- z 사다리: 헤더 30 · 모바일 패널 페이지 40 · 시트 백드롭 50 · 시트 60 · 칩 드래그 고스트 70.
+- **모바일(1024px 미만)에서 패널은 각각 전체화면 페이지**다(`data-testid="page-{side}"`, `document.body`로 포털). 다이얼로그가 아니라 페이지라서 백드롭도 `aria-modal`도 없고 바깥 누름·Escape로 닫히지 않는다 — 그동안 셸은 `inert`다. 닫기는 상단 바의 ← 또는 기기 뒤로가기이고, 둘 다 `usePageHistory`가 가진 히스토리 엔트리 하나를 지난다(시트도 자기 엔트리를 쌓으므로 뒤로가기 한 번은 시트만 닫는다). `pushState`는 URL을 쓰지 않는다 — 공유 링크 해시(`#s=`)와 GitHub Pages 하위 경로를 건드리면 안 된다.
+- 앱은 **항상 런 화면**이다(단계 없음). `run.currentFloor`는 아직 결정하지 않은 첫 층(프런티어), `run.stageFloor`는 무대에 보이는 층이고, **건너뜀 = 지난 층에 방문 없음**(가짜 팩 id를 쓰지 않는다). 데스크톱 패널 열림·폭·탭은 `ui` 슬라이스(기기 저장)이고, 모바일 페이지 열림은 `AppShell`의 로컬 상태라 저장하지 않는다(한 번에 한쪽만). 층을 떠날 때의 획득/실패 정리(`settle`)는 `PlanContext`의 `enter`/`next`가 한다. 무대의 입장·다음 층·돌아가기는 **당기기 제스처**(`usePullGesture`, 세로 72px)와 버튼이 같은 동작이고, **돌아가기(`leave`) = 방문 취소 + 그 팩 전용 기프트 상태 초기화**다. 1층을 처음 떠날 때 'got'으로 기록한 시작 기프트(관측·시작 기프트)는 `run.startGifts`에 남기고, **1층으로 돌아오면(입장 취소·건너뜀 취소) 그 기록도 취소한다**(`moveFrontier`). 무대 헤더에는 버튼이 없다 — 뒤로는 층 스트립(`setStageFloor`), 앞으로는 카드와 팩 영역이다.
 
 ## 에이전트와 스킬
 

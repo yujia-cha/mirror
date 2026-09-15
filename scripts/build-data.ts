@@ -25,6 +25,7 @@ import {
   readPersonalitySkills,
   readBattleKeywordNames,
   readPersonalityTexts,
+  readLocalizedPersonalitySkills,
   readSpecialVariants,
   readStages,
   readThemeNames,
@@ -44,6 +45,23 @@ import {
   deriveUpgradeOf,
 } from './lib/derive.ts';
 import { parseConditions } from './lib/parse-conditions.ts';
+import { deriveIdentityKeywordsFromText, skillsOfIdentity } from './lib/derive-text.ts';
+import { DERIVED_DIR } from './lib/derived-source.ts';
+import {
+  derivedGiftAsRaw,
+  derivedMdPresent,
+  derivedPackAsRaw,
+  readDerivedAvailability,
+  readDerivedGifts,
+  readDerivedPacks,
+} from './lib/derived-md.ts';
+import {
+  derivedAttackTypes,
+  derivedFactions,
+  derivedAttackSkillIds,
+  derivedSins,
+  readDerivedIdentities,
+} from './lib/derived-source.ts';
 import {
   IDENTITY_KEYWORDS,
   KEYWORDS,
@@ -57,6 +75,7 @@ import {
   type Localized,
   type Meta,
   type Rules,
+  type Sin,
   type ThemePack,
 } from '../src/core/schema.ts';
 
@@ -88,6 +107,24 @@ interface CuratedRules {
   [key: string]: unknown;
 }
 
+/**
+ * An identity the static data does not ship at all, written by hand.
+ *
+ * Only what cannot be derived: the name, the sinner and the id itself still come from the
+ * localization, through the same code path every other identity takes. A field left out is
+ * unknown, not empty-by-choice — see the `_source` each entry carries.
+ */
+interface CuratedIdentity {
+  _source?: string;
+  keywords?: Record<string, { skills: number; specialSkills: number }>;
+  rank?: number;
+  season?: number;
+  factions?: string[];
+  traits?: string[];
+  sins?: string[];
+  attackTypes?: string[];
+}
+
 const curated = {
   rules: readJsonIfExists<CuratedRules>(repoPath('data/curated/rules.json')) ?? {},
   factions:
@@ -97,6 +134,7 @@ const curated = {
     readJsonIfExists<Record<string, { keywords?: Record<string, { skills: number; specialSkills: number }> }>>(
       repoPath('data/curated/identity-keywords.json'),
     ) ?? {},
+  identities: readJsonIfExists<Record<string, CuratedIdentity>>(repoPath('data/curated/identities.json')) ?? {},
   conditions:
     readJsonIfExists<Record<string, { conditions?: Condition[] }>>(
       repoPath('data/curated/conditions.json'),
@@ -142,8 +180,54 @@ const dropPool = readDropPool(dungeonId);
 const stages = readStages();
 const observation = readObservationData(dungeonId);
 
-const rawPacks = readThemePacks();
-const rawGifts = readGiftStatics();
+const staticPacks = readThemePacks();
+const staticGifts = readGiftStatics();
+
+/**
+ * Packs and gifts the static data has not shipped, synthesised from the derived mirror.
+ *
+ * OpenLethe's Mirror Dungeon capture is frozen, so a new season will never reach it. Rather than
+ * plan a season the game no longer runs, the build takes what the living source knows and shapes it
+ * like the static records, so every step below is unchanged. The hidden pack is skipped: it cannot
+ * be chosen or observed, so putting it in the roster would invent a route nobody can take.
+ *
+ * What this cannot supply is each pack's *general* gift pool. Nothing is guessed — the pack simply
+ * has no pool, and `validate-data` refuses to let that pass quietly.
+ */
+const backfilledPacks = (() => {
+  if (!derivedMdPresent()) return [] as ReturnType<typeof derivedPackAsRaw>[];
+  const known = new Set(staticPacks.map((pack) => pack.id));
+  const hiddenPackId = (curated.rules.hiddenPack as { id?: number } | undefined)?.id;
+  const derived = readDerivedPacks();
+  return [...readDerivedAvailability()]
+    .filter(([id]) => !known.has(id) && id !== hiddenPackId)
+    .map(([id, floors]) => derivedPackAsRaw(id, derived.get(id) ?? {}, floors));
+})();
+
+const rawPacks = [...staticPacks, ...backfilledPacks];
+
+/** English names for backfilled content, used only where the localization has nothing yet. */
+const derivedPackNames = derivedMdPresent() ? readDerivedPacks() : new Map();
+const derivedGiftNames = derivedMdPresent() ? readDerivedGifts() : new Map();
+const derivedPackName = (id: number): string | undefined => derivedPackNames.get(id)?.name;
+const derivedGiftName = (id: number): string | undefined => derivedGiftNames.get(id)?.names?.[0];
+
+const backfilledGiftIds = new Set(backfilledPacks.flatMap((pack) => pack.specificEgoGiftPool ?? []));
+const backfilledGifts = (() => {
+  if (backfilledGiftIds.size === 0) return [] as ReturnType<typeof derivedGiftAsRaw>[];
+  const known = new Set(staticGifts.map((gift) => gift.id));
+  const derived = readDerivedGifts();
+  return [...backfilledGiftIds]
+    .filter((id) => !known.has(id) && derived.has(id))
+    .map((id) => derivedGiftAsRaw(id, derived.get(id)!));
+})();
+
+const rawGifts = [...staticGifts, ...backfilledGifts];
+if (backfilledPacks.length > 0) {
+  console.log(
+    `  backfilled from the derived mirror: ${backfilledPacks.length} pack(s), ${backfilledGifts.length} gift(s)`,
+  );
+}
 const rawPersonalities = readPersonalities();
 const skills = readPersonalitySkills();
 
@@ -207,8 +291,13 @@ const packs: ThemePack[] = rawPacks
     const notes = curated.notes.packs?.[String(raw.id)];
     return {
       id: raw.id,
+      // A pack the static data has not shipped may also be missing from the localization for a few
+      // days after a patch; the derived source's English name keeps it from being nameless.
       name: applyNameOverride(
-        loc(themeNameKo.get(raw.id) ?? devName, themeNameEn.get(raw.id) ?? devName),
+        loc(
+          themeNameKo.get(raw.id) ?? derivedPackName(raw.id) ?? devName,
+          themeNameEn.get(raw.id) ?? derivedPackName(raw.id) ?? devName,
+        ),
         curated.names.packs?.[String(raw.id)],
       ),
       devName,
@@ -412,7 +501,10 @@ const gifts: Gift[] = [...giftIds]
 
     return {
       id,
-      name: applyNameOverride(loc(ko?.name, en?.name ?? ko?.name), curated.names.gifts?.[String(id)]),
+      name: applyNameOverride(
+        loc(ko?.name ?? derivedGiftName(id), en?.name ?? ko?.name ?? derivedGiftName(id)),
+        curated.names.gifts?.[String(id)],
+      ),
       desc,
       keyword,
       tier: stat ? tierFromTags(tags) : null,
@@ -479,7 +571,7 @@ for (let sinner = 1; sinner <= 12; sinner += 1) {
 /** 특수 variant buff ids (생체 재료 → 특수 충전 …), read off the game's own buff descriptions. */
 const specialVariants = readSpecialVariants();
 
-const identities: Identity[] = rawPersonalities
+const derivedIdentities: Identity[] = rawPersonalities
   .map((raw): Identity => {
     const sinnerId = sinnerIdFromIdentityId(raw.id);
     const curatedKeywords = curated.identityKeywords[String(raw.id)]?.keywords;
@@ -531,8 +623,118 @@ const identities: Identity[] = rawPersonalities
       sins: [...sins].sort((a, b) => SINS.indexOf(a) - SINS.indexOf(b)),
       attackTypes: [...attackTypes].sort(),
     };
+  });
+
+// ---------------------------------------------------------------------------
+// Identities the static data does not ship
+//
+// Three sources, in descending order of authority: the game's own static records (above), the
+// derived mirror plus the Korean skill text (here), and finally a row written by hand. Each layer
+// only fills what the one above it does not have, and the build stops if a lower layer shadows a
+// higher one — a stopgap must never outlive the real data.
+// ---------------------------------------------------------------------------
+
+const staticIdentityIds = new Set(derivedIdentities.map((identity) => identity.id));
+const derivedSource = readDerivedIdentities();
+const localizedSkills = readLocalizedPersonalitySkills('KR');
+
+/** English faction names inverted, so a derived tag can be read back as the id the app uses. */
+const factionIdByEnglishName = new Map<string, string>();
+for (const [id, name] of readFactionNames('EN')) if (!factionIdByEnglishName.has(name)) factionIdByEnglishName.set(name, id);
+const knownFactionIds = new Set<string>(
+  rawPersonalities.flatMap((raw) => raw.associationList ?? []).concat(curatedEntries(curated.factions).map(([id]) => id)),
+);
+
+function titleFor(id: number): Localized {
+  return applyNameOverride(
+    loc(
+      personalityKo.get(id)?.title?.replace(/\s*\n\s*/g, ' '),
+      personalityEn.get(id)?.title?.replace(/\s*\n\s*/g, ' '),
+    ),
+    curated.names.identities?.[String(id)],
+  );
+}
+
+/**
+ * An identity assembled from the derived mirror and the Korean skill text.
+ *
+ * The mirror lists the base attack skills outright, so the keyword derivation is told which skills
+ * to read rather than guessing; the Korean text is what actually names the keywords, because the
+ * mirror's own list is the weaker of the two.
+ */
+const backfilledIdentities: Identity[] = [...derivedSource.entries()]
+  .filter(([id]) => !staticIdentityIds.has(id) && sinnerIdFromIdentityId(id) >= 1 && sinnerIdFromIdentityId(id) <= 12)
+  .filter(([id]) => personalityKo.has(id))
+  .map(([id, entry]): Identity => {
+    const sinnerId = entry.sinnerId ?? sinnerIdFromIdentityId(id);
+    const attackIds = derivedAttackSkillIds(entry);
+    const skills = skillsOfIdentity(id, localizedSkills);
+    const keywords = deriveIdentityKeywordsFromText(
+      skills,
+      specialVariants,
+      attackIds.length > 0 ? attackIds : undefined,
+    ) as Identity['keywords'];
+    return {
+      id,
+      sinnerId,
+      sinner: SINNER_NAMES[sinnerId] ?? loc('', ''),
+      title: titleFor(id),
+      rank: Math.min(3, Math.max(1, entry.rank ?? 1)) as 1 | 2 | 3,
+      season: entry.season ?? 0,
+      factions: derivedFactions(entry, factionIdByEnglishName, knownFactionIds).sort(),
+      // The derived tags carry no size or appearance traits, and nothing reads them anyway.
+      traits: [],
+      keywords,
+      keywordSource: 'backfilled',
+      sins: derivedSins(entry).sort((a, b) => SINS.indexOf(a) - SINS.indexOf(b)),
+      attackTypes: derivedAttackTypes(entry).sort(),
+    };
   })
   .sort((a, b) => a.id - b.id);
+
+const backfilledIds = new Set(backfilledIdentities.map((identity) => identity.id));
+
+/** The last resort: a row written by hand for an identity no source has yet. */
+const curatedIdentities: Identity[] = curatedEntries(curated.identities).map(([key, entry]) => {
+  const id = Number(key);
+  if (!Number.isFinite(id)) fail(`curated identity key "${key}" is not an id`);
+  if (staticIdentityIds.has(id)) {
+    fail(
+      `curated identity ${id} now has static data upstream; ` +
+        `delete its entry from data/curated/identities.json so the real record is used`,
+    );
+  }
+  if (backfilledIds.has(id)) {
+    fail(
+      `curated identity ${id} is now covered by the derived source; ` +
+        `delete its entry from data/curated/identities.json so the fetched data is used`,
+    );
+  }
+  const sinnerId = sinnerIdFromIdentityId(id);
+  const title = loc(
+    personalityKo.get(id)?.title?.replace(/\s*\n\s*/g, ' '),
+    personalityEn.get(id)?.title?.replace(/\s*\n\s*/g, ' '),
+  );
+  if (!title.ko) fail(`curated identity ${id} is not in the localization either; there is nothing to name it`);
+  return {
+    id,
+    sinnerId,
+    sinner: SINNER_NAMES[sinnerId] ?? loc('', ''),
+    title: applyNameOverride(title, curated.names.identities?.[key]),
+    rank: Math.min(3, Math.max(1, entry.rank ?? 1)) as 1 | 2 | 3,
+    season: entry.season ?? 0,
+    factions: [...(entry.factions ?? [])].sort(),
+    traits: [...(entry.traits ?? [])].sort(),
+    keywords: (entry.keywords ?? {}) as Identity['keywords'],
+    keywordSource: 'curated',
+    sins: [...(entry.sins ?? [])].sort((a, b) => SINS.indexOf(a as Sin) - SINS.indexOf(b as Sin)) as Identity['sins'],
+    attackTypes: [...(entry.attackTypes ?? [])].sort() as Identity['attackTypes'],
+  };
+});
+
+const identities: Identity[] = [...derivedIdentities, ...backfilledIdentities, ...curatedIdentities].sort(
+  (a, b) => a.id - b.id,
+);
 
 // ---------------------------------------------------------------------------
 // Enums and rules
@@ -652,7 +854,15 @@ const rules: Rules = {
 // ---------------------------------------------------------------------------
 
 interface Lock {
-  sources: Record<string, { repo: string; sha: string; fetchedAt: string }>;
+  sources: Record<
+    string,
+    {
+      repo: string;
+      sha?: string;
+      languages?: string[] | Record<string, { ref: string; sha: string }>;
+      fetchedAt: string;
+    }
+  >;
 }
 const lock = readJson<Lock>(repoPath('data/sources.lock.json'));
 
@@ -675,6 +885,9 @@ function inputsFingerprint(): string {
   };
   walk(STATIC_DIR);
   walk(LOCALIZE_DIR);
+  // The derived mirror backfills identities, packs and gifts, so it is an input like any other:
+  // leaving it out would let the data change while `dataVersion` swore it had not.
+  walk(DERIVED_DIR);
   walk(repoPath('data/curated'));
   return hash.digest('hex').slice(0, 8);
 }
@@ -695,10 +908,20 @@ const meta: Meta = {
     ),
   },
   sources: Object.fromEntries(
-    Object.entries(lock.sources).map(([name, s]) => [
-      name,
-      { repo: s.repo, sha: s.sha, fetchedAt: s.fetchedAt },
-    ]),
+    Object.entries(lock.sources).map(([name, s]) => {
+      const branches = s.languages && !Array.isArray(s.languages) ? s.languages : null;
+      return [
+        name,
+        {
+          repo: s.repo,
+          ...(s.sha ? { sha: s.sha } : {}),
+          ...(branches
+            ? { languages: Object.fromEntries(Object.entries(branches).map(([lang, pin]) => [lang, pin.sha])) }
+            : {}),
+          fetchedAt: s.fetchedAt,
+        },
+      ];
+    }),
   ),
   staticDataPresent: hasStatic,
   counts: {

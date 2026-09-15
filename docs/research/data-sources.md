@@ -2,12 +2,69 @@
 
 ## 쓰는 것
 
-| 출처 | 가져오는 것 | 갱신 | 라이선스 |
-|---|---|---|---|
-| [`LEAGUE-OF-NINE/OpenLethe`](https://github.com/LEAGUE-OF-NINE/OpenLethe) `src/OpenLethe.Resources/StaticData/static-data/**` | 테마팩·기프트·조합·인격·스킬·던전 구성 등 게임 클라이언트 정적 데이터 | 저장소에 라이선스 파일이 없다. 데이터 자체의 권리는 Project Moon에 있다 | 주 데이터원 |
-| [`LocalizeLimbusCompany/LocalizeLimbusCompany`](https://github.com/LocalizeLimbusCompany/LocalizeLimbusCompany) `KR/`, `EN/` | 공식 로컬라이제이션 JSON(기프트·테마팩·인격·소속 이름과 효과 텍스트) | CC BY-NC-SA 4.0 (번역 팩). 원문 권리는 Project Moon | 이름·설명 |
+**출처가 살아 있는지를 먼저 본다.** 이 프로젝트가 겪은 문제는 전부 「출처가 조용히 멈췄다」였다.
 
-두 저장소 모두 `data/sources.lock.json`에 **커밋 sha로 고정**하고, 받아온 파일을 `data/raw/`에 커밋한다. OpenLethe는 서버 에뮬레이터 저장소라 언제든 사라질 수 있으므로 스냅샷을 저장소에 보관하는 것이 전제다.
+| 출처 | 가져오는 것 | 갱신 상태 |
+|---|---|---|
+| [`x1bViolet/Limbus-Localization-Files`](https://github.com/x1bViolet/Limbus-Localization-Files) 브랜치 `Korean`·`English` | 공식 로컬라이제이션 JSON. 이름·효과 텍스트와 **인격 스킬 원문** | ✅ **주 1회, 게임 패치 당일** |
+| [`eldritchtools/limbus-assets`](https://github.com/eldritchtools/limbus-assets) `data/identities.json` | 파생 인격 데이터(영문). 공격 스킬 목록·죄악·공격 유형·등급·소속 태그 | ✅ **거의 매일** (`meta.json`에 갱신 시각) |
+| [`LEAGUE-OF-NINE/OpenLethe`](https://github.com/LEAGUE-OF-NINE/OpenLethe) `…/static-data/**` | 테마팩·기프트·조합·던전 구성·인격·스킬 (원본 스키마) | ⚠️ **얼어붙음** — `static-data`는 2026-07-25 「init」 커밋 하나뿐인 일회성 캡처 |
+
+라이선스: 셋 다 게임 추출물이고 권리는 Project Moon에 있다. x1bViolet·eldritchtools는 라이선스 파일이 없다.
+
+세 출처 모두 `data/sources.lock.json`에 **커밋 sha로 고정**하고 받아온 파일을 `data/raw/`에 커밋한다. 언제든 사라질 수 있으므로 스냅샷 보관이 전제다.
+
+### 인격은 세 층으로 만든다
+
+정적 데이터 > 자동 백필 > 수기. 각 층은 위층에 없는 것만 채우고, 아래층이 위층을 가리면 `data:build`가 멈춘다.
+
+1. **정적 데이터**(OpenLethe) — 있으면 무조건 이것을 쓴다
+2. **자동 백필** — 정적에 없는 인격을 eldritchtools(공격 스킬 목록·죄악·공격 유형·등급·소속) + KR 스킬 원문(키워드)으로 조립한다. `scripts/lib/derived-source.ts`, `scripts/lib/derive-text.ts`
+3. **수기** — 셋 다 없을 때만. `data/curated/identities.json` (`add-curated-override` 스킬 6번)
+
+키워드만은 **KR 원문에서 도출한 값**을 쓴다. eldritchtools의 `skillKeywordList`는 179명 중 10명에서 우리 정적 도출보다 **덜** 알기 때문에 진실이 아니라 교차검증용이다.
+
+### 왜 바꿨나 (2026-09-15)
+
+`LocalizeLimbusCompany`는 「Auto RAW Update」가 1~2주마다 돌던 좋은 출처였는데 **2026-07-23 이후 멈췄다**. OpenLethe의 `static-data`는 애초에 갱신 루프가 없는 일회성 캡처다. 그래서 10116 「차원찢개」는 현지화에만 있었고, 10616 「동부 섕크 협회 3과」는 **양쪽 모두에 없어** 검증조차 못 잡았다.
+
+### 거울 던전 데이터도 세 층이다
+
+**정정**: 앞서 「MD8이 오면 앱 전체가 멈춘다」고 적었는데 정확하지 않다. **멈추지 않는다 — 조용히 틀려진다.** 파이프라인은 `mirror-dungeon-common-data-*.json` 중 `currentDungeonId`가 가장 큰 것을 고르므로(`scripts/lib/raw.ts`), md8 파일이 안 들어오면 **계속 MD7을 계획한다**. 에러도 경고도 없이. 뒤집으면 좋은 소식이기도 하다: 시즌 선택이 데이터 주도라 md8 파일이 **어떤 경로로든** 들어오면 파이프라인이 알아서 집는다.
+
+| 층 | 출처 | 무엇을 주나 |
+|---|---|---|
+| 1 | **정적 데이터**(OpenLethe) | 전부. 있으면 무조건 이것 |
+| 2 | **폴백**(eldritchtools) | 정적에 없는 팩·기프트를 원본 모양으로 합성한다(`scripts/lib/derived-md.ts`) |
+| 3 | **직접 추출**(`npm run data:import`) | 2층이 못 주는 것. 시즌마다 한 번 |
+
+**폴백이 주는 것**(현 시즌 데이터로 전수 검증, `tests/md-fallback.test.ts`):
+
+| | 결과 |
+|---|---|
+| 팩 층 제한 | ✅ 선택 가능한 팩 **전수 일치** |
+| 고정 조합 레시피 | ✅ **59/59** |
+| 시작 기프트 풀 | ✅ **10/10** |
+| 기프트 등급 | ✅ 전수 일치 |
+| 팩 전용 기프트 | ✅ 포함 관계(클리어 보상이 섞여 있다) |
+
+**폴백이 못 주는 것 — 이것이 `data:import`가 필요한 이유다**:
+
+1. **팩별 범용 기프트 풀**. 가장 치명적이다. 116팩이 78종의 서로 다른 풀을 쓰므로 태그·키워드로 추론할 수 없다. **추측하지 않는다** — 폴백 팩은 범용 풀이 비고 `data:validate`가 **에러**로 막는다. 반쯤 맞는 계획보다 못 한다고 말하는 편이 낫다
+2. **기프트 가격** 3. **관측 가능 목록·별빛 비용** 4. **던전 상수**(조합 확률·별빛·상점·강화 비용) — 2~4는 `data/curated/`로 메울 수 있다
+5. **Hard 전용**은 파생값이라 현 시즌 기준 거짓 음성 6건이 있다
+
+### 새 시즌이 왔을 때 하는 일
+
+1. `npm run data:fetch -- --update && npm run data:build` — 파생 미러가 먼저 움직인다
+2. `npm run data:validate`의 경보를 읽는다. 새 팩·기프트가 저쪽에 들어오면 **명부 경고**가 먼저 뜨고, 폴백이 돌면 **범용 풀 없음 에러**가 뜬다
+3. 에러가 뜨면 원본이 필요하다. 게임 클라이언트에서 추출해 `npm run data:import -- <폴더>`로 넣는다(아래 「클라이언트에서 직접 추출」). 새 시즌 파일명은 스크립트가 찾아서 알려 주므로, `sources.lock.json`에 손으로 더한다
+
+> ⚠️ **남은 노출**: 3번은 게임이 설치된 PC가 필요하다. 그것이 불가능하면 새 시즌은 **팩 한정·조합·시작 기프트까지만** 계획할 수 있고 범용 기프트 경로는 꺼진다. 그 상태를 조용히 넘기지 않는 것이 현재 설계의 요점이다.
+
+### 공식 경로는 없다
+
+Project Moon CDN(`limbuscompanycdn.org`)은 **게임 설치본에서 뽑은 빌드별 토큰**이 있어야 하고, 거기 있는 것은 현지화뿐이다(StaticData는 클라이언트 번들 안). 게임 서버 API에도 데이터 엔드포인트가 없다. 공개된 무인증 경로는 존재하지 않으므로 실용적인 길은 추출물 미러뿐이다. 아래 「클라이언트에서 직접 추출」이 최후의 수단이다.
 
 ## 참고만 한 것 (데이터를 가져오지 않음)
 
@@ -43,11 +100,14 @@ ObiterDicta가 쓰는 경로를 그대로 따를 수 있다. PC에 게임이 설
 - `personality/personality-{01..12}.json`
 - `skill/personality-skill-{01..12}.json`
 
-**LocalizeLimbusCompany (KR/ 및 EN/)**
+**로컬라이제이션 (KR/ 및 EN/) — x1bViolet의 `Korean`·`English` 브랜치**
 - `EGOgift_MirrorDungeon{,_2,_6,_7}.json` — 시즌이 바뀌면 `_8` 등이 생긴다
 - `EGOgift_MirrorDungeon{-StoryTheme,-StoryTheme_2,-EventTheme,-EventTheme_2,-mowe,-mowe-re,-ycgd}.json`
 - `EGOgift_{TwiningThreads,cultivation,pilgrimage,lcbcheckup-re,night-clean-up-re,tktRe,walpu4,walpu6,walpu8,a1c8p2}.json`
 - `MirrorDungeonTheme-1.json`, `Personalities.json`, `UnitKeyword.json`, `EgoGiftCategory.json`, `BattleKeywords.json`, `MirrorDungeonEgoGiftLockedDesc.json`, `DungeonStartBuffs_MD7.json`, `MirrorDungeonUI_7.json`, `TutorialMirrorDungeon.json`
+- **`Skills_personality-{01..12}.json` — KR만** (`files[]` 항목에 `{ "path": …, "languages": ["KR"] }`로 언어를 좁힌다). 앱은 스킬 텍스트를 렌더하지 않는다. 이것을 vendoring하는 이유는 하나다: **정적 데이터에 없는 인격의 키워드를 공식 문장에서 도출하는 근거**(`scripts/lib/derive-text.ts`, 지금은 10116 하나). 영어본은 같은 크기인데 도출에 쓰이지 않아 받지 않는다 — 부여를 나타내는 문법(「… 부여」·「… 증가」)이 한국어다.
+  - **커버리지가 부분적이다**: 12개 파일이 183명 중 121명만 덮는다(각 죄인의 가장 오래된 인격들은 스킬 텍스트가 미러 어디에도 없다). `tests/text-derivation.test.ts`가 이 수를 그대로 단언한다.
+  - 현지화 저장소에는 매니페스트가 없고 GitHub API가 샌드박스에서 막히는 경우가 많아, 파일이 사라지면 `data:fetch`의 404 보고가 유일한 신호다.
 
 ## 서버 재구현 코드 (규칙 확인용)
 

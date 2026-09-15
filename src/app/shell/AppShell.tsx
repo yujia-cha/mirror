@@ -51,6 +51,9 @@ export function AppShell({
   const [drawer, setDrawer] = useState<'left' | 'right' | null>(null);
   const leftOpen = desktop ? ui.leftOpen : drawer === 'left';
   const rightOpen = desktop ? ui.rightOpen : drawer === 'right';
+  // On a phone a panel is a full-screen page portalled to the body, so the shell behind it is
+  // inert: nothing under the page takes focus or a press, and it leaves the accessibility tree.
+  const pageOpen = !desktop && drawer !== null;
   const toggle = (side: 'left' | 'right'): void => {
     if (desktop) setUi(side === 'left' ? { leftOpen: !ui.leftOpen } : { rightOpen: !ui.rightOpen });
     else setDrawer((current) => (current === side ? null : side));
@@ -79,7 +82,7 @@ export function AppShell({
 
   return (
     <PlanProvider data={data} indexes={indexes} stats={stats} lang={lang}>
-      <div className="flex min-h-dvh flex-col">
+      <div className="flex min-h-dvh flex-col" data-testid="app-shell" inert={pageOpen || undefined}>
         <header className="sticky top-0 z-30 flex h-[52px] flex-none items-center justify-between border-b border-line bg-surface px-4 lg:h-14 lg:px-6">
           <div className="flex items-center gap-2">
             <IconButton onClick={() => toggle('left')} label={t('panelLeft', lang)} expanded={leftOpen} controls="panel-left">

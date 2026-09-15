@@ -7,6 +7,8 @@ description: Record a fact the game's static data does not express — an identi
 
 `data/curated/**`는 정적 데이터가 말해주지 않는 사실을 사람이 적어 두는 곳이다. `build-data`가 **마지막에** 병합하므로 항상 원본을 이긴다. 모든 항목에는 `_source`로 근거를 남긴다(나무위키 링크, 인게임 확인 날짜, 스크린샷 경로 등).
 
+**예외가 하나 있다: `identities.json`은 override가 아니라 backfill이다**(6번). 정적 데이터가 아예 없는 인격을 채우는 곳이라, 상류가 그 id를 내보내기 시작하면 원본을 이기는 대신 빌드가 멈춘다.
+
 ## 1. 인격 키워드 보정 — `identity-keywords.json`
 
 스킬 데이터에서 도출한 키워드가 실제와 다를 때. 키는 인격 id(`1SSNN`).
@@ -67,6 +69,34 @@ description: Record a fact the game's static data does not express — an identi
 ## 5. 메모 — `gift-notes.json` / `pack-notes.json`
 
 UI에 그대로 노출되는 사용자 메모. 루트 계획에는 영향을 주지 않는다.
+
+## 6. 어느 출처에도 없는 인격 — `identities.json`
+
+**먼저 이것부터**: `npm run data:fetch -- --update && npm run data:build`. 인격 데이터는 세 층으로 채워지고, 대부분은 여기서 끝난다.
+
+| 층 | 출처 | 언제 |
+|---|---|---|
+| 1 | 정적 데이터 (OpenLethe) | 있으면 무조건 |
+| 2 | **자동 백필** — eldritchtools + KR 스킬 원문 | 정적에 없을 때. 손댈 것 없음 |
+| 3 | **이 파일** | 셋 다 없을 때만 |
+
+그래도 없으면 여기에 적는다. **다른 큐레이션 파일과 다르다**:
+
+- **덮어쓰기가 아니라 backfill이다.** 어느 출처든 그 id를 갖게 되면 `data:build`가 멈추고 항목을 지우라고 말한다. 손으로 적은 값이 진짜 데이터를 영원히 가리지 않게 하려는 것이다.
+- **이름·죄인·id는 적지 않는다.** 현지화에서 그대로 오고 다른 인격과 같은 코드 경로를 지난다.
+- **`keywords`만 있어도 동작한다.** 루트 계산에 실제로 들어가는 것은 키워드와 소속뿐이다(`sins`·`attackTypes`·`traits`는 어디서도 읽지 않는다).
+- **모르는 필드는 비운다.** `factions`를 비우면 계획이 그만큼 **적게** 센다 — 근거 없이 채워 과대약속하는 것보다 낫다. 무엇을 왜 비웠는지 `_source`에 적는다.
+
+최소 형태:
+
+```jsonc
+"10617": {
+  "_source": "인게임 확인 2026-10-01. 소속은 확실치 않아 비움",
+  "keywords": { "Combustion": { "skills": 3, "specialSkills": 0 } }
+}
+```
+
+현지화에조차 이름이 없으면 빌드가 막는다 — 그때는 출처가 따라올 때까지 기다리는 수밖에 없다.
 
 ## 마무리
 

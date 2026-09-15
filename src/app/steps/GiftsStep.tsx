@@ -1,9 +1,10 @@
 /**
  * Pick the gifts to chase. They are grouped by whether the current deck activates them and drawn
  * as a grid of tiles; the detail sheet behind each name carries the wording the tiles leave out
- * (effect text, every condition, how it is obtained, the recipe). Between the filters and the
- * grid sit the observation slots and the selected-gift chips: a chip opens the sheet, and can be
- * dragged onto a slot to pin the gift for observation.
+ * (effect text, every condition, how it is obtained, the recipe). The sheet itself is hosted by
+ * `PlanProvider`, so it survives this panel closing. Between the filters and the grid sit the
+ * observation slots and the selected-gift chips: a chip opens the sheet, and can be dragged onto
+ * a slot to pin the gift for observation.
  */
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -22,8 +23,8 @@ import { useChipDrag } from '../lib/useChipDrag.ts';
 import { Badge, Button, Card, FilterSelect } from '../components/ui.tsx';
 import { GiftIcon } from '../components/GiftIcon.tsx';
 import { GiftTileGrid, type GiftTileData } from '../components/GiftGrid.tsx';
-import { GiftDetailSheet } from '../components/GiftDetailSheet.tsx';
 import { ObserveSlots } from '../components/ObserveSlots.tsx';
+import { usePlan } from '../shell/PlanContext.tsx';
 
 interface Props {
   data: GameData;
@@ -53,6 +54,7 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
   const toggleObserved = useApp((s) => s.toggleObserved);
   const setOptions = useApp((s) => s.setOptions);
   const observeMax = data.rules.giftObservation.max;
+  const { openGift } = usePlan();
 
   const [query, setQuery] = useState('');
   const [keyword, setKeyword] = useState<Keyword | 'all'>('all');
@@ -60,7 +62,6 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
   const [acquisition, setAcquisition] = useState<AcquisitionKind | 'all'>('all');
   const [sin, setSin] = useState<Sin | 'all'>('all');
   const [price, setPrice] = useState<PriceFilter | 'all'>('all');
-  const [detail, setDetail] = useState<number | null>(null);
   // 「기타」 is the long tail, so it starts folded; 「활성」 opens with the panel.
   const [collapsed, setCollapsed] = useState<Record<GiftGroup, boolean>>({ active: false, other: true });
   const filtersOn = keyword !== 'all' || tier !== 'all' || acquisition !== 'all' || sin !== 'all' || price !== 'all' || query.trim() !== '';
@@ -192,7 +193,7 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
               enums={data.enums}
               lang={lang}
               onToggle={toggle}
-              onOpen={setDetail}
+              onOpen={openGift}
             />
           </div>
         )}
@@ -243,8 +244,6 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
     { value: 'p3', label: t('priceUpTo', lang, { n: 400 }) },
     { value: 'p4', label: t('priceOver', lang, { n: 400 }) },
   ];
-
-  const detailGift = detail !== null ? indexes.giftById.get(detail) : undefined;
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -306,7 +305,7 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
                 }`}
               >
                 {gift ? <GiftIcon gift={gift} size={20} judgement={judgementFor(id)} lang={lang} /> : null}
-                <button type="button" onClick={() => setDetail(id)} aria-haspopup="dialog" aria-label={t('giftDetail', lang, { name: giftName(id) })} className="hover:underline">
+                <button type="button" onClick={() => openGift(id)} aria-haspopup="dialog" aria-label={t('giftDetail', lang, { name: giftName(id) })} className="hover:underline">
                   {giftName(id)}
                 </button>
                 {entangledIds.has(id) ? <Link2 size={11} aria-hidden className="text-fg-2" /> : null}
@@ -325,7 +324,7 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
       {draggedGift
         ? createPortal(
             <div
-              className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 rounded-md bg-surface p-1 shadow-pop"
+              className="pointer-events-none fixed z-[70] -translate-x-1/2 -translate-y-1/2 rounded-md bg-surface p-1 shadow-pop"
               style={{ left: drag.state.x, top: drag.state.y }}
               data-testid="chip-ghost"
               aria-hidden
@@ -337,19 +336,6 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
         : null}
 
       {body}
-
-      {detailGift ? (
-        <GiftDetailSheet
-          gift={detailGift}
-          reports={conditionByGift.get(detailGift.id) ?? []}
-          entangled={entangled.get(detailGift.id) ?? []}
-          data={data}
-          indexes={indexes}
-          lang={lang}
-          onToggleWanted={toggle}
-          onClose={() => setDetail(null)}
-        />
-      ) : null}
     </div>
   );
 }
