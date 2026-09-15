@@ -21,6 +21,7 @@ import { createHash } from 'node:crypto';
 import { readdirSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { flagValue, hasFlag, readJson, readJsonIfExists, repoPath, writeJsonStable } from './lib/io.ts';
+import { localizeBuffTokens } from './lib/battle-keywords.ts';
 import {
   SIN_BY_COLOR,
   listSeasons,
@@ -993,6 +994,29 @@ function findDungeonName(lang: 'KR' | 'EN'): string {
 }
 
 // ---------------------------------------------------------------------------
+// Buff ids in the text
+// ---------------------------------------------------------------------------
+
+/*
+ * The game writes a buff into its own text as a bracketed id — 「[Combustion] 횟수를 부여」 — and
+ * paints the localized name over it at runtime. Our copy keeps the ids, so a gift read half in
+ * English whatever language the reader chose. `BattleKeywords.json` is the game's own table for
+ * them, so every id it names is rewritten here, in both languages.
+ *
+ * A buff it does not name (identity-specific ones like `BloodDinner`) keeps its bracketed id: a
+ * guessed name would be worse than a visible id. The count is reported below so the gap is known.
+ */
+const unnamedBuffIds = new Set<string>();
+for (const gift of gifts) {
+  const text = (value: Localized): Localized => ({
+    ko: localizeBuffTokens(value.ko, battleKeywordKo, unnamedBuffIds),
+    en: localizeBuffTokens(value.en, battleKeywordEn, unnamedBuffIds),
+  });
+  gift.desc = text(gift.desc);
+  for (const condition of gift.conditions) if (condition.text) condition.text = text(condition.text);
+}
+
+// ---------------------------------------------------------------------------
 // Write
 // ---------------------------------------------------------------------------
 
@@ -1060,6 +1084,10 @@ console.log(
   `  특수 variants: ${specialVariants.size} buff(s), ${identities.filter((i) => Object.values(i.keywords).some((k) => k.specialSkills > 0)).length} identities`,
 );
 console.log(`  탄환 identities: ${identities.filter((i) => i.keywords.Bullet).length}`);
+if (unnamedBuffIds.size > 0) {
+  // Not an error: these are identity- or gift-specific buffs the game names nowhere we can read.
+  console.log(`  ${unnamedBuffIds.size} buff id(s) left as ids in the text: ${[...unnamedBuffIds].sort().slice(0, 8).join(', ')}…`);
+}
 if (missingText.length > 0) {
   console.log(`  ${missingText.length} gift(s) without Korean text: ${missingText.slice(0, 10).join(', ')}`);
 }
