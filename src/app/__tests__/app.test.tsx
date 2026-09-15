@@ -926,6 +926,60 @@ describe('GiftsStep', () => {
     expect(screen.getByRole('dialog', { name: '상납된 시가' })).toBeInTheDocument();
   });
 
+  it('puts the search results under the box that asked for them, and back at the foot when the query goes', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267);
+    renderGifts();
+    const box = screen.getByRole('textbox', { name: '기프트 검색' });
+    const slots = () => screen.getByTestId('observe-slots');
+    const grid = () => screen.getAllByTestId('gift-grid')[0]!;
+    // With no query the grid sits below the slots and the selection tray, where it always did.
+    expect(grid().compareDocumentPosition(slots())).toBe(Node.DOCUMENT_POSITION_PRECEDING);
+    await user.type(box, '달궈진');
+    // While searching it comes first: the results belong to the box above them.
+    expect(grid().compareDocumentPosition(slots())).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    await user.clear(box);
+    expect(grid().compareDocumentPosition(slots())).toBe(Node.DOCUMENT_POSITION_PRECEDING);
+  });
+
+  it('sorts the selection tray by keyword or by name, and holds the order things were picked in by default', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    // Picked in an order that is neither alphabetical nor keyword order.
+    for (const id of [9267, 9088, 9211]) useApp.getState().toggleWanted(id);
+    renderGifts();
+    const chips = () => within(screen.getByTestId('gift-chips')).getAllByTestId('gift-chip').map((el) => el.getAttribute('data-gift'));
+    expect(chips()).toEqual(['9267', '9088', '9211']);
+    await user.selectOptions(screen.getByRole('combobox', { name: '정렬' }), 'name');
+    expect(chips()).toEqual(['9267', '9211', '9088']); // 달궈진 놋쇠 · 먹장구름 · 진혼
+    await user.selectOptions(screen.getByRole('combobox', { name: '정렬' }), 'keyword');
+    // Keyword order is the enum's — the two 화상 gifts before the 침잠 one, names breaking the tie —
+    // and the store's own order never moved.
+    expect(chips()).toEqual(['9267', '9088', '9211']);
+    expect(useApp.getState().wanted).toEqual([9267, 9088, 9211]);
+  });
+
+  it('filters the tray by keyword and by pack, hiding chips without unselecting them', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    for (const id of [9267, 9088, 9211]) useApp.getState().toggleWanted(id);
+    renderGifts();
+    const chips = () => within(screen.getByTestId('gift-chips')).getAllByTestId('gift-chip').map((el) => el.getAttribute('data-gift'));
+    const trayFilters = () => within(screen.getByTestId('gift-chips').parentElement!).getAllByRole('combobox');
+    // The tray's keyword filter offers only the keywords its own chips carry.
+    const keyword = trayFilters().find((el) => el.getAttribute('aria-label') === '키워드')!;
+    await user.selectOptions(keyword, 'Sinking');
+    expect(chips()).toEqual(['9211']);
+    expect(useApp.getState().wanted).toEqual([9267, 9088, 9211]);
+    await user.selectOptions(keyword, 'all');
+    // 달궈진 놋쇠 is 화왕지절's alone, so the pack filter keeps it and nothing else.
+    const pack = trayFilters().find((el) => el.getAttribute('aria-label') === '팩')!;
+    await user.selectOptions(pack, within(pack).getByRole('option', { name: '화왕지절' }).getAttribute('value')!);
+    expect(chips()).toEqual(['9267']);
+    expect(useApp.getState().wanted).toEqual([9267, 9088, 9211]);
+  });
+
   it('pins a chip dragged onto a slot, ignores one that cannot be observed, and a tap still opens the sheet', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
@@ -1132,7 +1186,10 @@ describe('RoutePlanPanel', () => {
     const cell = within(rows()).getByTestId('start-cell');
     const start = within(cell).getByTestId('start-line');
     const observed = within(cell).getByTestId('observed-line');
-    expect(observed).toHaveTextContent('관측');
+    // The word 「관측」 is gone from the line; the eye badge on each tile says it, and the row
+    // keeps the word as its accessible name.
+    expect(observed).toHaveAttribute('aria-label', '관측');
+    expect(observed.textContent).not.toMatch(/관측/);
     expect(within(observed).getAllByTestId('observed-tile').length).toBeGreaterThan(0);
     // They are two decisions, so nothing from one line leaks into the other.
     expect(within(start).queryByTestId('observed-tile')).toBeNull();
@@ -1371,7 +1428,7 @@ describe('AppShell', () => {
     expect(screen.queryByTestId('page-left')).toBeNull();
     expect(screen.queryByTestId('panel-left')).toBeNull();
     expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'undecided');
-    const left = screen.getByRole('button', { name: '설정 패널' });
+    const left = screen.getByRole('button', { name: '덱' });
     expect(left).toHaveAttribute('aria-expanded', 'false');
     await user.click(left);
     const page = screen.getByTestId('page-left');
@@ -1394,7 +1451,7 @@ describe('AppShell', () => {
     expect(screen.queryByTestId('page-left')).toBeNull();
     expect(screen.getByTestId('app-shell')).not.toHaveAttribute('inert');
 
-    await user.click(screen.getByRole('button', { name: '루트 패널' }));
+    await user.click(screen.getByRole('button', { name: '전체 루트' }));
     const right = screen.getByTestId('page-right');
     expect(within(right).getByTestId('route-empty')).toBeInTheDocument();
     // One page hands over to the other from inside: the empty state opens the items tab.
@@ -1404,7 +1461,7 @@ describe('AppShell', () => {
     await user.click(screen.getByRole('button', { name: '뒤로' }));
     expect(screen.queryByTestId('page-left')).toBeNull();
     // The tracker tab lives in the right page.
-    await user.click(screen.getByRole('button', { name: '루트 패널' }));
+    await user.click(screen.getByRole('button', { name: '전체 루트' }));
     await user.click(screen.getByRole('tab', { name: '목표' }));
     expect(screen.getByTestId('goals-empty')).toBeInTheDocument();
     expect(useApp.getState().ui.rightTab).toBe('goals');
@@ -1420,7 +1477,7 @@ describe('AppShell', () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
     renderShell();
-    await user.click(screen.getByRole('button', { name: '설정 패널' }));
+    await user.click(screen.getByRole('button', { name: '덱' }));
     const page = screen.getByTestId('page-left');
     const tile = within(page).getAllByTestId('gift-tile').find((el) => el.getAttribute('data-gift') === '9088')!;
     await user.click(within(tile).getByRole('button', { name: '진혼 자세히' }));
@@ -1435,7 +1492,7 @@ describe('AppShell', () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
     renderShell();
-    await user.click(screen.getByRole('button', { name: '설정 패널' }));
+    await user.click(screen.getByRole('button', { name: '덱' }));
     const openSheet = async () => {
       const page = screen.getByTestId('page-left');
       const tile = within(page).getAllByTestId('gift-tile').find((el) => el.getAttribute('data-gift') === '9088')!;
@@ -1470,15 +1527,21 @@ describe('AppShell', () => {
     useApp.getState().visitPack(1008, 2);
     useApp.getState().setUi({ leftTab: 'deck', rightTab: 'goals' });
     renderShell();
-    const reset = () => screen.getByRole('button', { name: '초기화' });
-    // The reset sits right before the share button; declining the confirmation changes nothing.
-    const labels = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'));
-    expect(labels.indexOf('초기화')).toBe(labels.indexOf('링크 복사') - 1);
-    await user.click(reset());
+    // The four one-off actions live behind 「⋯」 now; the header itself carries only the two doors.
+    const openMenu = async () => user.click(screen.getByRole('button', { name: '더 보기' }));
+    const reset = async () => {
+      await openMenu();
+      await user.click(within(screen.getByTestId('header-menu')).getByRole('button', { name: '초기화' }));
+    };
+    await openMenu();
+    expect(within(screen.getByTestId('header-menu')).getAllByRole('button').map((b) => b.textContent)).toEqual(['초기화', '링크 복사', 'English', '화면 전환']);
+    await user.keyboard('{Escape}');
+    expect(screen.queryByTestId('header-menu')).toBeNull();
+    await reset();
     await user.click(within(screen.getByTestId('confirm-dialog')).getByRole('button', { name: '취소' }));
-    expect(useApp.getState().wanted).toEqual([9249, 9267, 9423]);
+    expect(useApp.getState().wanted).toEqual([9267, 9423, 9249]); // as picked, not by id
     expect(screen.queryByTestId('confirm-dialog')).toBeNull();
-    await user.click(reset());
+    await reset();
     await user.click(within(screen.getByTestId('confirm-dialog')).getAllByRole('button', { name: '초기화' })[0]!);
     const state = useApp.getState();
     expect(state.deck).toEqual(defaultDeck(data));
@@ -1494,7 +1557,7 @@ describe('AppShell', () => {
     // The same button starts over after a finished run, where the old 「새 런」 used to be.
     act(() => useApp.setState({ run: { currentFloor: 16, stageFloor: 16, visits: { 4: 1402 }, giftStatus: { 9267: 'got' }, startGifts: [] } }));
     expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'done');
-    await user.click(reset());
+    await reset();
     await user.click(within(screen.getByTestId('confirm-dialog')).getAllByRole('button', { name: '초기화' })[0]!);
     expect(useApp.getState().run).toEqual(emptyRun());
     expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'undecided');
@@ -1507,7 +1570,7 @@ describe('AppShell', () => {
     expect(screen.getByTestId('panel-left')).toBeInTheDocument();
     expect(screen.getByTestId('panel-right')).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).toBeNull();
-    const left = screen.getByRole('button', { name: '설정 패널' });
+    const left = screen.getByRole('button', { name: '덱' });
     expect(left).toHaveAttribute('aria-expanded', 'true');
     expect(left).toHaveAttribute('aria-controls', 'panel-left');
     await user.click(left);

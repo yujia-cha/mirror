@@ -170,7 +170,9 @@ export function MetroMap({ plan, ctx, keywordLabel, run, variant = 'auto', detai
   const startGift = plan.start.startGift ? ctx.indexes.giftById.get(plan.start.startGift) : undefined;
   const startKeyword = plan.start.keyword ? keywordLabel(plan.start.keyword) : null;
   // The start and the observations are two different decisions — what the run is handed, and what
-  // the player spent starlight to pin — so they get a line each instead of sharing one row.
+  // the player spent starlight to pin — so they get a line each instead of sharing one row. The
+  // lower line needs no 「관측」 word: each tile already carries the eye badge, and the row's
+  // accessible name says it for a screen reader.
   const startRow = (mode: DetailMode): ReactNode =>
     startGift || startKeyword || plan.start.observed.length > 0 ? (
       <div className="flex flex-col gap-1 px-3 py-2 text-xs text-fg-2" data-testid="start-cell">
@@ -190,8 +192,7 @@ export function MetroMap({ plan, ctx, keywordLabel, run, variant = 'auto', detai
           </div>
         ) : null}
         {plan.start.observed.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5" data-testid="observed-line">
-            <span className="text-fg-3">{t('routeObserved', lang)}</span>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5" aria-label={t('routeObserved', lang)} data-testid="observed-line">
             {plan.start.observed.map((entry) => (
               <span key={entry.giftId} className="relative inline-flex">
                 <ObservedTile

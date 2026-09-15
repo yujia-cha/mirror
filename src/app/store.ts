@@ -435,9 +435,12 @@ export const useApp = create<AppState>()(
 
       toggleWanted: (giftId, dropWithIt = []) =>
         set((state) => {
+          // Kept in the order things were picked, not by id: that order is what the selection tray
+          // shows by default and what a shared link hands the next person. The planner sorts the
+          // goals itself (`expandRequirements`), so the route does not depend on it.
           const wanted = state.wanted.includes(giftId)
             ? state.wanted.filter((id) => id !== giftId)
-            : [...state.wanted.filter((id) => !dropWithIt.includes(id)), giftId].sort((a, b) => a - b);
+            : [...state.wanted.filter((id) => !dropWithIt.includes(id)), giftId];
           return {
             wanted,
             priority: sanitizePriority(state.priority, wanted),
