@@ -220,7 +220,6 @@ export const STRINGS = {
   stageFloor: { ko: '{floor}층', en: 'Floor {floor}' },
   stageOf: { ko: '/ {last}', en: '/ {last}' },
   stageEnterable: { ko: '이 층에서 들어갈 수 있는 팩', en: 'Packs you can enter on this floor' },
-  stageRecommended: { ko: '추천', en: 'Suggested' },
   stageNoRoutePack: { ko: '계획된 팩 없음', en: 'No planned pack' },
   stageNoGoals: { ko: '아직 목표 기프트가 없습니다.', en: 'No goal gifts yet.' },
   stageOtherPacks: { ko: '다른 팩', en: 'Other packs' },

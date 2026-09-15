@@ -1670,11 +1670,11 @@ describe('RunStage', () => {
     for (let i = 0; i < 3; i += 1) await skipFloor(user);
     expect(screen.getByTestId('stage-floor')).toHaveTextContent('4');
     expect(useApp.getState().run).toMatchObject({ currentFloor: 4, stageFloor: 4 });
-    // The route's pack for this floor comes first, marked as the suggestion; the other floors read as skipped.
+    // The route's pack for this floor comes first; the other floors read as skipped. The card
+    // carries no badge — neither 「추천」 nor a pack-state word.
     const card = screen.getByTestId('stage-pack');
     expect(card).toHaveAttribute('data-pack', '1402');
-    expect(card).toHaveAttribute('data-recommended');
-    expect(card).toHaveTextContent('추천');
+    expect(card.textContent).not.toMatch(/추천|포함/);
     // Portrait, name, then the gifts only this pack drops with the goal ringed; the foot says 입장.
     expect(within(card).getByTestId('pack-image')).toBeInTheDocument();
     expect(within(card).getByRole('button', { name: '화왕지절 자세히' })).toBeInTheDocument();
@@ -1689,7 +1689,8 @@ describe('RunStage', () => {
     expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'entered');
     const entered = screen.getByTestId('entered-pack');
     expect(entered).toHaveAttribute('data-pack', '1402');
-    expect(entered).toHaveTextContent('4층에 입장');
+    // The floor is the header's job; the area does not repeat it.
+    expect(entered.textContent).not.toMatch(/4층에 입장/);
     expect(within(entered).getByTestId('area-back')).toHaveTextContent('돌아가기');
     expect(within(entered).getByTestId('area-next')).toHaveTextContent('다음 층');
     const tiles = within(screen.getByTestId('exclusive-gifts')).getAllByTestId('gift-tile');
@@ -1911,46 +1912,27 @@ describe('RunStage', () => {
     expect(screen.getByTestId('stage-done')).not.toHaveTextContent('새 런');
   });
 
-  it('gives the suggested pack the card and puts every other way off the floor in a row', async () => {
+  it('draws every route pack of the floor as the same card, planned one first, then the dashed one', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
-    useApp.getState().toggleWanted(9267); // 화왕지절 (1402), Hard 4-5
-    renderStage();
-    for (let i = 0; i < 3; i += 1) await skipFloor(user);
-    const packs = () => within(screen.getByTestId('stage-packs')).getAllByTestId('stage-pack');
-    const suggested = packs().find((el) => el.hasAttribute('data-recommended'))!;
-    expect(suggested).toHaveAttribute('data-pack', '1402');
-    // The suggestion is the only card; the difference used to be one border's colour between
-    // cards of equal size.
-    expect(suggested).not.toHaveAttribute('data-row');
-    expect(within(suggested).getByTestId('stage-recommended')).toHaveTextContent('추천');
-    // One route pack is planned on this floor and no other window reaches it, so the card stands
-    // alone; the row form is exercised by the next case.
-    expect(packs()).toHaveLength(1);
-    // Passing the floor by is a row too, and still commits on a pull as it did as a card.
-    const skip = screen.getByTestId('other-entry-card');
-    expect(skip).toHaveTextContent('넘기기');
-    pull(skip, 90);
-    expect(useApp.getState().run).toMatchObject({ currentFloor: 5, stageFloor: 5 });
-  });
-
-  it('enters a route pack from the row it was given when another pack holds the card', async () => {
-    const user = userEvent.setup();
-    useApp.getState().setDeck(BURN_DECK, 7);
-    // Six goals outrun the three observation slots, so two packs still have to be walked into and
-    // both windows cover 6~10층 — the one the planner put here takes the card, the other a row.
+    // Six goals outrun the three observation slots, so two packs whose windows both cover 6~10층
+    // have to be walked into — the planner puts one here and the other later.
     for (const id of [9274, 9420, 9706, 9715, 9744]) useApp.getState().toggleWanted(id);
     renderStage();
     for (let i = 0; i < 5; i += 1) await skipFloor(user);
     expect(screen.getByTestId('stage-floor')).toHaveTextContent('6');
-    const packs = within(screen.getByTestId('stage-packs')).getAllByTestId('stage-pack');
-    expect(packs.filter((el) => el.hasAttribute('data-recommended'))).toHaveLength(1);
-    const row = packs.find((el) => el.hasAttribute('data-row'))!;
-    expect(row).not.toHaveAttribute('data-recommended');
-    expect(within(row).queryByTestId('stage-recommended')).toBeNull();
-    // A row is a way off the floor like the card is: the same pull, the same 「입장」.
-    pull(row, 90);
-    expect(useApp.getState().run.visits).toEqual({ 6: Number(row.getAttribute('data-pack')) });
+    const cards = within(screen.getByTestId('stage-packs')).getAllByTestId('stage-pack');
+    expect(cards.length).toBeGreaterThan(1);
+    // No card is singled out: same width, no badge, and the planned pack is simply first.
+    for (const card of cards) {
+      expect(card).not.toHaveAttribute('data-row');
+      expect(card).not.toHaveAttribute('data-recommended');
+      expect(card.textContent).not.toMatch(/추천|포함/);
+    }
+    expect(screen.queryByTestId('stage-recommended')).toBeNull();
+    // Any of them enters on a pull, and the dashed card at the end passes the floor by.
+    pull(cards[1]!, 90);
+    expect(useApp.getState().run.visits).toEqual({ 6: Number(cards[1]!.getAttribute('data-pack')) });
   });
 
   it('settles the floor it walks off, whether that is 「다음 층」 or a forward step on the strip', async () => {
