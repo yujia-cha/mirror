@@ -155,15 +155,12 @@ export function MetroMap({ plan, ctx, keywordLabel, run, variant = 'auto', detai
     const theme = ctx.indexes.packById.get(pack.packId);
     if (!theme) return null;
     const key = `${segment.key}:${pack.packId}`;
-    const icons = pack.gifts.map((giftId) => {
-      const gift = ctx.indexes.giftById.get(giftId);
-      return gift ? <GiftIcon key={giftId} gift={gift} size={20} judgement={ctx.judgements.get(giftId) ?? null} must={ctx.isMust(giftId)} title={ctx.giftTitle(giftId)} lang={lang} /> : null;
-    });
+    // The map answers 「어느 팩을 어느 층에서」 and nothing else. What a pack drops is the pack
+    // sheet's business (a press on the portrait), so no gift icons ride the blocks.
     return (
       <div key={key} className={`relative flex min-w-0 ${compact ? 'flex-row items-center gap-1.5' : 'flex-col items-center gap-1'}`} data-testid="segment-pack" data-pack={pack.packId}>
         <PackCard pack={theme} size={compact ? 20 : 28} caption={!compact} selected={ctx.preferred.has(pack.packId)} onOpen={() => setOpen({ kind: 'pack', packId: pack.packId, key, mode })} lang={lang} />
         {compact ? <span className="truncate text-xs font-medium">{pick(theme.name, lang)}</span> : null}
-        <span className="flex flex-wrap justify-center gap-0.5">{icons}</span>
         {detailFor(key, mode)}
       </div>
     );
@@ -172,36 +169,47 @@ export function MetroMap({ plan, ctx, keywordLabel, run, variant = 'auto', detai
   // ---- start row: keyword and observations ----
   const startGift = plan.start.startGift ? ctx.indexes.giftById.get(plan.start.startGift) : undefined;
   const startKeyword = plan.start.keyword ? keywordLabel(plan.start.keyword) : null;
+  // The start and the observations are two different decisions — what the run is handed, and what
+  // the player spent starlight to pin — so they get a line each instead of sharing one row.
   const startRow = (mode: DetailMode): ReactNode =>
     startGift || startKeyword || plan.start.observed.length > 0 ? (
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 text-xs text-fg-2" data-testid="start-cell">
+      <div className="flex flex-col gap-1 px-3 py-2 text-xs text-fg-2" data-testid="start-cell">
         {startGift ? (
-          <span className="inline-flex items-center gap-1.5" title={t('routeStartGift', lang)}>
-            <GiftIcon gift={startGift} size={20} judgement={ctx.judgements.get(startGift.id) ?? null} lang={lang} />
-            {pick(startGift.name, lang)}
-          </span>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5" data-testid="start-line">
+            <span className="inline-flex items-center gap-1.5" title={t('routeStartGift', lang)}>
+              <GiftIcon gift={startGift} size={20} judgement={ctx.judgements.get(startGift.id) ?? null} lang={lang} />
+              {pick(startGift.name, lang)}
+            </span>
+          </div>
         ) : startKeyword ? (
-          <span className="inline-flex items-center gap-1" title={t('optionStartKeyword', lang)}>
-            <Star size={11} aria-hidden className="text-fg-3" />
-            {t('routeStart', lang)} {startKeyword}
-          </span>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5" data-testid="start-line">
+            <span className="inline-flex items-center gap-1" title={t('optionStartKeyword', lang)}>
+              <Star size={11} aria-hidden className="text-fg-3" />
+              {t('routeStart', lang)} {startKeyword}
+            </span>
+          </div>
         ) : null}
-        {plan.start.observed.map((entry) => (
-          <span key={entry.giftId} className="relative inline-flex">
-            <ObservedTile
-              entry={entry}
-              ctx={ctx}
-              onPress={
-                mode === 'sheet'
-                  ? () => setOpen({ kind: 'observed', giftId: entry.giftId, mode })
-                  : ctx.onToggleObserved
-                    ? () => ctx.onToggleObserved?.(entry.giftId)
-                    : undefined
-              }
-            />
-            {detailFor(`observed-${entry.giftId}`, mode)}
-          </span>
-        ))}
+        {plan.start.observed.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5" data-testid="observed-line">
+            <span className="text-fg-3">{t('routeObserved', lang)}</span>
+            {plan.start.observed.map((entry) => (
+              <span key={entry.giftId} className="relative inline-flex">
+                <ObservedTile
+                  entry={entry}
+                  ctx={ctx}
+                  onPress={
+                    mode === 'sheet'
+                      ? () => setOpen({ kind: 'observed', giftId: entry.giftId, mode })
+                      : ctx.onToggleObserved
+                        ? () => ctx.onToggleObserved?.(entry.giftId)
+                        : undefined
+                  }
+                />
+                {detailFor(`observed-${entry.giftId}`, mode)}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
     ) : null;
 

@@ -12,13 +12,12 @@ import { useApp } from '../store.ts';
 import { pullStyle, usePullGesture } from '../lib/usePullGesture.ts';
 import { GiftTile } from '../components/GiftTile.tsx';
 import { PackCard } from '../components/PackCard.tsx';
-import { Badge } from '../components/ui.tsx';
 import { usePlan } from '../shell/PlanContext.tsx';
 
 const HANDLE_CLASS = 'flex h-9 w-full items-center justify-center gap-1 text-sm font-medium transition-colors';
 
 /** Opens from zero height on mount (`grid-template-rows` 0fr → 1fr) and folds the same way when `closing`. */
-export function PackArea({ packId, floor, closing = false }: { packId: number; floor: number; closing?: boolean }) {
+export function PackArea({ packId, closing = false }: { packId: number; closing?: boolean }) {
   const { indexes, lang, ctx, exclusivesOf, goals, next, leave, openGift } = usePlan();
   const giftStatus = useApp((s) => s.run.giftStatus);
   const setGiftStatus = useApp((s) => s.setGiftStatus);
@@ -75,7 +74,6 @@ export function PackArea({ packId, floor, closing = false }: { packId: number; f
             <div className="flex w-[112px] flex-col items-center gap-2 md:w-[150px]">
               <PackCard pack={pack} size={96} lang={lang} />
               <span className="text-center text-sm font-semibold">{name}</span>
-              <Badge tone="sure">{t('stageEntered', lang, { floor })}</Badge>
             </div>
             <div className="flex min-w-0 flex-col gap-2">
               <div className="flex flex-wrap items-baseline gap-2">
