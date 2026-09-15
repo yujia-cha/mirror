@@ -21,12 +21,12 @@
 
 /*
  * Grey palette (docs/design/ui-redesign.md). Acquisition certainty and past state are told apart
- * by fill, dash and weight — never by hue. Hue appears in exactly three places: the gift icon's
- * keyword badge, the judgement ring, and `accent`.
+ * by fill, dash and weight — never by hue. Hue appears in exactly two places: the gift icon's
+ * keyword badge and the judgement ring.
  *
- * `accent` says 「지금 할 일」 and nothing else — the suggested pack, and the floor the stage stands
- * on. It never colours what already happened (an entered floor stays ink, a skipped one stays
- * grey), so the eye can find the one thing to act on. Dark mode swaps the same tokens on `.dark`.
+ * `accent` says 「지금 할 일」 — today only the floor the stage stands on. It carries no hue of its
+ * own: black on the light ground, white on the dark one, the strongest mark the palette has.
+ * It never colours what already happened (an entered floor stays ink, a skipped one stays grey).
  */
 @theme {
   --color-*: initial;
@@ -45,11 +45,8 @@
   /* Condition judgement, drawn as a ring around a gift icon (met / not met). */
   --color-ok: #2f8f5b;
   --color-bad: #c9403a;
-  /*
-   * 「지금 할 일」. Violet is the one band the keyword badges leave open, and it is far from the
-   * judgement ring's green and red. Measured: 6.19:1 on `bg`, and `accent-fg` on it is 6.69:1.
-   */
-  --color-accent: #5647c9;
+  /* 「지금 할 일」: pure black on the light ground — 19.44:1 on `bg`, and white on it is 21:1. */
+  --color-accent: #000000;
   --color-accent-fg: #ffffff;
   /*
    * Gift keyword, drawn as the badge in the icon's bottom-right corner. The three attack types
@@ -104,9 +101,9 @@
   --color-ink-fg: #1c1917;
   --color-ok: #4cc38a;
   --color-bad: #f0665e;
-  /* 7.97:1 on the dark `bg`; the ink-coloured text on it is 7.45:1. */
-  --color-accent: #a89ff5;
-  --color-accent-fg: #1c1917;
+  /* Pure white on the dark ground — 18.71:1 on `bg`, and the near-black on it is 18.71:1. */
+  --color-accent: #ffffff;
+  --color-accent-fg: #131211;
   --color-kw-combustion: #f9913f;
   --color-kw-laceration: #f26a8d;
   --color-kw-vibration: #e8c04a;

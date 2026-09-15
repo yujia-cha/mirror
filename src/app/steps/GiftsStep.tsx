@@ -64,6 +64,12 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
   const [acquisition, setAcquisition] = useState<AcquisitionKind | 'all'>('all');
   const [sin, setSin] = useState<Sin | 'all'>('all');
   const [price, setPrice] = useState<PriceFilter | 'all'>('all');
+  // The selection tray's own view: how the chips are ordered, and which of them are shown. It is
+  // a view over `wanted`, never a reordering of it — the store keeps the order things were chosen
+  // in, which is what 「선택 순서」 means and what the share link carries.
+  const [chipSort, setChipSort] = useState<'keyword' | 'name' | 'all'>('all');
+  const [chipKeyword, setChipKeyword] = useState<Keyword | 'all'>('all');
+  const [chipPack, setChipPack] = useState<string>('all');
   // 「기타」 is the long tail, so it starts folded; 「활성」 opens with the panel.
   const [collapsed, setCollapsed] = useState<Record<GiftGroup, boolean>>({ active: false, other: true });
   const filtersOn = keyword !== 'all' || tier !== 'all' || acquisition !== 'all' || sin !== 'all' || price !== 'all' || query.trim() !== '';
@@ -126,6 +132,32 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
   const total = groups.active.length + groups.other.length;
   const giftName = (id: number): string => pick(indexes.giftById.get(id)?.name, lang);
   const judgementFor = (id: number) => judgementOf(conditionByGift.get(id));
+  /** Packs a gift can only be had from: its 테마 팩 한정 packs and the boss that drops it on clear. */
+  const boundPacks = (id: number): number[] => {
+    const gift = indexes.giftById.get(id);
+    if (!gift) return [];
+    const reward = gift.acquisition.clearRewardOf;
+    return [...gift.acquisition.exclusiveTo, ...(reward === null || reward === undefined ? [] : [reward])];
+  };
+  const keywordOrder = new Map(data.enums.keywords.map((k, i) => [k.id as Keyword, i]));
+  const shownChips = useMemo(() => {
+    const kept = wanted.filter((id) => {
+      const gift = indexes.giftById.get(id);
+      if (!gift) return false;
+      if (chipKeyword !== 'all' && gift.keyword !== chipKeyword) return false;
+      if (chipPack !== 'all' && !boundPacks(id).includes(Number(chipPack))) return false;
+      return true;
+    });
+    if (chipSort === 'all') return kept;
+    const name = (id: number): string => pick(indexes.giftById.get(id)?.name, lang);
+    return [...kept].sort((a, b) =>
+      chipSort === 'name'
+        ? name(a).localeCompare(name(b), lang === 'ko' ? 'ko' : 'en')
+        : (keywordOrder.get(indexes.giftById.get(a)!.keyword) ?? 99) - (keywordOrder.get(indexes.giftById.get(b)!.keyword) ?? 99) ||
+          name(a).localeCompare(name(b), lang === 'ko' ? 'ko' : 'en'),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wanted, indexes, lang, chipSort, chipKeyword, chipPack]);
   const canObserve = (id: number): boolean => {
     const gift = indexes.giftById.get(id);
     return gift ? observable(gift, data.rules) : false;
@@ -207,6 +239,7 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
     );
   };
 
+  const searching = query.trim() !== '';
   let body: React.ReactNode;
   if (deck.length === 0) {
     body = (
@@ -239,6 +272,17 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
   }
 
   const keywordOptions = data.enums.keywords.map((k) => ({ value: k.id as Keyword, label: pick(k.name, lang) }));
+  // The tray's own filters only offer what the selection actually holds — a keyword or a pack with
+  // no chip behind it would filter to nothing.
+  const chipKeywordOptions = keywordOptions.filter((option) => wanted.some((id) => indexes.giftById.get(id)?.keyword === option.value));
+  const chipPackOptions = [...new Set(wanted.flatMap(boundPacks))]
+    .map((packId) => ({ value: String(packId), label: pick(indexes.packById.get(packId)?.name, lang) }))
+    .filter((option) => option.label !== '')
+    .sort((a, b) => a.label.localeCompare(b.label, lang === 'ko' ? 'ko' : 'en'));
+  const sortOptions = [
+    { value: 'keyword' as const, label: t('filterKeyword', lang) },
+    { value: 'name' as const, label: t('giftsSortName', lang) },
+  ];
   const sinOptions = data.enums.sins.map((s) => ({ value: s as Sin, label: t(SIN_LABEL[s as Sin], lang) }));
   const acqOptions = (['general', 'packLimited', 'fusionOnly', 'startOnly', 'clearReward', 'hiddenBattle', 'event'] as AcquisitionKind[]).map((k) => ({
     value: k,
@@ -265,6 +309,12 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
           className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-fg-3"
         />
       </label>
+      {/*
+        While a query is being typed, its results belong under the box that asked for them — the
+        filters, the observation slots and the selection tray would otherwise push them a screen
+        down. With no query the grid goes back to the foot of the tab.
+      */}
+      {searching ? body : null}
       <div className="flex flex-wrap gap-1.5">
         <FilterSelect label={t('filterKeyword', lang)} value={keyword} options={keywordOptions} onChange={setKeyword} allLabel={t('filterAll', lang)} />
         <FilterSelect
@@ -300,9 +350,27 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
       />
 
       {wanted.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-line bg-surface-2 px-2.5 py-2" aria-label={t('giftsSelected', lang, { n: wanted.length })}>
-          <span className="mr-0.5 text-xs font-medium text-fg-2">{t('giftsSelected', lang, { n: wanted.length })}</span>
-          {wanted.map((id) => {
+        <div className="flex flex-col gap-1.5 rounded-md border border-line bg-surface-2 px-2.5 py-2" aria-label={t('giftsSelected', lang, { n: wanted.length })}>
+          {/*
+            Sorting and filtering are a view over the tray, not over the store: 「선택 순서」 is the
+            order things were chosen in, and a filter hides chips without unselecting anything.
+          */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-0.5 text-xs font-medium text-fg-2">
+              {t('giftsSelected', lang, { n: wanted.length })}
+              {shownChips.length !== wanted.length ? <span className="ml-1 font-num text-fg-3">{`· ${shownChips.length}`}</span> : null}
+            </span>
+            <FilterSelect label={t('giftsSort', lang)} value={chipSort} options={sortOptions} onChange={setChipSort} allLabel={t('giftsSortPicked', lang)} />
+            <FilterSelect label={t('filterKeyword', lang)} value={chipKeyword} options={chipKeywordOptions} onChange={setChipKeyword} allLabel={t('filterAll', lang)} />
+            {chipPackOptions.length > 0 ? (
+              <FilterSelect label={t('giftsPack', lang)} value={chipPack} options={chipPackOptions} onChange={setChipPack} allLabel={t('filterAll', lang)} />
+            ) : null}
+            <button type="button" onClick={clearWanted} className="ml-auto text-xs text-fg-3 underline">
+              {t('giftsClear', lang)}
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5" data-testid="gift-chips">
+          {shownChips.map((id) => {
             const gift = indexes.giftById.get(id);
             const pinned = observedGifts.includes(id);
             return (
@@ -331,9 +399,7 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
               </span>
             );
           })}
-          <button type="button" onClick={clearWanted} className="ml-auto text-xs text-fg-3 underline">
-            {t('giftsClear', lang)}
-          </button>
+          </div>
         </div>
       ) : null}
 
@@ -351,7 +417,7 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
           )
         : null}
 
-      {body}
+      {searching ? null : body}
     </div>
   );
 }
