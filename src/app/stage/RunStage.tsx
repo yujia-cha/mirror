@@ -35,7 +35,12 @@ export function RunStage({ onOpenGifts }: { onOpenGifts: () => void }) {
   useEffect(() => {
     const before = previous.current;
     previous.current = { floor, entered };
-    if (before.floor !== floor || before.entered === undefined || entered !== undefined) return undefined;
+    // Any other move ends the fold at once. Leaving `closing` set would keep a collapsed but live
+    // pack area in the DOM, its 「돌아가기」·「다음 층」 buttons still reachable by keyboard.
+    if (before.floor !== floor || before.entered === undefined || entered !== undefined) {
+      setClosing(null);
+      return undefined;
+    }
     setClosing(before.entered);
     const timer = window.setTimeout(() => setClosing(null), FOLD_MS);
     return () => window.clearTimeout(timer);

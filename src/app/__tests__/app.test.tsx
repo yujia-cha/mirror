@@ -228,7 +228,9 @@ describe('run store', () => {
       giftStatus: { 9431: 'failed' },
       startGifts: [],
     });
-    expect(sanitizeRun({ currentFloor: 20, stageFloor: 20, visits: {}, giftStatus: {} })).toMatchObject({ currentFloor: 16, stageFloor: 15 });
+    // The stage may stand on the done floor (16), never past it.
+    expect(sanitizeRun({ currentFloor: 20, stageFloor: 20, visits: {}, giftStatus: {} })).toMatchObject({ currentFloor: 16, stageFloor: 16 });
+    expect(sanitizeRun({ currentFloor: 16, stageFloor: 15, visits: {}, giftStatus: {} })).toMatchObject({ currentFloor: 16, stageFloor: 15 });
     // A record saved before the run-first shell, while no run was on: nothing to keep.
     expect(sanitizeRun({ active: false, visits: { 2: 1102 } })).toEqual(emptyRun());
     expect(sanitizeRun({ active: true, visits: { 2: 1102 }, currentFloor: 3 })).toMatchObject({ visits: { 2: 1102 }, currentFloor: 3, stageFloor: 3 });
@@ -263,6 +265,34 @@ describe('run store', () => {
     expect(useApp.getState().fusionGoal).toEqual({ 9249: 'resultOnly' });
     useApp.getState().toggleWanted(9249); // deselecting drops the goal setting
     expect(useApp.getState().fusionGoal).toEqual({});
+  });
+});
+
+describe('run store · statuses that outlive their goal', () => {
+  it('drops a miss when the gift stops being a goal, and keeps what the tracker marked', () => {
+    const app = useApp.getState();
+    app.toggleWanted(9267);
+    app.toggleWanted(9088);
+    useApp.setState({ run: { ...useApp.getState().run, giftStatus: { 9267: 'failed', 9088: 'got', 9400: 'got' } } });
+    // 9400 is nobody's goal but the tracker and the stage mark such gifts on purpose.
+    useApp.getState().removeWanted(9267);
+    expect(useApp.getState().run.giftStatus).toEqual({ 9088: 'got', 9400: 'got' });
+    // Clearing the selection takes every miss with it; collected marks still stand.
+    useApp.setState({ run: { ...useApp.getState().run, giftStatus: { 9088: 'failed', 9400: 'got' } } });
+    useApp.getState().clearWanted();
+    expect(useApp.getState().run.giftStatus).toEqual({ 9400: 'got' });
+  });
+
+  it('leaves a gift the run start put in hand alone when an entry is undone', () => {
+    const app = useApp.getState();
+    app.visitPack(1402, 1, { got: [9267, 9191] });
+    expect(useApp.getState().run).toMatchObject({ currentFloor: 2, startGifts: [9267, 9191] });
+    app.visitPack(1109, 2);
+    useApp.getState().setGiftStatus(9270, 'got');
+    // 9267 came from the run start, 9270 from this pack: only the second is the entry's to take.
+    useApp.getState().unvisitPack(1109, { reset: [9267, 9270] });
+    expect(useApp.getState().run.giftStatus).toMatchObject({ 9267: 'got', 9191: 'got' });
+    expect(useApp.getState().run.giftStatus[9270]).toBeUndefined();
   });
 });
 
@@ -1232,7 +1262,7 @@ describe('AppShell', () => {
     expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'undecided');
     expect(screen.getByTestId('stage-floor')).toHaveTextContent('1');
     // The same button starts over after a finished run, where the old 「새 런」 used to be.
-    act(() => useApp.setState({ run: { currentFloor: 16, stageFloor: 15, visits: { 4: 1402 }, giftStatus: { 9267: 'got' }, startGifts: [] } }));
+    act(() => useApp.setState({ run: { currentFloor: 16, stageFloor: 16, visits: { 4: 1402 }, giftStatus: { 9267: 'got' }, startGifts: [] } }));
     expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'done');
     await user.click(reset());
     expect(useApp.getState().run).toEqual(emptyRun());
@@ -1567,13 +1597,92 @@ describe('RunStage', () => {
     useApp.getState().toggleWanted(9267);
     renderStage();
     for (let i = 0; i < 15; i += 1) await skipFloor(user);
-    expect(useApp.getState().run).toMatchObject({ currentFloor: 16, stageFloor: 15 });
+    // The done card is its own floor past the end; floor 15 keeps reading as the skip it was.
+    expect(useApp.getState().run).toMatchObject({ currentFloor: 16, stageFloor: 16 });
+    expect(screen.getAllByTestId('floor-cell').filter((c) => c.getAttribute('data-state') === 'skipped')).toHaveLength(15);
     expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'done');
     // Nothing in the header moves the run any more: the cards and the pack area do.
     expect(within(header()).queryByRole('button', { name: /넘기기|다음 층|이전 층/ })).toBeNull();
     expect(screen.queryByTestId('other-entry-card')).toBeNull();
     expect(within(screen.getByTestId('stage-done')).queryByRole('button')).toBeNull();
     expect(screen.getByTestId('stage-done')).not.toHaveTextContent('새 런');
+  });
+
+  it('settles the floor it walks off, whether that is 「다음 층」 or a forward step on the strip', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267); // 화왕지절 (1402), Hard 4-5
+    renderStage();
+    for (let i = 0; i < 3; i += 1) await skipFloor(user);
+    await user.click(screen.getByRole('button', { name: '화왕지절 입장' }));
+    expect(useApp.getState().run).toMatchObject({ visits: { 4: 1402 }, currentFloor: 5, stageFloor: 4 });
+    // Leaving the floor by the strip instead of the handle used to skip the miss entirely, so a
+    // goal nobody marked stayed 「확보」 for the rest of the run.
+    await lookBack(user, 5);
+    expect(useApp.getState().run).toMatchObject({ stageFloor: 5 });
+    expect(useApp.getState().run.giftStatus[9267]).toBe('failed');
+    // Looking back the other way settles nothing and leaves the record alone.
+    useApp.getState().setGiftStatus(9267, null);
+    await lookBack(user, 4);
+    expect(useApp.getState().run.giftStatus[9267]).toBeUndefined();
+  });
+
+  it('still settles and closes the run when the last pack was entered on floor 15', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267);
+    renderStage();
+    for (let i = 0; i < 14; i += 1) await skipFloor(user);
+    expect(useApp.getState().run).toMatchObject({ currentFloor: 15, stageFloor: 15 });
+    const pack = Number(screen.getAllByTestId('other-pack')[0]!.getAttribute('data-pack'));
+    await user.click(within(screen.getByTestId('other-packs')).getAllByRole('button', { name: /입장$/ })[0]!);
+    expect(useApp.getState().run).toMatchObject({ visits: { 15: pack }, currentFloor: 16, stageFloor: 15 });
+    // The frontier is past the end, but floor 15 is still on stage with an entry left to settle:
+    // 「다음 층」 has to work, or the run can never reach its done card.
+    expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'entered');
+    await user.click(within(screen.getByTestId('entered-pack')).getByTestId('area-next'));
+    expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'done');
+  });
+
+  it('keeps the entry undone from a pack sheet in step with 「돌아가기」', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267);
+    renderStage(true);
+    for (let i = 0; i < 3; i += 1) await skipFloor(user);
+    await user.click(screen.getByRole('button', { name: '화왕지절 입장' }));
+    await user.click(within(screen.getByTestId('entered-pack')).getByTestId('area-next'));
+    expect(useApp.getState().run.giftStatus[9267]).toBe('failed');
+    // Undoing the entry from the sheet used to leave the miss behind, so the planner kept the gift
+    // in `unobtainableGifts` and re-routing the pack was pointless.
+    await user.click(within(screen.getByTestId('other-packs')).getByText('다른 팩'));
+    const row = screen.getAllByTestId('other-pack').find((r) => r.getAttribute('data-pack') === '1402')!;
+    // The row says where the pack was entered instead of offering a second entry on this floor.
+    expect(row).toHaveTextContent('방문 · 4층');
+    expect(within(row).queryByRole('button', { name: '화왕지절 입장' })).toBeNull();
+    await user.click(within(row).getByRole('button', { name: '화왕지절' }));
+    await user.click(await screen.findByRole('button', { name: /입장 취소/ }));
+    expect(useApp.getState().run.visits).toEqual({});
+    expect(useApp.getState().run.giftStatus[9267]).toBeUndefined();
+  });
+
+  it('offers no second entry from a pack sheet while the stage floor already holds one', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267);
+    renderStage(true);
+    for (let i = 0; i < 3; i += 1) await skipFloor(user);
+    // On the frontier the sheet offers the way in, as the cards do.
+    await user.click(within(screen.getByTestId('metro-rows')).getByRole('button', { name: '화왕지절' }));
+    expect(within(await screen.findByTestId('enter-actions')).getByRole('button', { name: '화왕지절 입장' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await user.click(within(screen.getByTestId('stage-pack')).getByRole('button', { name: '화왕지절 입장' }));
+    expect(useApp.getState().run.visits).toEqual({ 4: 1402 });
+    // With floor 4 taken, the sheet must not offer an entry that would replace the record.
+    await user.click(within(screen.getByTestId('metro-rows')).getByRole('button', { name: '화왕지절' }));
+    const actions = await screen.findByTestId('enter-actions');
+    expect(within(actions).queryByRole('button', { name: /입장$/ })).toBeNull();
+    expect(actions).toHaveTextContent('4층에 입장');
   });
 });
 

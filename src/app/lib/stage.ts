@@ -5,7 +5,7 @@
  */
 import type { Difficulty, GameData } from '../../core/schema.ts';
 import type { GameIndexes, RoutePlan } from '../../core/types.ts';
-import { APP_LAST_FLOOR, RUN_DONE_FLOOR } from '../store.ts';
+import { RUN_DONE_FLOOR } from '../store.ts';
 import type { GiftStatus, RunState } from './plan-input.ts';
 
 /** The app plays floors 1-5 on Hard, 6-10 in 평행중첩 and 11-15 on EXTREME. */
@@ -15,10 +15,17 @@ export function bandMode(floor: number): Extract<Difficulty, 'hard' | 'parallel'
 
 export type StageMode = 'entered' | 'undecided' | 'skipped' | 'done';
 
-/** Entered: a pack is recorded; undecided: the frontier; skipped: passed without a pack; done: the run is over. */
+/**
+ * Entered: a pack is recorded; undecided: the frontier; skipped: passed without a pack; done: the
+ * stage stands past the last floor.
+ *
+ * `done` is `RUN_DONE_FLOOR` itself, not floor 15. Reading it off floor 15 hid two things: a pack
+ * entered there could never be left (「다음 층」 had nothing to move, so the run could not close),
+ * and a floor 15 that was skipped like the rest was drawn as if it had never been played.
+ */
 export function stageModeFor(run: Pick<RunState, 'currentFloor' | 'visits'>, floor: number): StageMode {
+  if (floor >= RUN_DONE_FLOOR) return 'done';
   if (run.visits[floor] !== undefined) return 'entered';
-  if (run.currentFloor >= RUN_DONE_FLOOR && floor >= APP_LAST_FLOOR) return 'done';
   if (floor === run.currentFloor) return 'undecided';
   return floor < run.currentFloor ? 'skipped' : 'undecided';
 }

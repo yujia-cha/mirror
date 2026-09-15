@@ -19,7 +19,10 @@ export interface RunState {
    * or skipped. 1..16 (16 = the run is over). A floor below it with no visit was skipped.
    */
   currentFloor: number;
-  /** The floor shown on the stage, 1..min(currentFloor, 15): the player can look back at history. */
+  /**
+   * The floor shown on the stage, 1..currentFloor: the player can look back at history. It reaches
+   * `RUN_DONE_FLOOR` (16) once the run is over — that is the done card's own floor.
+   */
   stageFloor: number;
   /** floor -> pack entered there. */
   visits: Record<number, number>;

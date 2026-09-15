@@ -133,6 +133,7 @@ export function OtherPacks({
   onEnter: (packId: number) => void;
 }) {
   const { lang } = ctx;
+  const visitedAt = (packId: number): number | null => ctx.run?.visitedAt(packId) ?? null;
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<number | null>(null);
   const packs = useMemo(() => {
@@ -167,10 +168,16 @@ export function OtherPacks({
                     <span className="truncate text-sm">{name}</span>
                     <ExclusiveIcons packId={pack.id} ctx={ctx} exclusivesOf={exclusivesOf} justify="start" testId="other-pack-gifts" />
                   </div>
-                  <Button size="sm" variant="secondary" onClick={() => onEnter(pack.id)} ariaLabel={t('stageEnterPack', lang, { name })}>
-                    <LogIn size={12} aria-hidden />
-                    {t('stageEnter', lang)}
-                  </Button>
+                  {/* A pack is entered once a run. One already recorded says where, instead of
+                      offering a second entry that would quietly move it to this floor. */}
+                  {visitedAt(pack.id) !== null ? (
+                    <Badge tone="sure">{t('runVisitedShort', lang, { floor: visitedAt(pack.id)! })}</Badge>
+                  ) : (
+                    <Button size="sm" variant="secondary" onClick={() => onEnter(pack.id)} ariaLabel={t('stageEnterPack', lang, { name })}>
+                      <LogIn size={12} aria-hidden />
+                      {t('stageEnter', lang)}
+                    </Button>
+                  )}
                 </li>
               );
             })}

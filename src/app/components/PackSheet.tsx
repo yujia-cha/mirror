@@ -9,6 +9,7 @@ import type { GameIndexes } from '../../core/types.ts';
 import { pick, t, type Lang } from '../i18n.ts';
 import type { Judgement } from '../lib/judgement.ts';
 import type { GiftStatus } from '../lib/plan-input.ts';
+import { bandMode } from '../lib/stage.ts';
 import { GiftIcon } from './GiftIcon.tsx';
 import { GiftTile } from './GiftTile.tsx';
 import { PackCard } from './PackCard.tsx';
@@ -20,6 +21,8 @@ export interface RunContext {
   currentFloor: number;
   /** The floor on stage; a pack offered there can be entered from its sheet. */
   stageFloor: number;
+  /** The pack already recorded on the stage floor, if any: that floor takes no second entry. */
+  enteredHere: number | null;
   /** The floor the pack was entered on, or null. */
   visitedAt: (packId: number) => number | null;
   giftStatus: (giftId: number) => GiftStatus | null;
@@ -181,7 +184,10 @@ function EnterActions({ packId, ctx }: { packId: number; ctx: PackContext }) {
   if (!ctx.run) return null;
   const visited = ctx.run.visitedAt(packId);
   const name = ctx.packName(packId);
-  const offeredHere = (ctx.indexes.packsByFloor[ctx.run.stageFloor >= 11 ? 'extreme' : ctx.run.stageFloor >= 6 ? 'parallel' : 'hard'].get(ctx.run.stageFloor) ?? []).includes(packId);
+  // A floor holds one pack. The stage hides every way in once a floor is entered; the sheet used
+  // to keep offering one, and taking it silently replaced the record already there.
+  const offeredHere =
+    ctx.run.enteredHere === null && (ctx.indexes.packsByFloor[bandMode(ctx.run.stageFloor)].get(ctx.run.stageFloor) ?? []).includes(packId);
   return (
     <span className="flex flex-wrap items-center gap-1.5" data-testid="enter-actions">
       {visited !== null ? (

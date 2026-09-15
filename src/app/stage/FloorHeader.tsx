@@ -21,10 +21,14 @@ function modeBadge(mode: StageMode, lang: Lang) {
 }
 
 export function FloorHeader({ mode }: { mode: StageMode }) {
-  const { lang, shown, packName } = usePlan();
+  // `goTo` rather than the store action: walking forward on the strip has to settle the floors it
+  // leaves behind, exactly as 「다음 층」 does.
+  const { lang, shown, packName, goTo } = usePlan();
   const run = useApp((s) => s.run);
-  const setStageFloor = useApp((s) => s.setStageFloor);
   const floor = run.stageFloor;
+  // Past the end the stage stands on `RUN_DONE_FLOOR`; the number still reads 15, and no cell is
+  // current, which is the truth — every floor is behind.
+  const shownFloor = Math.min(floor, APP_LAST_FLOOR);
   const entered = run.visits[floor];
   const floors = Array.from({ length: APP_LAST_FLOOR }, (_, i) => i + 1);
 
@@ -33,7 +37,7 @@ export function FloorHeader({ mode }: { mode: StageMode }) {
       <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
         <div className="flex items-baseline gap-2">
           <span className="font-num text-4xl font-bold leading-none text-fg" data-testid="stage-floor">
-            {floor}
+            {shownFloor}
           </span>
           <span className="font-num text-sm text-fg-3">{t('stageOf', lang)}</span>
         </div>
@@ -49,7 +53,7 @@ export function FloorHeader({ mode }: { mode: StageMode }) {
             <li key={f} className="min-w-0 flex-1">
               <button
                 type="button"
-                onClick={() => setStageFloor(f)}
+                onClick={() => goTo(f)}
                 disabled={!reachable}
                 aria-current={f === floor ? 'step' : undefined}
                 aria-label={`${t('stageFloor', lang, { floor: f })}${shownPack !== null ? ` · ${packName(shownPack)}` : ''}`}
