@@ -186,7 +186,6 @@ export type UnresolvedReason =
   | 'hard-only'
   /** Only a random hidden-battle reward; no route can guarantee it. */
   | 'chance-only'
-  | 'observation-budget'
   /** Every pack that supplies it is one the user gave up. */
   | 'pack-banned'
   /** Two fusions eat the same ingredient and no second pack can hand over a second copy. */

@@ -3,6 +3,7 @@
  * can sit on, its place in the current plan, every exclusive gift it drops (plus wanted pool
  * gifts), and the pack-level choices — include it somewhere, or give it up.
  */
+import { useState } from 'react';
 import { Ban, Check, Eye, LogIn, Plus, RotateCcw, X } from 'lucide-react';
 import type { ThemePack } from '../../core/schema.ts';
 import type { GameIndexes } from '../../core/types.ts';
@@ -10,6 +11,7 @@ import { pick, t, type Lang } from '../i18n.ts';
 import type { Judgement } from '../lib/judgement.ts';
 import type { GiftStatus } from '../lib/plan-input.ts';
 import { bandMode } from '../lib/stage.ts';
+import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { GiftIcon } from './GiftIcon.tsx';
 import { GiftTile } from './GiftTile.tsx';
 import { PackCard } from './PackCard.tsx';
@@ -94,6 +96,7 @@ export function PackStateBadge({ packId, ctx }: { packId: number; ctx: PackConte
 
 /** Include / give up / restore for one pack. */
 export function PackActions({ packId, ctx, size = 'sm' }: { packId: number; ctx: PackContext; size?: 'sm' | 'md' }) {
+  const [confirming, setConfirming] = useState(false);
   const name = ctx.packName(packId);
   if (ctx.banned.has(packId)) {
     return ctx.onRestore ? (
@@ -104,10 +107,13 @@ export function PackActions({ packId, ctx, size = 'sm' }: { packId: number; ctx:
     ) : null;
   }
   const preferred = ctx.preferred.has(packId);
-  const exclusiveMust = ctx.indexes.packById.get(packId)?.exclusiveGifts.filter((id) => ctx.wanted.has(id) && ctx.isMust(id)) ?? [];
+  // Any wanted exclusive is lost with the pack, not only a 「반드시」 one: giving up the only source
+  // of an ordinary goal was silent before.
+  const exclusiveWanted = ctx.indexes.packById.get(packId)?.exclusiveGifts.filter((id) => ctx.wanted.has(id)) ?? [];
   const ban = (): void => {
-    if (exclusiveMust.length > 0 && typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      if (!window.confirm(t('packBanConfirm', ctx.lang, { gift: exclusiveMust.map(ctx.giftName).join(', ') }))) return;
+    if (exclusiveWanted.length > 0) {
+      setConfirming(true);
+      return;
     }
     ctx.onBan?.(packId);
   };
@@ -130,6 +136,19 @@ export function PackActions({ packId, ctx, size = 'sm' }: { packId: number; ctx:
           <Ban size={12} aria-hidden />
           {t('packBan', ctx.lang)}
         </Button>
+      ) : null}
+      {confirming ? (
+        <ConfirmDialog
+          title={t('packBan', ctx.lang)}
+          message={t('packBanConfirm', ctx.lang, { gift: exclusiveWanted.map(ctx.giftName).join(', ') })}
+          confirmLabel={t('packBan', ctx.lang)}
+          onConfirm={() => {
+            setConfirming(false);
+            ctx.onBan?.(packId);
+          }}
+          onCancel={() => setConfirming(false)}
+          lang={ctx.lang}
+        />
       ) : null}
     </span>
   );

@@ -141,7 +141,15 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
     if (observedGifts.includes(id)) toggleObserved(id, { max: observeMax, observable: canObserve });
   };
   const drag = useChipDrag((giftId, slot) => {
-    if (slot === null || !canObserve(giftId) || observedGifts.includes(giftId)) return;
+    if (slot === null || !canObserve(giftId)) return;
+    // The slot order is what the run pays (`costTable`), so moving a pin between cells is a real
+    // choice — dropping an already-pinned chip used to light the target up and then do nothing.
+    if (observedGifts.includes(giftId)) {
+      const rest = observedGifts.filter((id) => id !== giftId);
+      const at = Math.min(slot, rest.length);
+      setOptions({ observedGifts: [...rest.slice(0, at), giftId, ...rest.slice(at)] });
+      return;
+    }
     const occupant = observedGifts[slot];
     if (occupant !== undefined) setOptions({ observedGifts: observedGifts.map((id) => (id === occupant ? giftId : id)) });
     else pin(giftId);
@@ -305,7 +313,9 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
                 data-pinned={pinned || undefined}
                 data-entangled={entangledIds.has(id) || undefined}
                 {...drag.handleFor(id)}
-                style={{ touchAction: 'none' }}
+                // `none` made every chip a dead zone: with a dozen goals the panel could not be
+                // scrolled by touching one. `pan-y` still leaves the horizontal drag to the hook.
+                style={{ touchAction: 'pan-y' }}
                 className={`inline-flex h-7 select-none items-center gap-1 rounded-full border bg-surface pl-1 pr-1 text-xs text-fg ${pinned ? 'border-ink' : 'border-line-strong'} ${
                   drag.state.dragging === id ? 'opacity-40' : ''
                 }`}

@@ -3,10 +3,11 @@
  * phone. Both carry a tab bar at the top; the drawer also closes on Escape, on the backdrop and
  * from its own close button.
  */
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { t, type Lang } from '../i18n.ts';
 import { useDismiss } from '../lib/useDismiss.ts';
+import { useOverlayChrome } from '../lib/useOverlayChrome.ts';
 
 export interface PanelTab<Id extends string> {
   id: Id;
@@ -65,10 +66,10 @@ export function SidePanel<Id extends string>({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  useDismiss(ref, onClose, open && !desktop);
-  useEffect(() => {
-    if (open && !desktop) ref.current?.querySelector<HTMLButtonElement>('button')?.focus();
-  }, [open, desktop]);
+  // `id` is what the header's toggle points at with `aria-controls`, so its press closes the
+  // drawer once instead of closing and re-opening it.
+  useDismiss(ref, onClose, open && !desktop, { id });
+  useOverlayChrome(ref, open && !desktop);
   if (!open) return null;
   const bar = <TabBar tabs={tabs} tab={tab} onTab={onTab} label={label} />;
   if (desktop) {

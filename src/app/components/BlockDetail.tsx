@@ -3,12 +3,13 @@
  * phone. Escape and a press outside close it. Also the body for an observed gift from the start
  * row, which lets it be pinned or released.
  */
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Eye, X } from 'lucide-react';
 import type { ObservedGift } from '../../core/types.ts';
 import { pick, t } from '../i18n.ts';
 import { useDismiss } from '../lib/useDismiss.ts';
+import { useOverlayChrome } from '../lib/useOverlayChrome.ts';
 import { GiftIcon } from './GiftIcon.tsx';
 import type { PackContext } from './PackSheet.tsx';
 import { Button } from './ui.tsx';
@@ -18,6 +19,7 @@ export type DetailMode = 'popover' | 'sheet';
 export type Placement = { vertical: 'below' | 'above'; horizontal: 'start' | 'end' };
 
 export function DetailSurface({
+  id,
   mode,
   label,
   closeLabel,
@@ -25,6 +27,8 @@ export function DetailSurface({
   placement,
   children,
 }: {
+  /** The surface's DOM id, so a control with `aria-controls` can close what it opened. */
+  id?: string;
   mode: DetailMode;
   label: string;
   closeLabel: string;
@@ -34,12 +38,13 @@ export function DetailSurface({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  useDismiss(ref, onClose, true);
-  // The surface renders inside whatever opened it, so its own presses must not reopen it.
-  const stop = { onClick: (e: React.SyntheticEvent) => e.stopPropagation(), onKeyDown: (e: React.SyntheticEvent) => e.stopPropagation() };
-  useEffect(() => {
-    if (mode === 'sheet') ref.current?.querySelector<HTMLButtonElement>('button')?.focus();
-  }, [mode]);
+  useDismiss(ref, onClose, true, { id });
+  // A sheet is modal: it holds the background still and hands focus back when it goes.
+  useOverlayChrome(ref, mode === 'sheet');
+  // The surface renders inside whatever opened it, so its own presses must not reach that tree.
+  // Only clicks: stopping keydown as well kept Escape from ever reaching the document listener
+  // that closes the surface, so the key did nothing inside a sheet.
+  const stop = { onClick: (e: React.SyntheticEvent) => e.stopPropagation() };
   if (mode === 'sheet') {
     // Rendered into the body: a side panel is a `@container`, which makes it the containing block
     // for `position: fixed`, so a sheet opened inside one would be pinned to the panel instead of
@@ -49,6 +54,7 @@ export function DetailSurface({
         <div className="fixed inset-0 z-40 bg-black/40" aria-hidden />
         <div
           ref={ref}
+          id={id}
           role="dialog"
           aria-modal="true"
           aria-label={label}
@@ -78,6 +84,7 @@ export function DetailSurface({
   return (
     <div
       ref={ref}
+      id={id}
       role="dialog"
       aria-label={label}
       data-testid="block-popover"

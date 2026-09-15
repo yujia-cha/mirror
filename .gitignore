@@ -7,3 +7,6 @@ coverage
 .vite
 .eslintcache
 tsconfig.tsbuildinfo
+
+# dev-server logs
+*.log

@@ -805,7 +805,8 @@ describe('GiftsStep', () => {
     const { deck, deployed } = useApp.getState();
     render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
     const slots = () => within(screen.getByTestId('observe-slots')).getAllByTestId('observe-slot');
-    const plus = () => screen.queryAllByRole('button', { name: /^관측 \d번 칸/ });
+    // Pins fill from the cheapest cell outward, so the 「+」 no longer claims a numbered slot.
+    const plus = () => screen.queryAllByRole('button', { name: '관측 지정 추가' });
     expect(slots()).toHaveLength(3);
     expect(plus()).toHaveLength(3);
     // The chips carry no star or eye buttons any more.
@@ -1041,6 +1042,11 @@ describe('RoutePlanPanel', () => {
     expect(within(wantedRow).getByTestId('gift-tile')).toHaveAttribute('aria-pressed', 'false');
     expect(within(sheet).queryByRole('button', { name: '화왕지절 입장' })).toBeNull();
     await user.click(within(sheet).getByRole('button', { name: '화왕지절 이 팩 포기' }));
+    // Giving up the only source of a wanted gift asks first — in the app's own dialog, not the
+    // browser's, which failed open where `window.confirm` is withheld.
+    const ask = screen.getByTestId('confirm-dialog');
+    expect(ask).toHaveTextContent('달궈진 놋쇠');
+    await user.click(within(ask).getByRole('button', { name: '이 팩 포기' }));
     expect(useApp.getState().options.bannedPacks).toEqual([1402]);
     // The gift now comes from the other pack, and the given-up pack can be restored.
     expect(within(rows()).getByRole('button', { name: '해방된 분노' })).toBeInTheDocument();
@@ -1326,11 +1332,12 @@ describe('AppShell', () => {
     // The reset sits right before the share button; declining the confirmation changes nothing.
     const labels = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'));
     expect(labels.indexOf('초기화')).toBe(labels.indexOf('링크 복사') - 1);
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     await user.click(reset());
+    await user.click(within(screen.getByTestId('confirm-dialog')).getByRole('button', { name: '취소' }));
     expect(useApp.getState().wanted).toEqual([9249, 9267, 9423]);
-    confirm.mockReturnValue(true);
+    expect(screen.queryByTestId('confirm-dialog')).toBeNull();
     await user.click(reset());
+    await user.click(within(screen.getByTestId('confirm-dialog')).getAllByRole('button', { name: '초기화' })[0]!);
     const state = useApp.getState();
     expect(state.deck).toEqual(defaultDeck(data));
     expect(state.deployed).toEqual(defaultDeck(data).slice(0, data.rules.deployment.default));
@@ -1346,6 +1353,7 @@ describe('AppShell', () => {
     act(() => useApp.setState({ run: { currentFloor: 16, stageFloor: 16, visits: { 4: 1402 }, giftStatus: { 9267: 'got' }, startGifts: [] } }));
     expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'done');
     await user.click(reset());
+    await user.click(within(screen.getByTestId('confirm-dialog')).getAllByRole('button', { name: '초기화' })[0]!);
     expect(useApp.getState().run).toEqual(emptyRun());
     expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'undecided');
   });
@@ -1398,6 +1406,102 @@ describe('AppShell', () => {
     fireEvent.pointerMove(window, { pointerId: 2, clientX: 850 });
     expect(useApp.getState().ui.rightWidth).toBe(386);
     fireEvent.pointerUp(window, { pointerId: 2, clientX: 850 });
+  });
+});
+
+describe('gestures that used to run into each other', () => {
+  const pointer = { pointerId: 1, button: 0, clientX: 60, clientY: 200 };
+
+  it('abandons a hold once the pointer moves, so a drag cannot also open the details', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderPlanned(<GoalsPanel />);
+      const tile = within(screen.getByTestId('route-goal')).getByTestId('gift-tile');
+      // A tile inside a pack area follows the finger one-to-one, so `pointerleave` never comes; a
+      // slow drag used to open the sheet at one second and commit the pull on release.
+      fireEvent.pointerDown(tile, pointer);
+      fireEvent.pointerMove(window, { ...pointer, clientY: pointer.clientY + 40 });
+      await act(async () => {
+        vi.advanceTimersByTime(1200);
+      });
+      expect(screen.queryByTestId('gift-detail')).toBeNull();
+      fireEvent.pointerUp(window, { ...pointer, clientY: pointer.clientY + 40 });
+    } finally {
+      vi.useRealTimers();
+    }
+    // A hold that stays put still opens it.
+    await user.pointer({ keys: '[MouseLeft>]', target: within(screen.getByTestId('route-goal')).getByTestId('gift-tile') });
+    await waitFor(() => expect(screen.getByTestId('gift-detail')).toBeInTheDocument(), { timeout: 2000 });
+  });
+
+  it('takes a fresh press on a card even after a release the window never saw', () => {
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267);
+    useApp.setState({ run: { ...emptyRun(), currentFloor: 4, stageFloor: 4 } });
+    renderPlanned(<RunStage onOpenGifts={() => undefined} />);
+    const card = screen.getByTestId('stage-pack');
+    // Releasing over another monitor never reaches the window listeners; the leftover candidate
+    // used to refuse every later press for the component's lifetime.
+    fireEvent.pointerDown(card, pointer);
+    fireEvent.pointerDown(card, pointer);
+    fireEvent.pointerMove(window, { ...pointer, clientY: pointer.clientY + 90 });
+    fireEvent.pointerUp(window, { ...pointer, clientY: pointer.clientY + 90 });
+    expect(useApp.getState().run.visits).toEqual({ 4: 1402 });
+  });
+});
+
+describe('overlays that used to fight each other', () => {
+  const renderShell = () =>
+    render(<AppShell data={data} indexes={indexes} stats={statsFor(useApp.getState().deck, useApp.getState().deployed)} lang="ko" dark onShare={() => undefined} onToggleLang={() => undefined} onToggleDark={() => undefined} />);
+
+  it('closes a drawer with the same header button that opened it', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(LCB_DECK, 6);
+    renderShell();
+    const toggle = screen.getByRole('button', { name: '설정 패널' });
+    await user.click(toggle);
+    expect(screen.getByTestId('drawer-left')).toBeInTheDocument();
+    // The button's `pointerdown` used to dismiss the drawer and its `click` to re-open it, so the
+    // drawer only ever flickered. `aria-controls` tells the dismiss which press is its own opener.
+    await user.click(toggle);
+    expect(screen.queryByTestId('drawer-left')).toBeNull();
+  });
+
+  it('keeps the drawer standing while a sheet over it is used, and gives Escape to the sheet alone', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9283);
+    renderShell();
+    await user.click(screen.getByRole('button', { name: '설정 패널' }));
+    await user.click(within(screen.getByTestId('gift-chip')).getByRole('button', { name: '상납된 시가 자세히' }));
+    const sheet = screen.getByRole('dialog', { name: '상납된 시가' });
+    // The sheet is portaled to the body, so containment alone called every press inside it
+    // "outside the drawer" — and the drawer took `GiftsStep`, and the sheet with it, down.
+    await user.click(within(sheet).getByRole('button', { name: '상납된 시가 우선순위: 보통' }));
+    expect(useApp.getState().priority).toEqual({ 9283: 'must' });
+    expect(screen.getByTestId('drawer-left')).toBeInTheDocument();
+    // Escape belongs to the topmost overlay only.
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: '상납된 시가' })).toBeNull();
+    expect(screen.getByTestId('drawer-left')).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByTestId('drawer-left')).toBeNull();
+  });
+
+  it('holds the background still while a drawer is open and hands focus back when it closes', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(LCB_DECK, 6);
+    renderShell();
+    const toggle = screen.getByRole('button', { name: '설정 패널' });
+    toggle.focus();
+    await user.click(toggle);
+    expect(document.body.style.overflow).toBe('hidden');
+    await user.click(toggle);
+    expect(document.body.style.overflow).toBe('');
+    expect(document.activeElement).toBe(toggle);
   });
 });
 

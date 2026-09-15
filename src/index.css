@@ -127,6 +127,23 @@ body {
   outline-offset: 2px;
 }
 
+/*
+ * Reduced motion, said once. Tailwind's `motion-reduce:` variant is a class, so it loses to the
+ * inline `transition` a pulled card carries; this rule wins over both. (The pull hook reads the
+ * same media query for its own spring-back, since an inline style cannot be overridden from here
+ * without `!important` on every property.)
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Filter rows may scroll sideways; the page itself never does. */
 .scroll-x {
   overflow-x: auto;

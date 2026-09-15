@@ -68,8 +68,10 @@ export function GiftIcon({
   status?: 'got' | 'failed' | null;
   lang: Lang;
 }) {
-  const [failed, setFailed] = useState(false);
   const url = giftIconUrl(gift.icon);
+  // Keyed by the url: a 404 must not follow the component to the next gift it is asked to draw.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const failed = failedUrl !== null && failedUrl === url;
   const label = pick(gift.name, lang);
   const judged = judgement ? t(JUDGEMENT_KEY[judgement], lang) : null;
   const statusText = status === 'got' ? t('giftStatusGot', lang) : status === 'failed' ? t('giftStatusFailed', lang) : null;
@@ -92,7 +94,7 @@ export function GiftIcon({
       style={{ width: size, height: size }}
     >
       {url && !failed ? (
-        <img src={url} alt="" loading="lazy" onError={() => setFailed(true)} className="h-full w-full object-cover" />
+        <img src={url} alt="" loading="lazy" onError={() => setFailedUrl(url)} className="h-full w-full object-cover" />
       ) : (
         <Gem size={Math.round(size * 0.45)} aria-hidden className="opacity-40" />
       )}
