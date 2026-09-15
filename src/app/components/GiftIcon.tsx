@@ -14,6 +14,7 @@ import { Check, Gem, Star, X } from 'lucide-react';
 import type { Gift, Keyword } from '../../core/schema.ts';
 import { pick, t, type Lang } from '../i18n.ts';
 import { giftIconUrl } from '../lib/assets.ts';
+import { tierLabel } from '../lib/labels.ts';
 import type { Judgement } from '../lib/judgement.ts';
 
 export type GiftIconSize = 20 | 32 | 44;
@@ -67,8 +68,10 @@ export function GiftIcon({
   status?: 'got' | 'failed' | null;
   lang: Lang;
 }) {
-  const [failed, setFailed] = useState(false);
   const url = giftIconUrl(gift.icon);
+  // Keyed by the url: a 404 must not follow the component to the next gift it is asked to draw.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const failed = failedUrl !== null && failedUrl === url;
   const label = pick(gift.name, lang);
   const judged = judgement ? t(JUDGEMENT_KEY[judgement], lang) : null;
   const statusText = status === 'got' ? t('giftStatusGot', lang) : status === 'failed' ? t('giftStatusFailed', lang) : null;
@@ -91,7 +94,7 @@ export function GiftIcon({
       style={{ width: size, height: size }}
     >
       {url && !failed ? (
-        <img src={url} alt="" loading="lazy" onError={() => setFailed(true)} className="h-full w-full object-cover" />
+        <img src={url} alt="" loading="lazy" onError={() => setFailedUrl(url)} className="h-full w-full object-cover" />
       ) : (
         <Gem size={Math.round(size * 0.45)} aria-hidden className="opacity-40" />
       )}
@@ -106,7 +109,8 @@ export function GiftIcon({
         </span>
       ) : null}
       {size >= 32 && gift.tier !== null ? (
-        <span className="absolute left-0 top-0 rounded-br-sm bg-surface px-0.5 font-num text-[9px] leading-[11px] text-fg-2">T{gift.tier}</span>
+        // 'EX' is a tier of its own; 'TEX' was a number template applied to a word.
+        <span className="absolute left-0 top-0 rounded-br-sm bg-surface px-0.5 font-num text-[9px] leading-[11px] text-fg-2">{tierLabel(gift.tier)}</span>
       ) : null}
       {badge ? (
         <span

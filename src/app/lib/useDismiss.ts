@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 
 /**
  * Layers that currently listen for a dismissing press or Escape, oldest first.
@@ -8,32 +8,57 @@ import { useEffect, type RefObject } from 'react';
  * the whole pile (the phone bug where closing a gift sheet also closed the panel). Only the top
  * layer reacts; the ones below it wait their turn.
  */
-const layers: symbol[] = [];
+const layers: object[] = [];
+
+export interface DismissOptions {
+  /**
+   * The layer's DOM id, when it has one. A control that carries `aria-controls={id}` already opens
+   * and closes this layer by itself; without this, its `pointerdown` dismissed the layer and the
+   * `click` right after re-opened it, so the button could never close what it had opened.
+   */
+  id?: string;
+}
 
 /** Close a popover on Escape or on a pointer press outside `ref`, while `active` and topmost. */
-export function useDismiss(ref: RefObject<HTMLElement | null>, onDismiss: () => void, active: boolean): void {
+export function useDismiss(ref: RefObject<HTMLElement | null>, onDismiss: () => void, active: boolean, options: DismissOptions = {}): void {
+  // `onDismiss` is read through a ref rather than depended on: every caller passes an inline
+  // closure, so a dependency on it would re-run the effect on each render of the owning tree and
+  // push this layer back on top of a sheet that opened above it — the very pile-up the stack is
+  // here to prevent.
+  const latest = useRef(onDismiss);
+  latest.current = onDismiss;
+  const token = useRef({});
+  const { id } = options;
+
   useEffect(() => {
     if (!active) return;
-    const token = Symbol('dismiss-layer');
-    layers.push(token);
-    const topmost = (): boolean => layers[layers.length - 1] === token;
+    const self = token.current;
+    layers.push(self);
+    const topmost = (): boolean => layers[layers.length - 1] === self;
+    const opener = (target: Element): boolean => {
+      if (!id) return false;
+      const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(id) : id;
+      return target.closest(`[aria-controls="${escaped}"]`) !== null;
+    };
     const onPointer = (event: PointerEvent): void => {
       if (!topmost()) return;
-      if (ref.current && !ref.current.contains(event.target as Node)) onDismiss();
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target) return;
+      if (ref.current?.contains(target) || opener(target)) return;
+      latest.current();
     };
     const onKey = (event: KeyboardEvent): void => {
-      if (!topmost()) return;
-      if (event.key === 'Escape') onDismiss();
+      if (event.key === 'Escape' && topmost()) latest.current();
     };
     document.addEventListener('pointerdown', onPointer);
     document.addEventListener('keydown', onKey);
     return () => {
-      const at = layers.lastIndexOf(token);
+      const at = layers.lastIndexOf(self);
       if (at !== -1) layers.splice(at, 1);
       document.removeEventListener('pointerdown', onPointer);
       document.removeEventListener('keydown', onKey);
     };
-  }, [ref, onDismiss, active]);
+  }, [ref, active, id]);
 }
 
 /** Arrow-key stepping over a list of `count` items; returns the next active index or null to keep. */

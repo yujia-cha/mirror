@@ -4,7 +4,7 @@
  * right. On a desktop the panels sit beside the stage; on a phone they are drawers. The header's
  * reset puts the deck, the items, the route options and the run back to their first state.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Globe, Moon, PanelLeft, PanelRight, RotateCcw, Share2, Sun } from 'lucide-react';
 import type { GameData, SeasonEntry } from '../../core/schema.ts';
 import type { DeckStats, GameIndexes } from '../../core/types.ts';
@@ -12,6 +12,7 @@ import { pick, t, type Lang } from '../i18n.ts';
 import { useApp, type LeftTab, type RightTab } from '../store.ts';
 import { defaultDeck } from '../lib/default-deck.ts';
 import { useDesktop } from '../lib/useMediaQuery.ts';
+import { ConfirmDialog } from '../components/ConfirmDialog.tsx';
 import { IconButton } from '../components/ui.tsx';
 import { DeckStep } from '../steps/DeckStep.tsx';
 import { GiftsStep } from '../steps/GiftsStep.tsx';
@@ -54,6 +55,12 @@ export function AppShell({
   const desktop = useDesktop();
   // Phones keep their own drawer state: only one drawer at a time, closed on every load.
   const [drawer, setDrawer] = useState<'left' | 'right' | null>(null);
+  // Crossing the breakpoint leaves the two states disagreeing — a drawer opened on a phone would
+  // spring back open, backdrop and all, after the same panel had been closed on a desktop. The
+  // desktop layout is the one with a persistent record, so the drawer starts closed each time.
+  useEffect(() => {
+    if (desktop) setDrawer(null);
+  }, [desktop]);
   const leftOpen = desktop ? ui.leftOpen : drawer === 'left';
   const rightOpen = desktop ? ui.rightOpen : drawer === 'right';
   // On a phone a panel is a full-screen page portalled to the body, so the shell behind it is
@@ -71,8 +78,9 @@ export function AppShell({
     setUi({ leftTab: 'gifts', ...(desktop ? { leftOpen: true } : {}) });
     if (!desktop) setDrawer('left');
   };
+  const [confirmReset, setConfirmReset] = useState(false);
   const reset = (): void => {
-    if (typeof window.confirm === 'function' && !window.confirm(t('resetAllConfirm', lang))) return;
+    setConfirmReset(false);
     resetAll(defaultDeck(data), data.rules.deployment.default);
   };
   const leftTabs: { id: LeftTab; label: string }[] = [
@@ -96,7 +104,7 @@ export function AppShell({
             <h1 className="text-base font-bold text-fg">{t('appTitle', lang)}</h1>
           </div>
           <div className="flex gap-1.5">
-            <IconButton onClick={reset} label={t('resetAll', lang)}>
+            <IconButton onClick={() => setConfirmReset(true)} label={t('resetAll', lang)}>
               <RotateCcw size={15} />
             </IconButton>
             <IconButton onClick={onShare} label={t('share', lang)}>
@@ -201,6 +209,9 @@ export function AppShell({
             {ui.rightTab === 'plan' ? <RoutePlanPanel onOpenGifts={openGifts} /> : ui.rightTab === 'goals' ? <GoalsPanel onOpenGifts={openGifts} /> : <Tracker />}
           </SidePanel>
         </div>
+        {confirmReset ? (
+          <ConfirmDialog title={t('resetAll', lang)} message={t('resetAllConfirm', lang)} confirmLabel={t('resetAll', lang)} onConfirm={reset} onCancel={() => setConfirmReset(false)} lang={lang} />
+        ) : null}
       </div>
     </PlanProvider>
   );

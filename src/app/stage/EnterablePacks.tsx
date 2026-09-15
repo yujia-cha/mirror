@@ -1,14 +1,17 @@
 /**
- * The packs the player can enter on the stage floor. A card shows the pack's portrait, its name
- * and the gifts only it drops; pulling the card down (or pressing 「입장」 at its foot) enters
- * it. The dashed card at the end stands for a pack off the route: pulling it moves on without a
- * record. A search over every pack the game can offer on this floor sits below, each row with
- * the pack's exclusive gifts beside its name.
+ * The packs the player can enter on the stage floor.
+ *
+ * Only the suggested pack is a card — larger, ringed in accent, its foot filled. Every other way
+ * off this floor (another route pack, or passing it by) is a row underneath. The difference used
+ * to be one border's colour between cards of equal size, which said nothing across a room; size
+ * and order say it now. The pull gesture is unchanged and rides rows as it rides cards, so
+ * nothing new has to be learned.
  */
 import { useMemo, useState } from 'react';
-import { ChevronsDown, DoorOpen, LogIn, Search } from 'lucide-react';
+import { ChevronsDown, DoorOpen, LogIn, Search, Star } from 'lucide-react';
 import type { ThemePack } from '../../core/schema.ts';
 import { pick, t, type Lang } from '../i18n.ts';
+import { matchesQuery } from '../lib/hangul.ts';
 import type { EnterablePack } from '../lib/stage.ts';
 import { pullStyle, usePullGesture } from '../lib/usePullGesture.ts';
 import { DetailSurface } from '../components/BlockDetail.tsx';
@@ -17,7 +20,7 @@ import { PackCard } from '../components/PackCard.tsx';
 import { PackSheetBody, PackStateBadge, type PackContext } from '../components/PackSheet.tsx';
 import { Badge, Button } from '../components/ui.tsx';
 
-const CARD_CLASS = 'relative flex w-[128px] flex-none flex-col items-center gap-2 rounded-md border bg-surface px-2.5 pt-2.5 select-none';
+const CARD_CLASS = 'relative flex w-[150px] flex-none flex-col items-center gap-2 rounded-md border-[1.5px] bg-surface px-2.5 pt-2.5 select-none';
 const FOOT_CLASS = '-mx-2.5 mt-0.5 flex h-[34px] w-[calc(100%+20px)] items-center justify-center gap-1 rounded-b-md border-t text-sm font-medium transition-colors';
 const MAX_ICONS = 5;
 
@@ -39,6 +42,74 @@ function ExclusiveIcons({ packId, ctx, exclusivesOf, justify, testId }: { packId
         );
       })}
       {more > 0 ? <span className="inline-flex h-5 items-center px-1 font-num text-[10px] text-fg-3">{t('stageExclusiveMore', ctx.lang, { n: more })}</span> : null}
+    </div>
+  );
+}
+
+/** A way off this floor that is not the suggestion: the pack's portrait, name and drops in a row. */
+export function StagePackRow({
+  pack,
+  ctx,
+  exclusivesOf,
+  onEnter,
+  onOpen,
+}: {
+  pack: ThemePack;
+  ctx: PackContext;
+  exclusivesOf: (packId: number) => number[];
+  onEnter: (packId: number) => void;
+  onOpen: (packId: number) => void;
+}) {
+  const { lang } = ctx;
+  const name = pick(pack.name, lang);
+  const pull = usePullGesture({ directions: ['down'], onCommit: () => onEnter(pack.id) });
+  return (
+    <div
+      {...pull.handlers}
+      className={`flex items-center gap-2.5 rounded-md border border-line bg-surface px-2.5 py-2 select-none ${pull.pulling ? 'z-10 shadow-pop' : ''} motion-reduce:transition-none`}
+      style={pullStyle(pull)}
+      data-testid="stage-pack"
+      data-pack={pack.id}
+      data-row
+      data-pulling={pull.pulling || undefined}
+      data-past={pull.past ?? undefined}
+    >
+      <PackCard pack={pack} size={28} lang={lang} />
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <button type="button" onClick={() => onOpen(pack.id)} aria-haspopup="dialog" aria-label={t('stagePackDetail', lang, { name })} className="truncate text-left text-sm text-fg underline-offset-2 hover:underline">
+          {name}
+        </button>
+        <ExclusiveIcons packId={pack.id} ctx={ctx} exclusivesOf={exclusivesOf} justify="start" testId="stage-pack-gifts" />
+      </div>
+      <PackStateBadge packId={pack.id} ctx={ctx} />
+      <Button size="sm" variant="secondary" onClick={() => onEnter(pack.id)} ariaLabel={t('stageEnterPack', lang, { name })}>
+        <LogIn size={12} aria-hidden />
+        {pull.past ? t('stageReleaseEnter', lang) : t('stageEnter', lang)}
+      </Button>
+    </div>
+  );
+}
+
+/** Passing the floor by, as a row beside the other ways off it. */
+export function SkipRow({ onSkip, lang }: { onSkip: () => void; lang: Lang }) {
+  const pull = usePullGesture({ directions: ['down'], onCommit: onSkip });
+  return (
+    <div
+      {...pull.handlers}
+      className={`flex items-center gap-2.5 rounded-md border border-dashed border-line-strong px-2.5 py-2 select-none ${pull.pulling ? 'z-10 shadow-pop' : ''} motion-reduce:transition-none`}
+      style={pullStyle(pull)}
+      data-testid="other-entry-card"
+      data-pulling={pull.pulling || undefined}
+      data-past={pull.past ?? undefined}
+    >
+      <span className="inline-flex h-11 w-6 flex-none items-center justify-center rounded-sm border border-dashed border-line-strong bg-surface-3 text-fg-3" aria-hidden>
+        <DoorOpen size={16} strokeWidth={1.5} />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-sm text-fg-2">{t('stageOtherEntry', lang)}</span>
+      <Button size="sm" variant="secondary" onClick={onSkip} ariaLabel={t('stageOtherEntry', lang)}>
+        {pull.past ? t('stageReleaseNext', lang) : t('stageNext', lang)}
+        <ChevronsDown size={12} aria-hidden />
+      </Button>
     </div>
   );
 }
@@ -65,7 +136,7 @@ export function StagePackCard({
   return (
     <div
       {...pull.handlers}
-      className={`${CARD_CLASS} ${recommended ? 'border-ink' : 'border-line'} ${pull.pulling ? 'z-10 shadow-pop' : 'shadow-card'} motion-reduce:transition-none`}
+      className={`${CARD_CLASS} ${recommended ? 'border-accent' : 'border-line-strong'} ${pull.pulling ? 'z-10 shadow-pop' : 'shadow-card'} motion-reduce:transition-none`}
       style={pullStyle(pull)}
       data-testid="stage-pack"
       data-pack={pack.id}
@@ -73,7 +144,16 @@ export function StagePackCard({
       data-pulling={pull.pulling || undefined}
       data-past={pull.past ?? undefined}
     >
-      <div className="flex h-5 items-center">{recommended ? <Badge tone="sure">{t('stageRecommended', lang)}</Badge> : <PackStateBadge packId={pack.id} ctx={ctx} />}</div>
+      <div className="flex h-5 items-center">
+        {recommended ? (
+          <span className="inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-full border border-accent bg-accent px-2 text-xs font-medium text-accent-fg" data-testid="stage-recommended">
+            <Star size={11} fill="currentColor" aria-hidden />
+            {t('stageRecommended', lang)}
+          </span>
+        ) : (
+          <PackStateBadge packId={pack.id} ctx={ctx} />
+        )}
+      </div>
       <PackCard pack={pack} size={96} lang={lang} />
       <button type="button" onClick={() => onOpen(pack.id)} aria-haspopup="dialog" aria-label={t('stagePackDetail', lang, { name })} className="line-clamp-2 w-full break-keep text-center text-xs font-medium leading-tight text-fg underline-offset-2 hover:underline">
         {name}
@@ -83,35 +163,15 @@ export function StagePackCard({
         type="button"
         onClick={() => onEnter(pack.id)}
         aria-label={t('stageEnterPack', lang, { name })}
-        className={`${FOOT_CLASS} ${pull.past ? 'border-ink bg-ink text-ink-fg' : 'border-line text-fg-2 hover:bg-surface-2'}`}
+        className={`${FOOT_CLASS} ${
+          pull.past
+            ? 'border-accent bg-accent text-accent-fg'
+            : recommended
+              ? 'border-accent bg-accent text-accent-fg hover:opacity-90'
+              : 'border-line text-fg-2 hover:bg-surface-2'
+        }`}
       >
         {pull.past ? t('stageReleaseEnter', lang) : t('stageEnter', lang)}
-        <ChevronsDown size={14} aria-hidden />
-      </button>
-    </div>
-  );
-}
-
-/** The dashed card for a pack off the route: pulling it down passes the floor without a record. */
-export function OtherEntryCard({ onSkip, lang }: { onSkip: () => void; lang: Lang }) {
-  const pull = usePullGesture({ directions: ['down'], onCommit: onSkip });
-  return (
-    <div
-      {...pull.handlers}
-      className={`${CARD_CLASS} border-dashed border-line-strong ${pull.pulling ? 'z-10 shadow-pop' : ''} motion-reduce:transition-none`}
-      style={pullStyle(pull)}
-      data-testid="other-entry-card"
-      data-pulling={pull.pulling || undefined}
-      data-past={pull.past ?? undefined}
-    >
-      <div className="h-5" />
-      <span className="inline-flex h-[180px] w-24 flex-none items-center justify-center rounded-sm border border-dashed border-line-strong bg-surface-3 text-fg-3" aria-hidden>
-        <DoorOpen size={40} strokeWidth={1.5} className="opacity-40" />
-      </span>
-      <span className="text-center text-xs font-medium leading-tight text-fg">{t('stageOtherEntry', lang)}</span>
-      <div className="min-h-5" />
-      <button type="button" onClick={onSkip} aria-label={t('stageOtherEntry', lang)} className={`${FOOT_CLASS} border-dashed ${pull.past ? 'border-ink bg-ink text-ink-fg' : 'border-line-strong text-fg-2 hover:bg-surface-2'}`}>
-        {pull.past ? t('stageReleaseNext', lang) : t('stageNext', lang)}
         <ChevronsDown size={14} aria-hidden />
       </button>
     </div>
@@ -133,6 +193,7 @@ export function OtherPacks({
   onEnter: (packId: number) => void;
 }) {
   const { lang } = ctx;
+  const visitedAt = (packId: number): number | null => ctx.run?.visitedAt(packId) ?? null;
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<number | null>(null);
   const packs = useMemo(() => {
@@ -141,7 +202,7 @@ export function OtherPacks({
       .filter((id) => !exclude.has(id))
       .map((id) => ctx.indexes.packById.get(id))
       .filter((pack): pack is ThemePack => pack !== undefined)
-      .filter((pack) => q === '' || pick(pack.name, lang).toLowerCase().includes(q) || exclusivesOf(pack.id).some((id) => ctx.giftName(id).toLowerCase().includes(q)))
+      .filter((pack) => matchesQuery(pick(pack.name, lang).toLowerCase(), q) || exclusivesOf(pack.id).some((id) => matchesQuery(ctx.giftName(id).toLowerCase(), q)))
       .sort((a, b) => a.id - b.id);
   }, [offered, exclude, ctx, query, lang, exclusivesOf]);
   return (
@@ -167,10 +228,16 @@ export function OtherPacks({
                     <span className="truncate text-sm">{name}</span>
                     <ExclusiveIcons packId={pack.id} ctx={ctx} exclusivesOf={exclusivesOf} justify="start" testId="other-pack-gifts" />
                   </div>
-                  <Button size="sm" variant="secondary" onClick={() => onEnter(pack.id)} ariaLabel={t('stageEnterPack', lang, { name })}>
-                    <LogIn size={12} aria-hidden />
-                    {t('stageEnter', lang)}
-                  </Button>
+                  {/* A pack is entered once a run. One already recorded says where, instead of
+                      offering a second entry that would quietly move it to this floor. */}
+                  {visitedAt(pack.id) !== null ? (
+                    <Badge tone="sure">{t('runVisitedShort', lang, { floor: visitedAt(pack.id)! })}</Badge>
+                  ) : (
+                    <Button size="sm" variant="secondary" onClick={() => onEnter(pack.id)} ariaLabel={t('stageEnterPack', lang, { name })}>
+                      <LogIn size={12} aria-hidden />
+                      {t('stageEnter', lang)}
+                    </Button>
+                  )}
                 </li>
               );
             })}

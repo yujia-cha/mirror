@@ -39,7 +39,7 @@ export function useChipDrag(onDrop: (giftId: number, slot: number | null) => voi
   setOver: (slot: number | null) => void;
 } {
   const [state, setState] = useState<ChipDragState>(IDLE);
-  const pending = useRef<{ giftId: number; x: number; y: number } | null>(null);
+  const pending = useRef<{ giftId: number; x: number; y: number; pointerId: number } | null>(null);
   const active = useRef<number | null>(null);
   const over = useRef<number | null>(null);
   const latest = useRef(onDrop);
@@ -52,6 +52,8 @@ export function useChipDrag(onDrop: (giftId: number, slot: number | null) => voi
 
   useEffect(() => {
     const onMove = (event: PointerEvent): void => {
+      // A second finger must not take over a drag the first one started, nor end it on release.
+      if (pending.current && event.pointerId !== pending.current.pointerId) return;
       if (pending.current && active.current === null) {
         if (Math.hypot(event.clientX - pending.current.x, event.clientY - pending.current.y) < START) return;
         active.current = pending.current.giftId;
@@ -61,7 +63,8 @@ export function useChipDrag(onDrop: (giftId: number, slot: number | null) => voi
       if (found !== undefined) over.current = found;
       setState({ dragging: active.current, x: event.clientX, y: event.clientY, over: over.current });
     };
-    const finish = (): void => {
+    const finish = (event: PointerEvent): void => {
+      if (pending.current && event.pointerId !== pending.current.pointerId) return;
       if (active.current !== null) {
         swallowNextClick();
         latest.current(active.current, over.current);
@@ -86,7 +89,7 @@ export function useChipDrag(onDrop: (giftId: number, slot: number | null) => voi
       onPointerDown: (event: ReactPointerEvent<HTMLElement>): void => {
         if (event.button !== 0) return;
         if ((event.target as HTMLElement).closest('a, input, select, textarea')) return;
-        pending.current = { giftId, x: event.clientX, y: event.clientY };
+        pending.current = { giftId, x: event.clientX, y: event.clientY, pointerId: event.pointerId };
       },
     }),
     [],

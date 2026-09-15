@@ -86,8 +86,12 @@ interface AppState extends SharedState {
   unvisitPack: (packId: number, opts?: { reset?: number[] }) => void;
   /** Leave the stage floor: an undecided floor is skipped; `settle` applies collected / missed gifts first. */
   nextFloor: (settle?: { got?: number[]; failed?: number[] }) => void;
-  /** Look back one floor; a skip right before the frontier is taken back so the floor is decided again. */
-  setStageFloor: (floor: number) => void;
+  /**
+   * Show another floor. A skip right before the frontier is taken back so the floor is decided
+   * again. Walking *forward* settles the floors left behind — `settle` carries the same collected
+   * and missed lists 「다음 층」 would have applied.
+   */
+  setStageFloor: (floor: number, settle?: { got?: number[]; failed?: number[] }) => void;
   resetRun: () => void;
   setGiftStatus: (giftId: number, status: 'got' | 'failed' | null) => void;
   setOptions: (patch: Partial<PlanOptions>) => void;
@@ -254,7 +258,9 @@ export function sanitizeRun(raw: unknown): RunState {
   const floor = typeof source.currentFloor === 'number' ? Math.round(source.currentFloor) : 1;
   out.currentFloor = Math.min(MAX_RUN_DONE_FLOOR, Math.max(1, floor, ...Object.keys(out.visits).map((f) => Number(f) + 1)));
   const stage = typeof source.stageFloor === 'number' ? Math.round(source.stageFloor) : out.currentFloor;
-  out.stageFloor = Math.min(MAX_FLOOR_EVER, out.currentFloor, Math.max(1, stage));
+  // Up to the done floor, never past it: the stage stands one beyond the last floor when the run
+  // is over, and that is where the done card lives.
+  out.stageFloor = Math.min(MAX_RUN_DONE_FLOOR, out.currentFloor, Math.max(1, stage));
   // The start-of-run record only means something once floor 1 is behind, and only for gifts
   // still marked as collected.
   if (out.currentFloor > 1 && Array.isArray(source.startGifts)) {
@@ -277,6 +283,27 @@ export function withoutLegacyGot(giftStatus: RunState['giftStatus'], wanted: num
     out[Number(id)] = status;
   }
   return out;
+}
+
+/**
+ * Misses only ever land on goal gifts (`autoFailedFor` filters by the goal list), and only the
+ * goals panel and the entered pack can take one back. So a gift dropped from the goals carrying a
+ * 「실패」 becomes unreachable while `planInputFor` keeps handing it to the planner as
+ * `unobtainableGifts` — a fusion that eats it stays unresolvable with nothing on screen to undo.
+ * Collected marks are left alone: the tracker and the stage set those on non-goal gifts on purpose.
+ */
+export function withoutStaleFailures(giftStatus: RunState['giftStatus'], wanted: number[]): RunState['giftStatus'] {
+  const stale = Object.entries(giftStatus).filter(([id, status]) => status === 'failed' && !wanted.includes(Number(id)));
+  if (stale.length === 0) return giftStatus;
+  const out = { ...giftStatus };
+  for (const [id] of stale) delete out[Number(id)];
+  return out;
+}
+
+/** The run with every unreachable miss dropped; the same object when nothing was stale. */
+function withRunFor(run: RunState, wanted: number[]): RunState {
+  const giftStatus = withoutStaleFailures(run.giftStatus, wanted);
+  return giftStatus === run.giftStatus ? run : { ...run, giftStatus };
 }
 
 function withoutPack(visits: Record<number, number>, packId: number): Record<number, number> {
@@ -416,6 +443,7 @@ export const useApp = create<AppState>()(
             priority: sanitizePriority(state.priority, wanted),
             fusionGoal: sanitizeFusionGoal(state.fusionGoal, wanted),
             options: withObservedIn(state.options, wanted),
+            run: withRunFor(state.run, wanted),
           };
         }),
 
@@ -427,10 +455,12 @@ export const useApp = create<AppState>()(
             priority: withoutGift(state.priority, giftId),
             fusionGoal: sanitizeFusionGoal(state.fusionGoal, wanted),
             options: withObservedIn(state.options, wanted),
+            run: withRunFor(state.run, wanted),
           };
         }),
 
-      clearWanted: () => set((state) => ({ wanted: [], priority: {}, fusionGoal: {}, options: { ...state.options, observedGifts: [] } })),
+      clearWanted: () =>
+        set((state) => ({ wanted: [], priority: {}, fusionGoal: {}, options: { ...state.options, observedGifts: [] }, run: withRunFor(state.run, []) })),
 
       setFusionGoal: (giftId, goal) =>
         set((state) => {
@@ -460,26 +490,36 @@ export const useApp = create<AppState>()(
           const currentFloor = floor === state.run.currentFloor - 1 ? floor : state.run.currentFloor;
           const moved = moveFrontier(state.run, currentFloor);
           const giftStatus = { ...moved.giftStatus };
-          for (const id of opts?.reset ?? []) delete giftStatus[id];
+          // A pack's own drops are cleared with its entry — but not a gift the run start already
+          // put in hand (150 of the 171 pack-exclusive gifts are observable, so the overlap is
+          // ordinary). `moveFrontier` holds the same line for statuses the player set by hand.
+          const fromStart = new Set(moved.startGifts);
+          for (const id of opts?.reset ?? []) if (!fromStart.has(id)) delete giftStatus[id];
           return { run: { ...state.run, visits, ...moved, stageFloor: Math.min(state.run.stageFloor, currentFloor), giftStatus } };
         }),
       nextFloor: (settle) =>
         set((state) => {
           const { run } = state;
-          if (run.currentFloor >= runDoneFloor(state.lastFloor) && run.stageFloor >= state.lastFloor) return {};
+          // Only a run that is over *and* holds nothing left to settle on the last floor is done.
+          // An entry made on the last floor pushes the frontier past it while that floor is still
+          // on stage, and it has to settle its misses before the run can close.
+          if (run.currentFloor >= runDoneFloor(state.lastFloor) && run.stageFloor >= state.lastFloor && run.visits[run.stageFloor] === undefined) return {};
           const skipping = run.stageFloor === run.currentFloor;
           const currentFloor = skipping ? run.currentFloor + 1 : run.currentFloor;
-          const stageFloor = Math.min(state.lastFloor, run.stageFloor + 1);
+          // Never past the frontier — which is the done floor once the last floor is decided, so
+          // the final 「다음 층」 lands on the done card whether that floor was entered or skipped.
+          const stageFloor = Math.min(currentFloor, run.stageFloor + 1);
           return { run: { ...run, stageFloor, ...moveFrontier(run, currentFloor, settle) } };
         }),
-      setStageFloor: (floor) =>
+      setStageFloor: (floor, settle) =>
         set((state) => {
           if (!Number.isInteger(floor)) return {};
           const { run } = state;
           const stageFloor = Math.min(state.lastFloor, run.currentFloor, Math.max(1, floor));
           // A skip right before the frontier holds no record, so stepping back onto it takes it back.
           const currentFloor = stageFloor === run.currentFloor - 1 && run.visits[stageFloor] === undefined ? stageFloor : run.currentFloor;
-          return { run: { ...run, stageFloor, ...moveFrontier(run, currentFloor) } };
+          // Walking forward off a floor settles it, exactly as 「다음 층」 does; walking back never does.
+          return { run: { ...run, stageFloor, ...moveFrontier(run, currentFloor, stageFloor > run.stageFloor ? settle : undefined) } };
         }),
       resetRun: () => set({ run: emptyRun() }),
       setGiftStatus: (giftId, status) =>
@@ -546,7 +586,9 @@ export const useApp = create<AppState>()(
       adoptSeason: ({ season, lastFloor, giftIds, packIds }) => {
         const state = get();
         const wanted = state.wanted.filter((id) => giftIds.has(id));
-        const observed = (state.options.observedGifts ?? []).filter((id) => giftIds.has(id));
+        // A pin is a decision about a goal, like a priority: one left on a gift that is no longer
+        // wanted would spend observation budget and then vanish without a word at the next toggle.
+        const observed = (state.options.observedGifts ?? []).filter((id) => giftIds.has(id) && wanted.includes(id));
         const preferredPacks = state.options.preferredPacks.filter((id) => packIds.has(id));
         const bannedPacks = state.options.bannedPacks.filter((id) => packIds.has(id));
         const pinnedPacks = Object.fromEntries(
@@ -560,9 +602,17 @@ export const useApp = create<AppState>()(
           preferredPacks.length +
           (state.options.bannedPacks.length - bannedPacks.length) +
           (Object.keys(state.options.pinnedPacks).length - Object.keys(pinnedPacks).length);
-        // A run recorded on a longer season cannot be replayed on a shorter one.
+        // A run recorded on a longer season cannot be replayed on a shorter one; one that still
+        // fits keeps only the packs and gifts this season can draw, so no nameless row survives.
         const run =
-          state.run.currentFloor > lastFloor + 1 || state.run.stageFloor > lastFloor ? emptyRun() : state.run;
+          state.run.currentFloor > lastFloor + 1 || state.run.stageFloor > lastFloor
+            ? emptyRun()
+            : {
+                ...state.run,
+                visits: Object.fromEntries(Object.entries(state.run.visits).filter(([, packId]) => packIds.has(packId))),
+                giftStatus: Object.fromEntries(Object.entries(state.run.giftStatus).filter(([id]) => giftIds.has(Number(id)))),
+                startGifts: state.run.startGifts.filter((id) => giftIds.has(id)),
+              };
         set({
           season,
           lastFloor,
@@ -584,7 +634,10 @@ export const useApp = create<AppState>()(
           wanted: shared.wanted,
           priority: sanitizePriority(shared.priority, shared.wanted),
           fusionGoal: sanitizeFusionGoal(shared.fusionGoal, shared.wanted),
-          options: sanitizeOptions(shared.options),
+          // Pins follow the same rule priorities and fusion goals do: only a goal can be observed.
+          // A link that carried a pin for something else used to spend observation budget on it and
+          // then drop it without a word the next time any gift was toggled.
+          options: withObservedIn(sanitizeOptions(shared.options), shared.wanted),
           run: emptyRun(),
         }),
     }),
@@ -614,7 +667,7 @@ export const useApp = create<AppState>()(
           fusionGoal: sanitizeFusionGoal(state.fusionGoal, wanted),
           run,
           ui: sanitizeUi(state.ui),
-          options: sanitizeOptions(state.options),
+          options: withObservedIn(sanitizeOptions(state.options), wanted),
         } as AppState;
       },
       partialize: (state) => ({
@@ -656,9 +709,12 @@ export function encodeShared(state: SharedState): string {
 
 export function decodeShared(hash: string): SharedState | null {
   if (!hash.startsWith(HASH_PREFIX)) return null;
-  const json = lzString.decompressFromEncodedURIComponent(hash.slice(HASH_PREFIX.length));
-  if (!json) return null;
   try {
+    // lz-string does not merely return nothing for a payload it cannot read — on some strings it
+    // throws, which used to escape this function, blow up the effect that consumes the hash and
+    // leave the reader with a blank page instead of a mangled link.
+    const json = lzString.decompressFromEncodedURIComponent(hash.slice(HASH_PREFIX.length));
+    if (!json) return null;
     const parsed = JSON.parse(json) as Partial<SharedState> & { v?: number; s?: unknown };
     if (!Array.isArray(parsed.deck) || !Array.isArray(parsed.wanted)) return null;
     // v5 carries the season. Links before it could only have been Mirror Dungeon 7, and the `v`

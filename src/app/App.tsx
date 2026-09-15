@@ -31,14 +31,22 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [sharedCopied, setSharedCopied] = useState(false);
+  const [linkBroken, setLinkBroken] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
   const [dropped, setDropped] = useState<{ gifts: number; packs: number } | null>(null);
 
   // A share link must win over whatever localStorage remembers, or the link would not work. The
   // hash is consumed once and dropped from the URL, or a later reload would undo the user's edits.
+  // A hash that says nothing to us is left in place: dropping it silently took away the only copy
+  // of a link the reader might still want to re-open or pass on.
   useEffect(() => {
-    if (!window.location.hash) return;
+    if (!window.location.hash.startsWith('#s=')) return;
     const shared = decodeShared(window.location.hash);
-    if (shared) applyShared(shared);
+    if (!shared) {
+      setLinkBroken(true);
+      return;
+    }
+    applyShared(shared);
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
   }, [applyShared]);
 
@@ -110,13 +118,15 @@ export function App() {
   // A first visit starts from the deck everyone owns; a share link or a saved deck arrives first
   // and wins. Seeding happens once, so emptying the deck by hand is not undone on the next render.
   const seeded = useRef(false);
-  useEffect(() => {
-    if (!data || seeded.current) return;
-    seeded.current = true;
-    if (useApp.getState().deck.length === 0) setDeck(defaultDeck(data), data.rules.deployment.default);
-  }, [data, setDeck]);
-
   const indexes = useMemo(() => (data ? buildIndexes(data) : null), [data]);
+  useEffect(() => {
+    if (!data || !indexes || seeded.current) return;
+    seeded.current = true;
+    // Ids this season cannot resolve are already gone: `adoptSeason` runs on every load, counts
+    // what it dropped and reports it above.
+    if (useApp.getState().deck.length === 0) setDeck(defaultDeck(data), data.rules.deployment.default);
+  }, [data, indexes, setDeck]);
+
   const stats = useMemo(
     () => (data && indexes ? analyseDeck(deck, indexes, data.rules.deployment, deployed) : null),
     [data, indexes, deck, deployed],
@@ -124,7 +134,15 @@ export function App() {
 
   const share = async (): Promise<void> => {
     const url = `${window.location.origin}${window.location.pathname}${encodeShared({ season: useApp.getState().season, deck, deployed, wanted, priority, fusionGoal, options: useApp.getState().options })}`;
-    await navigator.clipboard.writeText(url);
+    // Plain http and an unfocused document both leave `navigator.clipboard` unusable. Saying so
+    // beats an unhandled rejection nobody sees.
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      setCopyFailed(true);
+      window.setTimeout(() => setCopyFailed(false), 3000);
+      return;
+    }
     setSharedCopied(true);
     window.setTimeout(() => setSharedCopied(false), 2000);
   };
@@ -188,6 +206,8 @@ export function App() {
             .join(' · ')}
         </Toast>
       ) : null}
+      {copyFailed ? <Toast tone="alert">{t('copyFailed', lang)}</Toast> : null}
+      {linkBroken ? <Toast tone="alert">{t('linkBroken', lang)}</Toast> : null}
     </>
   );
 }

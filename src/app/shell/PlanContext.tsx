@@ -5,7 +5,7 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { evaluateConditions } from '../../core/index.ts';
-import type { GameData, Keyword } from '../../core/schema.ts';
+import type { GameData, Gift, Keyword } from '../../core/schema.ts';
 import { observable, planAlternatives, planRoute } from '../../core/index.ts';
 import type { DeckStats, GameIndexes, PlanInput, RoutePlan } from '../../core/types.ts';
 import type { RouteVariant } from '../../core/index.ts';
@@ -16,7 +16,8 @@ import { conditionText } from '../condition-text.ts';
 import { judgementsByGift, type Judgement } from '../lib/judgement.ts';
 import { planInputFor, priorityOf } from '../lib/plan-input.ts';
 import { autoFailedFor, exclusivesIndex, lastFloorOf, stageModeFor, type StageMode } from '../lib/stage.ts';
-import { entanglements, ingredientsOf } from '../lib/entangle.ts';
+import { blockedGifts, entanglements } from '../lib/entangle.ts';
+import { carriedBy } from '../lib/goal-toggle.ts';
 import { upgradeChildren } from '../lib/upgrade-children.ts';
 import { useDesktop } from '../lib/useMediaQuery.ts';
 import { usePageHistory } from '../lib/usePageHistory.ts';
@@ -54,6 +55,11 @@ export interface PlanState {
   /** Leave the stage floor: an undecided floor is skipped, an entered pack's unmarked goals are missed. */
   next: () => void;
   /**
+   * Show another floor. Looking back changes nothing; walking forward settles every floor left
+   * behind, so the floor strip and 「다음 층」 can never disagree about what was missed.
+   */
+  goTo: (floor: number) => void;
+  /**
    * Go back from an entered pack: the entry and every status recorded for that pack's own drops
    * are cleared; when that reopens floor 1, the start-of-run gifts recorded on leaving it go too.
    */
@@ -87,6 +93,7 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
   const unvisitPack = useApp((s) => s.unvisitPack);
   const setGiftStatus = useApp((s) => s.setGiftStatus);
   const nextFloor = useApp((s) => s.nextFloor);
+  const setStageFloor = useApp((s) => s.setStageFloor);
   const [variantIndex, setVariantIndex] = useState(0);
   const [detailGift, setDetailGift] = useState<number | null>(null);
   const desktop = useDesktop();
@@ -113,6 +120,13 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
   const exclusivesOf = useMemo(() => exclusivesIndex(data, indexes), [data, indexes]);
   const childrenOf = useMemo(() => upgradeChildren(data), [data]);
   const entangled = useMemo(() => entanglements(wanted, indexes, data.rules.fusion.maxShopSlots), [wanted, indexes, data]);
+  const blocked = useMemo(() => blockedGifts(wanted, indexes, data.rules.fusion.maxShopSlots), [wanted, indexes, data]);
+  // One selection rule for every surface: see `lib/goal-toggle.ts`.
+  const carryIndex = useMemo(
+    () => ({ indexes, childrenOf, maxShopSlots: data.rules.fusion.maxShopSlots }),
+    [indexes, childrenOf, data],
+  );
+  const toggleGoal = useCallback((gift: Gift): void => toggleWanted(gift.id, carriedBy(gift, carryIndex)), [toggleWanted, carryIndex]);
 
   const value = useMemo<PlanState>(() => {
     const giftName = (id: number): string => pick(indexes.giftById.get(id)?.name, lang);
@@ -124,14 +138,30 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
       return reports.length > 0 ? reports.map((r) => conditionText(r, data.enums, lang)).join(' / ') : undefined;
     };
     const goals = new Set(input.wanted.map((w) => w.giftId));
-    const startGifts = plan ? [...plan.start.observed.map((o) => o.giftId), ...(plan.start.startGift ? [plan.start.startGift] : [])] : [];
+    // The plan on screen decides, not the base one: entering a pack while an alternative route is
+    // selected must hand over that route's observations, never the ones it replaced.
+    const startGifts = shown ? [...shown.start.observed.map((o) => o.giftId), ...(shown.start.startGift ? [shown.start.startGift] : [])] : [];
     // Leaving floor 1 for the first time is when the start-of-run gifts land in hand.
     const startSettle = run.currentFloor === 1 ? startGifts : [];
+    /**
+     * What leaving `floor` records: the start-of-run gifts when floor 1 is behind for the first
+     * time, and the goal drops of a pack entered there that the player never marked. Every way off
+     * a floor settles the same — 「다음 층」 and a forward step on the floor strip alike.
+     */
+    const settleFor = (floor: number): { got: number[]; failed: number[] } => {
+      const entered = run.visits[floor];
+      return { got: startSettle, failed: entered !== undefined ? autoFailedFor(entered, goals, run.giftStatus, exclusivesOf) : [] };
+    };
     const enter = (packId: number): void => visitPack(packId, run.stageFloor, { got: startSettle });
-    const next = (): void => {
-      const entered = run.visits[run.stageFloor];
-      const failed = entered !== undefined ? autoFailedFor(entered, goals, run.giftStatus, exclusivesOf) : [];
-      nextFloor({ got: startSettle, failed });
+    const next = (): void => nextFloor(settleFor(run.stageFloor));
+    /** Show `floor`; walking forward settles every floor left behind on the way. */
+    const goTo = (floor: number): void => {
+      const from = run.stageFloor;
+      if (floor <= from) return setStageFloor(floor);
+      const got = startSettle;
+      const failed = new Set<number>();
+      for (let f = from; f < floor; f += 1) for (const id of settleFor(f).failed) failed.add(id);
+      return setStageFloor(floor, { got, failed: [...failed] });
     };
     const leave = (packId: number): void => unvisitPack(packId, { reset: exclusivesOf(packId) });
     const canObserve = (id: number): boolean => {
@@ -155,17 +185,24 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
       onBan: variant ? undefined : banPack,
       onRestore: variant ? undefined : restorePack,
       onToggleObserved: variant ? undefined : (giftId) => toggleObserved(giftId, { max: data.rules.giftObservation.max, observable: canObserve }),
-      onToggleWanted: variant ? undefined : (giftId) => toggleWanted(giftId),
+      onToggleWanted: variant
+        ? undefined
+        : (giftId) => {
+            const gift = indexes.giftById.get(giftId);
+            if (gift) toggleGoal(gift);
+          },
       run: {
         currentFloor: run.currentFloor,
         stageFloor: run.stageFloor,
+        enteredHere: run.visits[run.stageFloor] ?? null,
         visitedAt: (packId) => {
           const entry = Object.entries(run.visits).find(([, id]) => id === packId);
           return entry ? Number(entry[0]) : null;
         },
         giftStatus: (giftId) => run.giftStatus[giftId] ?? null,
         onEnter: variant ? undefined : enter,
-        onUnvisit: unvisitPack,
+        // The sheet's 「입장 취소」 clears what the stage's 「돌아가기」 clears: one undo, one rule.
+        onUnvisit: leave,
         onGiftStatus: setGiftStatus,
       },
       lang,
@@ -194,6 +231,7 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
       stageMode: stageModeFor(run, run.stageFloor, lastFloor),
       enter,
       next,
+      goTo,
       leave,
       openGift: setDetailGift,
     };
@@ -217,11 +255,12 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
     banPack,
     restorePack,
     toggleObserved,
-    toggleWanted,
+    toggleGoal,
     visitPack,
     unvisitPack,
     setGiftStatus,
     nextFloor,
+    setStageFloor,
   ]);
 
   // The sheet is hosted here and nowhere else, so a tile on the stage, in the tracker, in the
@@ -240,12 +279,8 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
           data={data}
           indexes={indexes}
           lang={lang}
-          onToggleWanted={(gift) =>
-            toggleWanted(gift.id, [
-              ...(childrenOf.get(gift.id) ?? []).map((g) => g.id),
-              ...(gift.fusion ? ingredientsOf(gift, indexes, data.rules.fusion.maxShopSlots) : []),
-            ])
-          }
+          onToggleWanted={toggleGoal}
+          blocked={wanted.includes(sheetGift.id) ? undefined : blocked.get(sheetGift.id)}
           onClose={closeSheet}
         />
       ) : null}

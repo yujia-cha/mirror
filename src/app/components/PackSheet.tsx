@@ -3,12 +3,15 @@
  * can sit on, its place in the current plan, every exclusive gift it drops (plus wanted pool
  * gifts), and the pack-level choices — include it somewhere, or give it up.
  */
+import { useState } from 'react';
 import { Ban, Check, Eye, LogIn, Plus, RotateCcw, X } from 'lucide-react';
 import type { ThemePack } from '../../core/schema.ts';
 import type { GameIndexes } from '../../core/types.ts';
 import { pick, t, type Lang } from '../i18n.ts';
 import type { Judgement } from '../lib/judgement.ts';
 import type { GiftStatus } from '../lib/plan-input.ts';
+import { bandMode } from '../lib/stage.ts';
+import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { GiftIcon } from './GiftIcon.tsx';
 import { GiftTile } from './GiftTile.tsx';
 import { PackCard } from './PackCard.tsx';
@@ -20,6 +23,8 @@ export interface RunContext {
   currentFloor: number;
   /** The floor on stage; a pack offered there can be entered from its sheet. */
   stageFloor: number;
+  /** The pack already recorded on the stage floor, if any: that floor takes no second entry. */
+  enteredHere: number | null;
   /** The floor the pack was entered on, or null. */
   visitedAt: (packId: number) => number | null;
   giftStatus: (giftId: number) => GiftStatus | null;
@@ -91,6 +96,7 @@ export function PackStateBadge({ packId, ctx }: { packId: number; ctx: PackConte
 
 /** Include / give up / restore for one pack. */
 export function PackActions({ packId, ctx, size = 'sm' }: { packId: number; ctx: PackContext; size?: 'sm' | 'md' }) {
+  const [confirming, setConfirming] = useState(false);
   const name = ctx.packName(packId);
   if (ctx.banned.has(packId)) {
     return ctx.onRestore ? (
@@ -101,10 +107,13 @@ export function PackActions({ packId, ctx, size = 'sm' }: { packId: number; ctx:
     ) : null;
   }
   const preferred = ctx.preferred.has(packId);
-  const exclusiveMust = ctx.indexes.packById.get(packId)?.exclusiveGifts.filter((id) => ctx.wanted.has(id) && ctx.isMust(id)) ?? [];
+  // Any wanted exclusive is lost with the pack, not only a 「반드시」 one: giving up the only source
+  // of an ordinary goal was silent before.
+  const exclusiveWanted = ctx.indexes.packById.get(packId)?.exclusiveGifts.filter((id) => ctx.wanted.has(id)) ?? [];
   const ban = (): void => {
-    if (exclusiveMust.length > 0 && typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      if (!window.confirm(t('packBanConfirm', ctx.lang, { gift: exclusiveMust.map(ctx.giftName).join(', ') }))) return;
+    if (exclusiveWanted.length > 0) {
+      setConfirming(true);
+      return;
     }
     ctx.onBan?.(packId);
   };
@@ -127,6 +136,19 @@ export function PackActions({ packId, ctx, size = 'sm' }: { packId: number; ctx:
           <Ban size={12} aria-hidden />
           {t('packBan', ctx.lang)}
         </Button>
+      ) : null}
+      {confirming ? (
+        <ConfirmDialog
+          title={t('packBan', ctx.lang)}
+          message={t('packBanConfirm', ctx.lang, { gift: exclusiveWanted.map(ctx.giftName).join(', ') })}
+          confirmLabel={t('packBan', ctx.lang)}
+          onConfirm={() => {
+            setConfirming(false);
+            ctx.onBan?.(packId);
+          }}
+          onCancel={() => setConfirming(false)}
+          lang={ctx.lang}
+        />
       ) : null}
     </span>
   );
@@ -181,7 +203,10 @@ function EnterActions({ packId, ctx }: { packId: number; ctx: PackContext }) {
   if (!ctx.run) return null;
   const visited = ctx.run.visitedAt(packId);
   const name = ctx.packName(packId);
-  const offeredHere = (ctx.indexes.packsByFloor[ctx.run.stageFloor >= 11 ? 'extreme' : ctx.run.stageFloor >= 6 ? 'parallel' : 'hard'].get(ctx.run.stageFloor) ?? []).includes(packId);
+  // A floor holds one pack. The stage hides every way in once a floor is entered; the sheet used
+  // to keep offering one, and taking it silently replaced the record already there.
+  const offeredHere =
+    ctx.run.enteredHere === null && (ctx.indexes.packsByFloor[bandMode(ctx.indexes, ctx.run.stageFloor)].get(ctx.run.stageFloor) ?? []).includes(packId);
   return (
     <span className="flex flex-wrap items-center gap-1.5" data-testid="enter-actions">
       {visited !== null ? (

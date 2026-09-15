@@ -59,7 +59,13 @@ describe('stage', () => {
   it('tells an entered, undecided, skipped and finished floor apart', () => {
     const run = { currentFloor: 4, visits: { 2: 1008 } };
     expect([1, 2, 3, 4, 5].map((f) => stageModeFor(run, f, 15))).toEqual(['skipped', 'entered', 'skipped', 'undecided', 'undecided']);
-    expect(stageModeFor({ currentFloor: 16, visits: {} }, 15, 15)).toBe('done');
+    // 'done' is the floor past the season's end, so the last floor keeps telling the truth about itself.
+    expect(stageModeFor({ currentFloor: 16, visits: {} }, 16, 15)).toBe('done');
+    expect(stageModeFor({ currentFloor: 16, visits: {} }, 15, 15)).toBe('skipped');
     expect(stageModeFor({ currentFloor: 16, visits: { 15: 1511 } }, 15, 15)).toBe('entered');
+    expect(stageModeFor({ currentFloor: 16, visits: { 15: 1511 } }, 16, 15)).toBe('done');
+    // A shorter season moves the done floor with it.
+    expect(stageModeFor({ currentFloor: 6, visits: {} }, 6, 5)).toBe('done');
+    expect(stageModeFor({ currentFloor: 6, visits: {} }, 5, 5)).toBe('skipped');
   });
 });

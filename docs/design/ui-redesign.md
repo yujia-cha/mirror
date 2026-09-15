@@ -333,3 +333,31 @@
 - **레이어와 뒤로가기**(M24): 떠 있는 레이어는 최상위 하나만 반응한다(`useDismiss`의 모듈 스택) — 리스너가 전부 `document`에 붙는데 시트는 body로 포털되므로, 스택이 없으면 시트 안의 누름이 아래 레이어 전부에게 「바깥」으로 읽혀 한 번의 탭이 시트와 패널을 같이 닫았다. 시트의 Escape는 `DetailSurface`가 직접 처리한다(전파를 멈추면 네이티브 이벤트도 멈춰 document 리스너에 닿지 않는다). 페이지와 시트는 각자 `usePageHistory`로 히스토리 엔트리를 하나씩 갖고, 기기 뒤로가기는 시트 → 페이지 순으로 닫는다. `pushState`는 URL을 쓰지 않는다(공유 링크 해시 `#s=`와 GitHub Pages 하위 경로를 건드리면 안 된다). z 사다리: 헤더 30 · 페이지 40 · 시트 백드롭 50 · 시트 60 · 칩 고스트 70.
 - **패널 너비**: 패널과 무대 사이 `role="separator"` 구분선(`panel-resizer-{side}`)을 끌어 260~560px. 두 번 누르면 336px, ←/→ 16px씩, Home 기본값. `ui.leftWidth`·`ui.rightWidth`로 기기에 저장(`clampPanelWidth`). 폰은 전체화면 페이지라 너비가 없다.
 - 문구 키(M15 추가): `deckDefault`, `deckSearchPicked`, `deckChipBasis`, `panelResize`, `panelResizeHint`, `condResonance`, `hardOnlyFull`, `giftSubRecipe`, `giftMixedRecipe`, `giftPackOnly`, `giftSelect`, `giftUnselect`, `giftEntangled`, `giftEntangledWith`, `giftDetail`. 삭제: `stageSkip`, `stagePrev`, `giftIncluded`, `giftLack`, `giftsShowing`. `giftMaterials`는 「재료」 → 「조합식」.
+
+## M28 추가 규칙 (강조색 하나 · 무대 행동 우선 · 초성 검색)
+
+시안: https://claude.ai/artifact/CQWAATgKa4ZcS8Y6FGpVvp (아트보드 8장 · 3페이지). 사용자가 고른 것은
+**무대 「행동 우선」**·**층 스트립 ⓑ(현재 칸만 강조색)**·**초성 검색** 셋이고, 나머지 시안(무대 진행
+머리글 · 「다음은 N층 {팩}」 예고 · 우측 패널 목표 상주 · 노선도 가로 분기 부활)은 **반영하지 않았다.**
+시안은 캔버스에 그대로 남는다.
+
+- **강조색 `accent` 하나**(`index.css`의 `@theme`·`.dark`): 라이트 `#5647c9`(bg 위 **6.19:1**),
+  다크 `#a89ff5`(bg 위 **7.97:1**), 그 위 글자 `accent-fg`는 각각 **6.69:1**·**7.45:1**. 브라우저에서
+  실측한 값이다. 보라를 고른 이유는 키워드 7색이 쓰지 않는 유일한 색역이고 판정 링의 초록·빨강과 멀기
+  때문이다. **쓰는 자리는 둘뿐** — 추천 팩 카드(테두리·「추천」 배지·발 버튼)와 무대에 선 층 칸. 과거·
+  확실성(획득 배지·지나간 층·조건 판정)은 그대로 회색·채움·점선·초록/빨강이 맡는다.
+- **무대 행동 우선**(`stage/EnterablePacks.tsx`·`stage/RunStage.tsx`): 추천 팩만 카드다(150px,
+  `border-[1.5px]` accent, 「추천」 배지, accent 발 버튼). 이 층에서 나가는 나머지 길은 그 옆에 줄로
+  선다 — 다른 루트 팩은 `StagePackRow`(팩 이미지 28 + 이름 버튼 + 전용 기프트 아이콘 + 「입장」),
+  지나치기는 `SkipRow`(점선). 줄은 `other-pack` 행과 같은 어휘라 새로 배울 것이 없고, `usePullGesture`도
+  카드와 똑같이 붙는다(`stage-pack[data-row]`, 「넘기기」는 `other-entry-card` 그대로). 옛
+  `OtherEntryCard`(점선 카드)는 없어졌다. 추천 팩이 없는 층은 줄만 남고 문구는 `stageNoRoutePack` 그대로다.
+- **층 스트립 ⓑ**(`stage/FloorHeader.tsx`): 무대에 선 칸만 `border-accent ring-1 ring-accent`.
+  입장한 칸은 ink 채움, 건너뛴 칸은 `surface-3`으로 그대로다. 루트 팩 밑줄(시안 ⓒ)은 넣지 않았다.
+  같은 줄의 `disabled:opacity-60`은 11px 글자를 **약 3.0:1**로 만들어 WCAG 4.5:1에 못 미쳤다 —
+  `text-fg-3`으로 바꿔 실측 **5.02:1**(다크 5.71:1)이다.
+- **초성 검색**(`lib/hangul.ts`의 `matchesQuery`): 평소에는 지금처럼 부분 문자열이고, 질의가 **전부
+  초성**(ㄱ-ㅎ 중 19개 초성)일 때만 초성 모드로 간다. 한글 음절은 `Math.floor((code - 0xAC00) / 588)`로
+  초성 인덱스를 얻고, 공백은 빼서 「ㄱㅇㅅㅊ」가 「검은 상처」를 찾는다. 섞인 입력(「진ㅎ」)은 초성 모드로
+  가지 않는다 — 오탐만 늘고 지금 동작을 깨뜨린다. 부르는 곳 셋: 기프트 검색(`GiftsStep`), 이 층의 팩
+  검색(`EnterablePacks`), 인격 검색(`DeckStep`, 낱말 OR는 그대로).

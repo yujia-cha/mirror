@@ -3,12 +3,13 @@
  * phone. Escape and a press outside close it. Also the body for an observed gift from the start
  * row, which lets it be pinned or released.
  */
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Eye, X } from 'lucide-react';
 import type { ObservedGift } from '../../core/types.ts';
 import { pick, t } from '../i18n.ts';
 import { useDismiss } from '../lib/useDismiss.ts';
+import { useOverlayChrome } from '../lib/useOverlayChrome.ts';
 import { GiftIcon } from './GiftIcon.tsx';
 import type { PackContext } from './PackSheet.tsx';
 import { Button } from './ui.tsx';
@@ -18,6 +19,7 @@ export type DetailMode = 'popover' | 'sheet';
 export type Placement = { vertical: 'below' | 'above'; horizontal: 'start' | 'end' };
 
 export function DetailSurface({
+  id,
   mode,
   label,
   closeLabel,
@@ -25,6 +27,8 @@ export function DetailSurface({
   placement,
   children,
 }: {
+  /** The surface's DOM id, so a control with `aria-controls` can close what it opened. */
+  id?: string;
   mode: DetailMode;
   label: string;
   closeLabel: string;
@@ -34,7 +38,9 @@ export function DetailSurface({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  useDismiss(ref, onClose, true);
+  useDismiss(ref, onClose, true, { id });
+  // A sheet is modal: it holds the background still and hands focus back to whatever opened it.
+  useOverlayChrome(ref, mode === 'sheet');
   // The surface renders inside whatever opened it — a sheet portals to the body but its React
   // events still travel the tree that opened it — so its own presses must not reopen it. Escape is
   // handled right here rather than left to `useDismiss`: stopping the event also stops the native
@@ -46,9 +52,6 @@ export function DetailSurface({
       if (e.key === 'Escape') onClose();
     },
   };
-  useEffect(() => {
-    if (mode === 'sheet') ref.current?.querySelector<HTMLButtonElement>('button')?.focus();
-  }, [mode]);
   if (mode === 'sheet') {
     // Rendered into the body: a side panel is a `@container`, which makes it the containing block
     // for `position: fixed`, so a sheet opened inside one would be pinned to the panel instead of
@@ -61,6 +64,7 @@ export function DetailSurface({
         <div className="fixed inset-0 z-50 bg-black/40" aria-hidden />
         <div
           ref={ref}
+          id={id}
           role="dialog"
           aria-modal="true"
           aria-label={label}
@@ -90,6 +94,7 @@ export function DetailSurface({
   return (
     <div
       ref={ref}
+      id={id}
       role="dialog"
       aria-label={label}
       data-testid="block-popover"

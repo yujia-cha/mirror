@@ -110,23 +110,35 @@ export function usePullGesture({
 
   const handlers: PullHandlers = {
     onPointerDown: (event) => {
-      if (event.button !== 0 || pending.current) return;
+      if (event.button !== 0) return;
       if (event.target instanceof Element && event.target.closest(NEVER_PULL)) return;
+      // A release outside the window (a second monitor, another app) never reaches these
+      // listeners, so a leftover candidate used to refuse every later press. A fresh press simply
+      // replaces it — the abandoned one can no longer commit anything.
       pending.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, dragging: false, past: null };
+      setState({ offset: 0, pulling: false, past: null });
     },
   };
 
   return { ...state, handlers };
 }
 
+/** True while the reader has asked for less motion; read live, so a change mid-session is honoured. */
+function reduceMotion(): boolean {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 /** The transform a pulled element carries, springing back when the pointer lets go short of the threshold. */
 export function pullStyle(state: PullState): CSSProperties {
+  // The spring-back is an inline style, which outranks the `motion-reduce:transition-none` class
+  // on the same element — so the media query has to be read here or it does nothing at all.
+  const springBack = reduceMotion() ? 'none' : 'transform 180ms ease-out';
   // No transform at rest: a transformed ancestor would turn a fixed-position sheet inside into an
   // absolutely positioned one.
-  if (!state.pulling && state.offset === 0) return { touchAction: 'pan-x', transition: 'transform 180ms ease-out' };
+  if (!state.pulling && state.offset === 0) return { touchAction: 'pan-x', transition: springBack };
   return {
     touchAction: 'pan-x',
     transform: `translateY(${state.offset}px)`,
-    transition: state.pulling ? 'none' : 'transform 180ms ease-out',
+    transition: state.pulling ? 'none' : springBack,
   };
 }

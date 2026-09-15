@@ -26,14 +26,21 @@ export function bandMode(
 
 export type StageMode = 'entered' | 'undecided' | 'skipped' | 'done';
 
-/** Entered: a pack is recorded; undecided: the frontier; skipped: passed without a pack; done: the run is over. */
+/**
+ * Entered: a pack is recorded; undecided: the frontier; skipped: passed without a pack; done: the
+ * stage stands past the season's last floor.
+ *
+ * `done` is `runDoneFloor(lastFloor)` itself, not the last floor. Reading it off the last floor hid
+ * two things: a pack entered there could never be left (「다음 층」 had nothing to move, so the run
+ * could not close), and a last floor skipped like the rest was drawn as if it had never been played.
+ */
 export function stageModeFor(
   run: Pick<RunState, 'currentFloor' | 'visits'>,
   floor: number,
   lastFloor: number,
 ): StageMode {
+  if (floor >= runDoneFloor(lastFloor)) return 'done';
   if (run.visits[floor] !== undefined) return 'entered';
-  if (run.currentFloor >= runDoneFloor(lastFloor) && floor >= lastFloor) return 'done';
   if (floor === run.currentFloor) return 'undecided';
   return floor < run.currentFloor ? 'skipped' : 'undecided';
 }
