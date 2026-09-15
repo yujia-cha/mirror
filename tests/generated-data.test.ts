@@ -37,9 +37,12 @@ describe('meta', () => {
     expect(rules.dungeonId).toBe(7);
   });
 
-  it('records which upstream commits the data came from', () => {
+  it('records which upstream commits the data came from, per language where they differ', () => {
     expect(meta.sources.openLethe?.sha).toMatch(/^[0-9a-f]{40}$/);
-    expect(meta.sources.localize?.sha).toMatch(/^[0-9a-f]{40}$/);
+    expect(meta.sources.eldritchtools?.sha).toMatch(/^[0-9a-f]{40}$/);
+    // The localization mirror keeps each language on its own branch, so it has no single revision.
+    expect(meta.sources.localize?.languages?.KR).toMatch(/^[0-9a-f]{40}$/);
+    expect(meta.sources.localize?.languages?.EN).toMatch(/^[0-9a-f]{40}$/);
   });
 });
 
@@ -201,23 +204,30 @@ describe('gifts', () => {
 });
 
 describe('identities', () => {
-  it('covers the 183 the static data ships plus the one backfilled by hand', () => {
-    expect(identities).toHaveLength(184);
+  it('covers the 183 the static data ships plus the ones backfilled from the other sources', () => {
+    expect(identities).toHaveLength(185);
+    expect(identities.filter((i) => i.keywordSource === 'backfilled')).toHaveLength(2);
   });
 
-  it('backfills 10116 「LCE E.G.O:: 차원찢개」, which the localization names and the static data has not', () => {
-    const shredder = identityById.get(10116)!;
-    expect(shredder.title.ko).toBe('LCE E.G.O:: 차원찢개');
-    expect(shredder.sinnerId).toBe(1);
-    // 충전 · 파열, read out of the official skill text — see tests/text-derivation.test.ts.
-    expect(Object.keys(shredder.keywords).sort()).toEqual(['Burst', 'Charge']);
-    expect(shredder.keywordSource).toBe('curated');
-    // Nothing citable says what it belongs to or which sins it uses, so those stay empty: the
-    // planner undercounts rather than promising a faction condition it cannot back up.
-    expect(shredder.factions).toEqual([]);
-    expect(shredder.sins).toEqual([]);
-    expect(shredder.attackTypes).toEqual([]);
-  });
+  it.each([
+    [10116, 'LCE E.G.O:: 차원찢개', 1, ['Burst', 'Charge'], ['LIMBUS_COMPANY', 'LIMBUS_COMPANY_LCE']],
+    [10616, '동부 섕크 협회 3과', 6, ['Breath', 'Combustion'], ['CINQ']],
+  ])(
+    'backfills %i 「%s」, which the static data has not shipped',
+    (id, title, sinnerId, keywords, factions) => {
+      const identity = identityById.get(id as number)!;
+      expect(identity.title.ko).toBe(title);
+      expect(identity.sinnerId).toBe(sinnerId);
+      // Keywords come from the Korean skill text — see tests/text-derivation.test.ts.
+      expect(Object.keys(identity.keywords).sort()).toEqual(keywords);
+      expect(identity.keywordSource).toBe('backfilled');
+      // Associations, sins and attack types come from the derived mirror, so unlike a hand-written
+      // stub these are filled in and the faction conditions count the identity properly.
+      expect(identity.factions).toEqual(factions);
+      expect(identity.sins.length).toBeGreaterThan(0);
+      expect(identity.attackTypes.length).toBeGreaterThan(0);
+    },
+  );
 
   it('derives keywords from skills for all but a handful of identities', () => {
     const withoutKeywords = identities.filter((i) => i.keywordSource === 'none');

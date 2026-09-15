@@ -25,6 +25,7 @@ import {
   readPersonalitySkills,
   readBattleKeywordNames,
   readPersonalityTexts,
+  readLocalizedPersonalitySkills,
   readSpecialVariants,
   readStages,
   readThemeNames,
@@ -44,6 +45,14 @@ import {
   deriveUpgradeOf,
 } from './lib/derive.ts';
 import { parseConditions } from './lib/parse-conditions.ts';
+import { deriveIdentityKeywordsFromText, skillsOfIdentity } from './lib/derive-text.ts';
+import {
+  derivedAttackTypes,
+  derivedFactions,
+  derivedAttackSkillIds,
+  derivedSins,
+  readDerivedIdentities,
+} from './lib/derived-source.ts';
 import {
   IDENTITY_KEYWORDS,
   KEYWORDS,
@@ -553,15 +562,76 @@ const derivedIdentities: Identity[] = rawPersonalities
     };
   });
 
-/**
- * Identities the static data does not ship, backfilled by hand from `data/curated/identities.json`.
- *
- * Today that is 10116 「LCE E.G.O:: 차원찢개」, which the localization names and gives skill text for
- * while OpenLethe has no record of it anywhere. This is a backfill, not an override: the moment
- * upstream ships the real thing the build stops and asks for the hand-written row to go, rather
- * than quietly preferring it forever.
- */
+// ---------------------------------------------------------------------------
+// Identities the static data does not ship
+//
+// Three sources, in descending order of authority: the game's own static records (above), the
+// derived mirror plus the Korean skill text (here), and finally a row written by hand. Each layer
+// only fills what the one above it does not have, and the build stops if a lower layer shadows a
+// higher one — a stopgap must never outlive the real data.
+// ---------------------------------------------------------------------------
+
 const staticIdentityIds = new Set(derivedIdentities.map((identity) => identity.id));
+const derivedSource = readDerivedIdentities();
+const localizedSkills = readLocalizedPersonalitySkills('KR');
+
+/** English faction names inverted, so a derived tag can be read back as the id the app uses. */
+const factionIdByEnglishName = new Map<string, string>();
+for (const [id, name] of readFactionNames('EN')) if (!factionIdByEnglishName.has(name)) factionIdByEnglishName.set(name, id);
+const knownFactionIds = new Set<string>(
+  rawPersonalities.flatMap((raw) => raw.associationList ?? []).concat(curatedEntries(curated.factions).map(([id]) => id)),
+);
+
+function titleFor(id: number): Localized {
+  return applyNameOverride(
+    loc(
+      personalityKo.get(id)?.title?.replace(/\s*\n\s*/g, ' '),
+      personalityEn.get(id)?.title?.replace(/\s*\n\s*/g, ' '),
+    ),
+    curated.names.identities?.[String(id)],
+  );
+}
+
+/**
+ * An identity assembled from the derived mirror and the Korean skill text.
+ *
+ * The mirror lists the base attack skills outright, so the keyword derivation is told which skills
+ * to read rather than guessing; the Korean text is what actually names the keywords, because the
+ * mirror's own list is the weaker of the two.
+ */
+const backfilledIdentities: Identity[] = [...derivedSource.entries()]
+  .filter(([id]) => !staticIdentityIds.has(id) && sinnerIdFromIdentityId(id) >= 1 && sinnerIdFromIdentityId(id) <= 12)
+  .filter(([id]) => personalityKo.has(id))
+  .map(([id, entry]): Identity => {
+    const sinnerId = entry.sinnerId ?? sinnerIdFromIdentityId(id);
+    const attackIds = derivedAttackSkillIds(entry);
+    const skills = skillsOfIdentity(id, localizedSkills);
+    const keywords = deriveIdentityKeywordsFromText(
+      skills,
+      specialVariants,
+      attackIds.length > 0 ? attackIds : undefined,
+    ) as Identity['keywords'];
+    return {
+      id,
+      sinnerId,
+      sinner: SINNER_NAMES[sinnerId] ?? loc('', ''),
+      title: titleFor(id),
+      rank: Math.min(3, Math.max(1, entry.rank ?? 1)) as 1 | 2 | 3,
+      season: entry.season ?? 0,
+      factions: derivedFactions(entry, factionIdByEnglishName, knownFactionIds).sort(),
+      // The derived tags carry no size or appearance traits, and nothing reads them anyway.
+      traits: [],
+      keywords,
+      keywordSource: 'backfilled',
+      sins: derivedSins(entry).sort((a, b) => SINS.indexOf(a) - SINS.indexOf(b)),
+      attackTypes: derivedAttackTypes(entry).sort(),
+    };
+  })
+  .sort((a, b) => a.id - b.id);
+
+const backfilledIds = new Set(backfilledIdentities.map((identity) => identity.id));
+
+/** The last resort: a row written by hand for an identity no source has yet. */
 const curatedIdentities: Identity[] = curatedEntries(curated.identities).map(([key, entry]) => {
   const id = Number(key);
   if (!Number.isFinite(id)) fail(`curated identity key "${key}" is not an id`);
@@ -569,6 +639,12 @@ const curatedIdentities: Identity[] = curatedEntries(curated.identities).map(([k
     fail(
       `curated identity ${id} now has static data upstream; ` +
         `delete its entry from data/curated/identities.json so the real record is used`,
+    );
+  }
+  if (backfilledIds.has(id)) {
+    fail(
+      `curated identity ${id} is now covered by the derived source; ` +
+        `delete its entry from data/curated/identities.json so the fetched data is used`,
     );
   }
   const sinnerId = sinnerIdFromIdentityId(id);
@@ -593,7 +669,9 @@ const curatedIdentities: Identity[] = curatedEntries(curated.identities).map(([k
   };
 });
 
-const identities: Identity[] = [...derivedIdentities, ...curatedIdentities].sort((a, b) => a.id - b.id);
+const identities: Identity[] = [...derivedIdentities, ...backfilledIdentities, ...curatedIdentities].sort(
+  (a, b) => a.id - b.id,
+);
 
 // ---------------------------------------------------------------------------
 // Enums and rules
@@ -713,7 +791,15 @@ const rules: Rules = {
 // ---------------------------------------------------------------------------
 
 interface Lock {
-  sources: Record<string, { repo: string; sha: string; fetchedAt: string }>;
+  sources: Record<
+    string,
+    {
+      repo: string;
+      sha?: string;
+      languages?: string[] | Record<string, { ref: string; sha: string }>;
+      fetchedAt: string;
+    }
+  >;
 }
 const lock = readJson<Lock>(repoPath('data/sources.lock.json'));
 
@@ -756,10 +842,20 @@ const meta: Meta = {
     ),
   },
   sources: Object.fromEntries(
-    Object.entries(lock.sources).map(([name, s]) => [
-      name,
-      { repo: s.repo, sha: s.sha, fetchedAt: s.fetchedAt },
-    ]),
+    Object.entries(lock.sources).map(([name, s]) => {
+      const branches = s.languages && !Array.isArray(s.languages) ? s.languages : null;
+      return [
+        name,
+        {
+          repo: s.repo,
+          ...(s.sha ? { sha: s.sha } : {}),
+          ...(branches
+            ? { languages: Object.fromEntries(Object.entries(branches).map(([lang, pin]) => [lang, pin.sha])) }
+            : {}),
+          fetchedAt: s.fetchedAt,
+        },
+      ];
+    }),
   ),
   staticDataPresent: hasStatic,
   counts: {

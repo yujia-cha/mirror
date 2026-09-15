@@ -1,8 +1,8 @@
 {
-  "_comment": "정적 데이터에 아예 없는 인격의 백필. 이것은 override가 아니라 backfill이다 — 상류가 같은 id를 내보내기 시작하면 data:build가 멈추고 여기서 지우라고 말한다. 키는 인격 id(1SSNN)이고, 이름·죄인은 현지화에서 그대로 오므로 적지 않는다. 도출 불가능한 값만 적고 모든 항목에 _source를 남긴다. 비워 둔 필드는 '모른다'는 뜻이고, 계획은 그만큼 적게 센다.",
+  "_comment": "세 출처(정적 데이터 · 파생 미러 · 현지화) 어디에도 없는 인격을 손으로 채우는 마지막 수단. 먼저 `npm run data:fetch -- --update`를 돌려 보고, 그래도 없을 때만 적는다. 이것은 override가 아니라 backfill이라 어느 출처든 그 id를 갖게 되면 data:build가 멈추고 항목을 지우라고 말한다. 키는 인격 id(1SSNN)이고, 이름·죄인은 현지화에서 그대로 오므로 적지 않는다. 최소한 keywords만 있어도 동작하며, 모르는 필드는 비운다(계획이 그만큼 적게 센다). 모든 항목에 _source 필수.",
   "_example": {
     "10199": {
-      "_source": "어디서 확인했는지, YYYY-MM-DD",
+      "_source": "어디서 확인했는지, YYYY-MM-DD. 비워 둔 필드가 있으면 왜 비웠는지도.",
       "keywords": { "Combustion": { "skills": 2, "specialSkills": 0 } },
       "rank": 3,
       "season": 0,
@@ -11,18 +11,5 @@
       "sins": [],
       "attackTypes": []
     }
-  },
-  "10116": {
-    "_source": "키워드: data/raw/localize/KR/Skills_personality-01.json의 공식 스킬 원문 1011601~1011605에서 도출한다. 1011604 회피는 방어 스킬이라 빠지고, 남은 네 스킬이 [Charge]를 증가시키고 [Burst]를 부여한다. tests/text-derivation.test.ts가 이 값이 원문과 같은지 검사하고, 같은 도출 규칙을 정적 데이터가 있는 121명에게 돌려 맞춰 두었다. rank 3: 상류에 근거가 없고 다른 LCE E.G.O 인격(10111·10211·11215)이 모두 3인 데 따른 추정이다 — rank는 덱 목록 정렬과 별 표시에만 쓰이고 루트 계산에 들어가지 않는다. 소속·죄악·공격 유형: 인용 가능한 출처가 없어 비워 둔다. 비우면 소속 조건 기프트(9778 통상 작전용 장비 하나뿐)가 이 인격을 세지 않아 과소집계가 되는데, 없는 근거로 과대약속하는 것보다 낫다. 상류 OpenLethe는 최신 커밋과 게임 자체 파일 매니페스트(static-data-info.json)에도 10116의 정적 레코드가 없다. 2026-09-15",
-    "keywords": {
-      "Burst": { "skills": 4, "specialSkills": 0 },
-      "Charge": { "skills": 4, "specialSkills": 0 }
-    },
-    "rank": 3,
-    "season": 0,
-    "factions": [],
-    "traits": [],
-    "sins": [],
-    "attackTypes": []
   }
 }

@@ -27,6 +27,11 @@ import {
   readSpecialVariants,
   STATIC_DIR,
 } from '../scripts/lib/raw.ts';
+import {
+  derivedAttackSkillIds,
+  derivedKeywords,
+  readDerivedIdentities,
+} from '../scripts/lib/derived-source.ts';
 
 const identities = identitiesFileSchema.parse(
   JSON.parse(readFileSync(resolve(process.cwd(), 'public/data/identities.json'), 'utf8')),
@@ -69,6 +74,7 @@ describe.skipIf(!hasRaw)('text derivation, calibrated against the static data', 
   const statics = readPersonalities();
   const staticSkills = readPersonalitySkills();
   const localized = readLocalizedPersonalitySkills('KR');
+  const derivedSource = readDerivedIdentities();
   const covered = new Set([...localized.keys()].map(identityIdOfSkill));
   const calibratable = statics.filter((p) => covered.has(p.id));
 
@@ -105,15 +111,32 @@ describe.skipIf(!hasRaw)('text derivation, calibrated against the static data', 
     expect(diverging).toEqual(Object.keys(KNOWN_DIVERGENCES).map(Number).sort((a, b) => a - b));
   });
 
-  it('derives 충전 · 파열 for 10116, exactly as the curated backfill records them', () => {
-    const derived = fromText(10116);
-    expect(derived).toEqual({
-      Burst: { skills: 4, specialSkills: 0 },
-      Charge: { skills: 4, specialSkills: 0 },
-    });
-    // The audit trail: what ships must be what the official text says, not what someone typed.
-    const shipped = identities.find((identity) => identity.id === 10116);
+  // The audit trail for every identity the static data does not ship: what the app serves has to be
+  // what the official Korean text says, not what anyone typed. The build reads the attack-skill list
+  // off the derived mirror rather than guessing, so this passes the same list in.
+  it.each([
+    [10116, { Burst: { skills: 4, specialSkills: 0 }, Charge: { skills: 4, specialSkills: 0 } }],
+    [10616, { Combustion: { skills: 3, specialSkills: 0 }, Breath: { skills: 3, specialSkills: 0 } }],
+  ])('derives %i from the skill text, exactly as it ships', (id, expected) => {
+    const entry = derivedSource.get(id as number);
+    const derived = deriveIdentityKeywordsFromText(
+      skillsOfIdentity(id as number, localized),
+      variants,
+      entry ? derivedAttackSkillIds(entry) : undefined,
+    );
+    expect(derived).toEqual(expected);
+    const shipped = identities.find((identity) => identity.id === id);
     expect(shipped?.keywords).toEqual(derived as Record<IdentityKeywordId, { skills: number; specialSkills: number }>);
-    expect(shipped?.keywordSource).toBe('curated');
+    expect(shipped?.keywordSource).toBe('backfilled');
+  });
+
+  it('agrees with the derived mirror on what the backfilled identities inflict', () => {
+    for (const id of [10116, 10616]) {
+      const entry = derivedSource.get(id)!;
+      const theirs = derivedKeywords(entry);
+      const ours = new Set(Object.keys(identities.find((i) => i.id === id)!.keywords));
+      // Two independent readings of the same patch: the Korean sentence and an English data dump.
+      expect([...ours].sort()).toEqual([...theirs].sort());
+    }
   });
 });

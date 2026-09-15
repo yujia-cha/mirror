@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import type { z } from 'zod';
 import { hasFlag, readJson, readJsonIfExists, repoPath } from './lib/io.ts';
 import { readPersonalities, staticDataPresent } from './lib/raw.ts';
+import { derivedKeywords, readDerivedFetchedAt, readDerivedIdentities } from './lib/derived-source.ts';
 import {
   STATUS_KEYWORDS,
   enumsSchema,
@@ -31,6 +32,11 @@ import {
 const OUT = repoPath('public/data');
 /** The twelve sinners the game has had since launch; every one must be deckable. */
 const SINNER_COUNT = 12;
+/**
+ * How many identities may read differently in the derived source before it is worth a look.
+ * Measured at 11 of 179; the budget leaves room for a patch without hiding a broken derivation.
+ */
+const KEYWORD_DISAGREEMENT_BUDGET = 15;
 const lenient = hasFlag('--lenient');
 
 const errors: string[] = [];
@@ -373,27 +379,74 @@ function checkInvariants(
     );
   }
 
-  // An identity the localization names but the app does not ship cannot be put in a deck, and
-  // nothing else in the pipeline notices — every count downstream is derived from the same short
-  // list. `shipped` already includes the curated backfills, so this only fires on a gap nobody has
-  // filled yet, and the fix is to fill it.
+  // The roster is the union of every source, not any one of them.
+  //
+  // The check this replaces only compared against the localization, so an identity that was late in
+  // BOTH the static data and the localization was invisible — which is exactly how 10616 동부 섕크
+  // 협회 3과 sat missing without a word. Any source knowing an identity we do not ship is an error,
+  // whichever source it is.
+  const shipped = new Set(identities.map((i) => i.id));
+  // Identity ids are 1SSNN for sinners 01-12; anything else is a story or NPC row.
+  const playable = (id: number): boolean => id >= 10101 && id <= 11299;
+  const roster = new Map<number, string[]>();
+  const noteRoster = (id: number, source: string): void => {
+    if (!playable(id) || shipped.has(id)) return;
+    roster.set(id, [...(roster.get(id) ?? []), source]);
+  };
+
   const localizedIdentities = readJsonIfExists<{ dataList?: { id: number }[] }>(
     repoPath('data/raw/localize/KR/Personalities.json'),
   );
-  if (localizedIdentities?.dataList) {
-    const shipped = new Set(identities.map((i) => i.id));
-    const missing = localizedIdentities.dataList
-      .map((e) => Number(e.id))
-      // Identity ids are 1SSNN for sinners 01-12; anything else is a story or NPC row.
-      .filter((id) => id >= 10101 && id <= 11299 && !shipped.has(id));
-    if (missing.length > 0) {
-      strict(
+  for (const entry of localizedIdentities?.dataList ?? []) noteRoster(Number(entry.id), '현지화');
+  for (const id of readDerivedIdentities().keys()) noteRoster(id, '파생 미러');
+
+  if (roster.size > 0) {
+    const named = [...roster].map(([id, sources]) => `${id} (${sources.join(', ')})`);
+    strict(
+      'invariant',
+      `${roster.size} identity/identities are known upstream but not shipped: ${named.join('; ')}. ` +
+        `Run \`npm run data:fetch -- --update\`; if they are still absent everywhere, ` +
+        `write them into data/curated/identities.json`,
+    );
+  }
+
+  // The vendored copy going stale is the failure mode behind every missing identity so far, and it
+  // is silent by nature: nothing in the data says it is old. The derived source stamps its own
+  // refresh time, so compare it against when we last fetched.
+  const derivedAt = readDerivedFetchedAt();
+  const fetchedAt = meta.sources['eldritchtools']?.fetchedAt;
+  if (derivedAt && fetchedAt) {
+    const days = (Date.parse(derivedAt) - Date.parse(fetchedAt)) / 86_400_000;
+    if (days > 14) {
+      warn(
         'invariant',
-        `${missing.length} identity/identities exist in the localization but are not shipped ` +
-          `(${missing.join(', ')}); back them up in data/curated/identities.json, or wait for ` +
-          `upstream to ship their static data`,
+        `the derived source upstream is ${Math.floor(days)} days newer than our fetch ` +
+          `(${derivedAt.slice(0, 10)} vs ${fetchedAt}); run \`npm run data:fetch -- --update\``,
       );
     }
+  }
+
+  // What the derived source says the keywords are, against what we derived ourselves. It is the
+  // weaker reading — it misses a keyword our static derivation finds on 10 of 179 identities — so a
+  // disagreement is a prompt to look, not a failure.
+  const derivedIdentitiesByid = readDerivedIdentities();
+  const keywordDisagreements: number[] = [];
+  for (const identity of identities) {
+    const entry = derivedIdentitiesByid.get(identity.id);
+    if (!entry?.skillKeywordList) continue;
+    const theirs = derivedKeywords(entry);
+    // Ammo is a resource the derived list does not track at all, so it is left out of the compare.
+    const ours = new Set(Object.keys(identity.keywords).filter((k) => k !== 'Bullet'));
+    const same = ours.size === theirs.size && [...ours].every((k) => theirs.has(k as never));
+    if (!same) keywordDisagreements.push(identity.id);
+  }
+  if (keywordDisagreements.length > KEYWORD_DISAGREEMENT_BUDGET) {
+    warn(
+      'invariant',
+      `${keywordDisagreements.length} identities disagree with the derived source on keywords ` +
+        `(${keywordDisagreements.slice(0, 12).join(', ')}…); expected at most ` +
+        `${KEYWORD_DISAGREEMENT_BUDGET}. A jump here usually means a derivation broke`,
+    );
   }
 
   // Every sinner must be represented: a whole file dropping out of the fetch would otherwise pass

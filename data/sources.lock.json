@@ -1,5 +1,5 @@
 {
-  "$comment": "Pinned upstream game-data sources. Run `npm run data:fetch` to restore data/raw exactly, or `npm run data:fetch -- --update` to move to the latest upstream commit. See docs/research/data-sources.md.",
+  "$comment": "Pinned upstream game-data sources. Run `npm run data:fetch` to restore data/raw exactly, or `npm run data:fetch -- --update` to move to the latest upstream commit. See docs/research/data-sources.md for what each source is and how alive it is.",
   "sources": {
     "openLethe": {
       "repo": "LEAGUE-OF-NINE/OpenLethe",
@@ -95,17 +95,21 @@
       ]
     },
     "localize": {
-      "repo": "LocalizeLimbusCompany/LocalizeLimbusCompany",
-      "ref": "main",
-      "sha": "231a8bcfc347273e7769b70ebc4f9f3e2fecaa5a",
-      "fetchedAt": "2026-09-11",
-      "note": "Official KR/EN localization JSON mirrored by the Chinese localization project (pack is CC BY-NC-SA 4.0; source text is Project Moon's). The KR-only Skills_personality-* files are the evidence for identities the static data does not ship: their skill text names the keywords each attack inflicts.",
+      "repo": "x1bViolet/Limbus-Localization-Files",
+      "languages": {
+        "KR": {
+          "ref": "Korean",
+          "sha": "ac56ea8297616d1a7200c89514b0ed8999eac125"
+        },
+        "EN": {
+          "ref": "English",
+          "sha": "c06798276fb70109f940f6724e7d2e76795c7bd7"
+        }
+      },
+      "fetchedAt": "2026-09-15",
+      "note": "Game Localize folder, mirrored verbatim (source text is Project Moon's). Languages are branches here, not folders. Chosen over LocalizeLimbusCompany because that mirror's auto-update stopped on 2026-07-23 and newer identities never arrived; this one tracks the weekly patch. The KR-only Skills_personality-* files are the evidence for identities the static data does not ship.",
       "remotePrefix": "",
       "localPrefix": "data/raw/localize",
-      "languages": [
-        "KR",
-        "EN"
-      ],
       "files": [
         "EGOgift_MirrorDungeon.json",
         "EGOgift_MirrorDungeon_2.json",
@@ -221,6 +225,19 @@
         "DungeonStartBuffs_MD7.json",
         "MirrorDungeonUI_7.json",
         "TutorialMirrorDungeon.json"
+      ]
+    },
+    "eldritchtools": {
+      "repo": "eldritchtools/limbus-assets",
+      "ref": "main",
+      "sha": "ec2b3efd4de0e36964c6c6d1ee9be14bc6ab6211",
+      "fetchedAt": "2026-09-15",
+      "note": "Derived, English-only identity data behind the limbus.tools sites, updated near-daily. Vendored for the identities the static data has not shipped: it names which skills are attacks, the sins and attack types, the rank and the association tags. Keywords still come from the Korean skill text; this list is a cross-check, not the truth (it knows less than the static derivation on 10 of 179 identities).",
+      "remotePrefix": "",
+      "localPrefix": "data/raw/derived/eldritchtools",
+      "files": [
+        "meta.json",
+        "data/identities.json"
       ]
     }
   }

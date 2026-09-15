@@ -2,12 +2,37 @@
 
 ## 쓰는 것
 
-| 출처 | 가져오는 것 | 갱신 | 라이선스 |
-|---|---|---|---|
-| [`LEAGUE-OF-NINE/OpenLethe`](https://github.com/LEAGUE-OF-NINE/OpenLethe) `src/OpenLethe.Resources/StaticData/static-data/**` | 테마팩·기프트·조합·인격·스킬·던전 구성 등 게임 클라이언트 정적 데이터 | 저장소에 라이선스 파일이 없다. 데이터 자체의 권리는 Project Moon에 있다 | 주 데이터원 |
-| [`LocalizeLimbusCompany/LocalizeLimbusCompany`](https://github.com/LocalizeLimbusCompany/LocalizeLimbusCompany) `KR/`, `EN/` | 공식 로컬라이제이션 JSON(기프트·테마팩·인격·소속 이름과 효과 텍스트) | CC BY-NC-SA 4.0 (번역 팩). 원문 권리는 Project Moon | 이름·설명 |
+**출처가 살아 있는지를 먼저 본다.** 이 프로젝트가 겪은 문제는 전부 「출처가 조용히 멈췄다」였다.
 
-두 저장소 모두 `data/sources.lock.json`에 **커밋 sha로 고정**하고, 받아온 파일을 `data/raw/`에 커밋한다. OpenLethe는 서버 에뮬레이터 저장소라 언제든 사라질 수 있으므로 스냅샷을 저장소에 보관하는 것이 전제다.
+| 출처 | 가져오는 것 | 갱신 상태 |
+|---|---|---|
+| [`x1bViolet/Limbus-Localization-Files`](https://github.com/x1bViolet/Limbus-Localization-Files) 브랜치 `Korean`·`English` | 공식 로컬라이제이션 JSON. 이름·효과 텍스트와 **인격 스킬 원문** | ✅ **주 1회, 게임 패치 당일** |
+| [`eldritchtools/limbus-assets`](https://github.com/eldritchtools/limbus-assets) `data/identities.json` | 파생 인격 데이터(영문). 공격 스킬 목록·죄악·공격 유형·등급·소속 태그 | ✅ **거의 매일** (`meta.json`에 갱신 시각) |
+| [`LEAGUE-OF-NINE/OpenLethe`](https://github.com/LEAGUE-OF-NINE/OpenLethe) `…/static-data/**` | 테마팩·기프트·조합·던전 구성·인격·스킬 (원본 스키마) | ⚠️ **얼어붙음** — `static-data`는 2026-07-25 「init」 커밋 하나뿐인 일회성 캡처 |
+
+라이선스: 셋 다 게임 추출물이고 권리는 Project Moon에 있다. x1bViolet·eldritchtools는 라이선스 파일이 없다.
+
+세 출처 모두 `data/sources.lock.json`에 **커밋 sha로 고정**하고 받아온 파일을 `data/raw/`에 커밋한다. 언제든 사라질 수 있으므로 스냅샷 보관이 전제다.
+
+### 인격은 세 층으로 만든다
+
+정적 데이터 > 자동 백필 > 수기. 각 층은 위층에 없는 것만 채우고, 아래층이 위층을 가리면 `data:build`가 멈춘다.
+
+1. **정적 데이터**(OpenLethe) — 있으면 무조건 이것을 쓴다
+2. **자동 백필** — 정적에 없는 인격을 eldritchtools(공격 스킬 목록·죄악·공격 유형·등급·소속) + KR 스킬 원문(키워드)으로 조립한다. `scripts/lib/derived-source.ts`, `scripts/lib/derive-text.ts`
+3. **수기** — 셋 다 없을 때만. `data/curated/identities.json` (`add-curated-override` 스킬 6번)
+
+키워드만은 **KR 원문에서 도출한 값**을 쓴다. eldritchtools의 `skillKeywordList`는 179명 중 10명에서 우리 정적 도출보다 **덜** 알기 때문에 진실이 아니라 교차검증용이다.
+
+### 왜 바꿨나 (2026-09-15)
+
+`LocalizeLimbusCompany`는 「Auto RAW Update」가 1~2주마다 돌던 좋은 출처였는데 **2026-07-23 이후 멈췄다**. OpenLethe의 `static-data`는 애초에 갱신 루프가 없는 일회성 캡처다. 그래서 10116 「차원찢개」는 현지화에만 있었고, 10616 「동부 섕크 협회 3과」는 **양쪽 모두에 없어** 검증조차 못 잡았다.
+
+> ⚠️ **남은 노출**: OpenLethe가 얼어 있으므로 **거울 던전 8이 오면 인격이 아니라 앱 전체가 멈춘다**(팩·기프트·층·조합이 전부 거기서 온다). eldritchtools에 `md_theme_packs.json`·`md_floor_packs.json`·`gifts.json`이 있어 옮길 길은 있다. 시즌이 바뀌기 전에 손봐야 한다.
+
+### 공식 경로는 없다
+
+Project Moon CDN(`limbuscompanycdn.org`)은 **게임 설치본에서 뽑은 빌드별 토큰**이 있어야 하고, 거기 있는 것은 현지화뿐이다(StaticData는 클라이언트 번들 안). 게임 서버 API에도 데이터 엔드포인트가 없다. 공개된 무인증 경로는 존재하지 않으므로 실용적인 길은 추출물 미러뿐이다. 아래 「클라이언트에서 직접 추출」이 최후의 수단이다.
 
 ## 참고만 한 것 (데이터를 가져오지 않음)
 
@@ -43,7 +68,7 @@ ObiterDicta가 쓰는 경로를 그대로 따를 수 있다. PC에 게임이 설
 - `personality/personality-{01..12}.json`
 - `skill/personality-skill-{01..12}.json`
 
-**LocalizeLimbusCompany (KR/ 및 EN/)**
+**로컬라이제이션 (KR/ 및 EN/) — x1bViolet의 `Korean`·`English` 브랜치**
 - `EGOgift_MirrorDungeon{,_2,_6,_7}.json` — 시즌이 바뀌면 `_8` 등이 생긴다
 - `EGOgift_MirrorDungeon{-StoryTheme,-StoryTheme_2,-EventTheme,-EventTheme_2,-mowe,-mowe-re,-ycgd}.json`
 - `EGOgift_{TwiningThreads,cultivation,pilgrimage,lcbcheckup-re,night-clean-up-re,tktRe,walpu4,walpu6,walpu8,a1c8p2}.json`

@@ -274,7 +274,7 @@ export const identitySchema = z.object({
   /** `unitKeywordList` — trait tags, distinct from 소속. */
   traits: z.array(z.string()),
   keywords: z.record(identityKeywordIdSchema, identityKeywordSchema),
-  keywordSource: z.enum(['derived', 'curated', 'none']),
+  keywordSource: z.enum(['derived', 'backfilled', 'curated', 'none']),
   sins: z.array(sinSchema),
   attackTypes: z.array(attackTypeSchema),
 });
@@ -389,7 +389,19 @@ export const metaSchema = z.object({
   dataVersion: z.string(),
   schemaVersion: z.number().int(),
   dungeon: z.object({ id: z.number().int(), name: localizedSchema }),
-  sources: z.record(z.string(), z.object({ repo: z.string(), sha: z.string(), fetchedAt: z.string() })),
+  /**
+   * The upstream revisions this data was built from. `sha` pins a source with one revision;
+   * `languages` pins one whose languages live on separate branches, each moving on its own.
+   */
+  sources: z.record(
+    z.string(),
+    z.object({
+      repo: z.string(),
+      sha: z.string().optional(),
+      languages: z.record(z.string(), z.string()).optional(),
+      fetchedAt: z.string(),
+    }),
+  ),
   staticDataPresent: z.boolean(),
   counts: z.object({
     gifts: z.number().int(),

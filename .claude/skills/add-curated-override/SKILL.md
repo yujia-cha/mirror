@@ -70,17 +70,33 @@ description: Record a fact the game's static data does not express — an identi
 
 UI에 그대로 노출되는 사용자 메모. 루트 계획에는 영향을 주지 않는다.
 
-## 6. 정적 데이터에 없는 인격 — `identities.json`
+## 6. 어느 출처에도 없는 인격 — `identities.json`
 
-현지화(`Personalities.json`)는 이름을 주는데 상류 OpenLethe에 personality 레코드가 없는 인격. 지금은 10116 「LCE E.G.O:: 차원찢개」(이상) 하나다. 백필 없이 두면 `data:validate`가 **에러**를 낸다.
+**먼저 이것부터**: `npm run data:fetch -- --update && npm run data:build`. 인격 데이터는 세 층으로 채워지고, 대부분은 여기서 끝난다.
 
-**다른 큐레이션 파일과 다른 점**:
-- **덮어쓰기가 아니다.** 같은 id의 정적 데이터가 생기면 `data:build`가 멈추고 이 항목을 지우라고 말한다. 손으로 적은 값이 진짜 데이터를 영원히 가리지 않게 하려는 것이다.
-- **이름·죄인·id는 적지 않는다.** 현지화에서 그대로 오고, 다른 인격과 같은 코드 경로를 지난다(그래서 `names-override.json`도 계속 먹는다).
-- **도출할 수 있으면 손으로 적지 않는다.** 키워드는 `localize/KR/Skills_personality-*.json`의 공식 스킬 원문에서 `scripts/lib/derive-text.ts`로 도출하고, `tests/text-derivation.test.ts`가 적어 둔 값이 원문과 같은지 검사한다. 그 도출 규칙은 정적 데이터가 있는 121명에게 미리 맞춰 두었다.
-- **모르는 필드는 비운다.** `factions`·`sins`·`attackTypes`를 비우면 계획이 그만큼 **적게** 센다. 근거 없이 채워 과대약속하는 것보다 낫다. 무엇을 왜 비웠는지 `_source`에 적는다.
+| 층 | 출처 | 언제 |
+|---|---|---|
+| 1 | 정적 데이터 (OpenLethe) | 있으면 무조건 |
+| 2 | **자동 백필** — eldritchtools + KR 스킬 원문 | 정적에 없을 때. 손댈 것 없음 |
+| 3 | **이 파일** | 셋 다 없을 때만 |
 
-새 항목을 넣기 전에 먼저 확인할 것: 정말 상류에 없는가(`data:fetch -- --update` 후에도 없는가), 아니면 `sources.lock.json`의 파일 목록에 새 파일이 빠진 것인가.
+그래도 없으면 여기에 적는다. **다른 큐레이션 파일과 다르다**:
+
+- **덮어쓰기가 아니라 backfill이다.** 어느 출처든 그 id를 갖게 되면 `data:build`가 멈추고 항목을 지우라고 말한다. 손으로 적은 값이 진짜 데이터를 영원히 가리지 않게 하려는 것이다.
+- **이름·죄인·id는 적지 않는다.** 현지화에서 그대로 오고 다른 인격과 같은 코드 경로를 지난다.
+- **`keywords`만 있어도 동작한다.** 루트 계산에 실제로 들어가는 것은 키워드와 소속뿐이다(`sins`·`attackTypes`·`traits`는 어디서도 읽지 않는다).
+- **모르는 필드는 비운다.** `factions`를 비우면 계획이 그만큼 **적게** 센다 — 근거 없이 채워 과대약속하는 것보다 낫다. 무엇을 왜 비웠는지 `_source`에 적는다.
+
+최소 형태:
+
+```jsonc
+"10617": {
+  "_source": "인게임 확인 2026-10-01. 소속은 확실치 않아 비움",
+  "keywords": { "Combustion": { "skills": 3, "specialSkills": 0 } }
+}
+```
+
+현지화에조차 이름이 없으면 빌드가 막는다 — 그때는 출처가 따라올 때까지 기다리는 수밖에 없다.
 
 ## 마무리
 

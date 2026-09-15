@@ -141,14 +141,23 @@ export function keywordsInSkillText(
 /**
  * Which keywords an identity's attack skills inflict, counted per skill, from the localized text.
  *
- * Counts are the weaker half of the result: which skills belong to `attributeList` is a guess here
- * (see `looksLikeAttackSkill`), and it is wrong for a handful of conditional replacements. What the
- * planner reads is only whether a count is above zero, so the calibration test compares that.
+ * Counts are the weaker half of the result: without `attackSkillIds`, which skills belong to
+ * `attributeList` is a guess (see `looksLikeAttackSkill`) and it is wrong for a handful of
+ * conditional replacements. What the planner reads is only whether a count is above zero, so the
+ * calibration test compares that.
  */
 export function deriveIdentityKeywordsFromText(
   skills: LocalizedSkill[],
   specialVariants: Map<string, IdentityKeywordId>,
+  /**
+   * The base attack skills, when something authoritative knows them — the derived source lists
+   * them outright. Given this, the heuristic below is not consulted at all.
+   */
+  attackSkillIds?: Iterable<number>,
 ): IdentityKeywordCounts {
+  const attacks = attackSkillIds ? new Set(attackSkillIds) : null;
+  const isAttack = (skill: LocalizedSkill): boolean =>
+    attacks ? attacks.has(skill.id) : looksLikeAttackSkill(skill);
   const baseCounts = new Map<IdentityKeywordId, number>();
   const specialCounts = new Map<IdentityKeywordId, number>();
   // Gathered across every skill, defense included: the reload that names the family often sits on
@@ -162,7 +171,7 @@ export function deriveIdentityKeywordsFromText(
     }
   }
   for (const skill of skills) {
-    if (!looksLikeAttackSkill(skill)) continue;
+    if (!isAttack(skill)) continue;
     const found = keywordsInSkillText(skill, specialVariants, specialAmmoFamilies);
     for (const kw of found.base) baseCounts.set(kw, (baseCounts.get(kw) ?? 0) + 1);
     for (const kw of found.special) specialCounts.set(kw, (specialCounts.get(kw) ?? 0) + 1);

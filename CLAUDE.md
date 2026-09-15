@@ -24,6 +24,7 @@ npm run route -- --deck 10101,... --want 9088,... --floors 1-5 --difficulty hard
 | 경로 | 성격 | 규칙 |
 |---|---|---|
 | `data/raw/**` | vendoring된 게임 원본 | 손으로 고치지 않는다. `data:fetch`가 덮어쓴다 |
+| `data/raw/derived/**` | 커뮤니티가 가공한 보조 원본 | 같다. 정적 데이터가 없는 인격을 채우는 데만 쓴다 |
 | `data/curated/**` | 사람이 적는 보정·상수 | 모든 항목에 `_source` 근거를 남긴다 |
 | `public/data/**` | 생성물 (커밋 대상) | 손으로 고치지 않는다. `data:build`로만 만든다 |
 | `src/core/**` | 순수 TS 로직 | React·DOM·fetch 금지(ESLint가 막는다). 결정적이어야 한다 |
@@ -45,6 +46,8 @@ npm run route -- --deck 10101,... --want 9088,... --floors 1-5 --difficulty hard
 
 ## 코드 규칙
 
+- **인격 데이터는 세 층으로 만든다**: 정적 데이터(OpenLethe) > 자동 백필(eldritchtools 파생 미러 + KR 스킬 원문) > 수기(`data/curated/identities.json`). 각 층은 위층에 없는 것만 채우고, **아래층이 위층을 가리면 `data:build`가 멈춘다**. 키워드만은 항상 KR 스킬 원문에서 도출한다 — 파생 미러는 179명 중 10명에서 덜 알기 때문에 교차검증용이다. 자세한 것은 `docs/research/data-sources.md`.
+- **출처가 조용히 멈추는 것이 이 프로젝트의 주된 고장이다.** 검증은 「어느 출처든 아는데 우리가 안 내보내는 인격」을 에러로 잡는다(한 출처만 보면 둘 다 늦을 때 침묵한다). 파생 미러의 `meta.json` 시각으로 vendoring 복사본이 낡았는지도 경고한다.
 - 게임 상수는 코드에 박지 않고 `data/curated/rules.json`에 둔다.
 - 스키마는 `src/core/schema.ts`(Zod) 한 곳에서 정의하고 파이프라인·앱·테스트가 공유한다.
 - UI 문자열은 `src/app/i18n/`에 두고 **한국어 우선**, 영어는 보조로 병기한다.
