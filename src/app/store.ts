@@ -651,9 +651,12 @@ export function encodeShared(state: SharedState): string {
 
 export function decodeShared(hash: string): SharedState | null {
   if (!hash.startsWith(HASH_PREFIX)) return null;
-  const json = lzString.decompressFromEncodedURIComponent(hash.slice(HASH_PREFIX.length));
-  if (!json) return null;
   try {
+    // lz-string does not merely return nothing for a payload it cannot read — on some strings it
+    // throws, which used to escape this function, blow up the effect that consumes the hash and
+    // leave the reader with a blank page instead of a mangled link.
+    const json = lzString.decompressFromEncodedURIComponent(hash.slice(HASH_PREFIX.length));
+    if (!json) return null;
     const parsed = JSON.parse(json) as Partial<SharedState> & { v?: number };
     if (!Array.isArray(parsed.deck) || !Array.isArray(parsed.wanted)) return null;
     const deck = parsed.deck.filter((n): n is number => typeof n === 'number');

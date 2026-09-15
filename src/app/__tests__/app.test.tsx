@@ -134,6 +134,14 @@ describe('share links', () => {
     expect(decoded.options.observedGifts).toEqual([9222]);
   });
 
+  it('survives a mangled payload instead of taking the page down with it', () => {
+    // lz-string throws on some strings rather than returning nothing; the throw used to escape
+    // `decodeShared`, break the effect that reads the hash and leave a blank page.
+    expect(decodeShared('#s=zzzznotalink')).toBeNull();
+    expect(decodeShared('#s=')).toBeNull();
+    expect(decodeShared('#s=' + 'A'.repeat(5000))).toBeNull();
+  });
+
   it('ignores a hash that is not a share link', () => {
     expect(decodeShared('#other')).toBeNull();
     expect(decodeShared('#s=not-valid')).toBeNull();
