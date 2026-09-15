@@ -1,8 +1,18 @@
 /**
- * data/raw + data/curated  ->  public/data/*.json
+ * data/raw + data/curated  ->  public/data
  *
  *   npm run data:build
+ *   npm run data:build -- --season 7  build that season instead of the newest on disk
  *   npm run data:build -- --lenient   tolerate missing static data (names only, tiers null)
+ *
+ * The output is split by what a Mirror Dungeon season owns. `gifts`, `packs`, `rules` and `meta`
+ * go to `public/data/md{n}/`, because a season replaces the gift pool rather than adding to it.
+ * `identities` and `enums` stay at the root: neither looks at the dungeon, so every season shares
+ * them and they keep getting new identities without rebuilding a frozen season.
+ *
+ * Only the season the vendored raw data describes is rebuilt. Older seasons stay on disk exactly
+ * as committed — OpenLethe's capture moves on and cannot produce them again — and `index.json`
+ * lists whatever is there.
  *
  * Output is deterministic: object keys are sorted on write and every array is sorted explicitly,
  * so regenerating without an input change produces no diff. CI enforces that.
@@ -10,9 +20,10 @@
 import { createHash } from 'node:crypto';
 import { readdirSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { hasFlag, readJson, readJsonIfExists, repoPath, writeJsonStable } from './lib/io.ts';
+import { flagValue, hasFlag, readJson, readJsonIfExists, repoPath, writeJsonStable } from './lib/io.ts';
 import {
   SIN_BY_COLOR,
+  listSeasons,
   readCommonData,
   readDropPool,
   readFactionNames,
@@ -44,6 +55,7 @@ import {
   tierFromTags,
   deriveUpgradeOf,
 } from './lib/derive.ts';
+import { OUT, seasonDir } from './lib/out.ts';
 import { parseConditions } from './lib/parse-conditions.ts';
 import { deriveIdentityKeywordsFromText, skillsOfIdentity } from './lib/derive-text.ts';
 import { DERIVED_DIR } from './lib/derived-source.ts';
@@ -74,12 +86,14 @@ import {
   type Identity,
   type Localized,
   type Meta,
+  metaSchema,
+  rulesSchema,
   type Rules,
+  type SeasonEntry,
   type Sin,
   type ThemePack,
 } from '../src/core/schema.ts';
 
-const OUT = repoPath('public/data');
 const lenient = hasFlag('--lenient');
 
 function fail(message: string): never {
@@ -170,10 +184,43 @@ if (!hasStatic && !lenient) {
   fail('data/raw/static is missing. Run `npm run data:fetch`, or pass --lenient to build names only.');
 }
 
-const common = readCommonData();
-if (!common && !lenient) fail('mirror-dungeon-common-data is missing from data/raw/static.');
+const requestedSeason = flagValue('--season') ? Number(flagValue('--season')) : undefined;
+if (requestedSeason !== undefined && !Number.isInteger(requestedSeason)) {
+  fail(`--season takes a dungeon id, not ${String(flagValue('--season'))}.`);
+}
+const common = readCommonData(requestedSeason);
+if (!common && !lenient) {
+  fail(
+    requestedSeason === undefined
+      ? 'mirror-dungeon-common-data is missing from data/raw/static.'
+      : `data/raw/static has no mirror-dungeon-common-data for season ${requestedSeason}. ` +
+          `On disk: ${listSeasons().join(', ') || 'none'}.`,
+  );
+}
 
-const dungeonId = common?.data.currentDungeonId ?? 7;
+const dungeonId = common?.data.currentDungeonId ?? requestedSeason ?? 7;
+
+/**
+ * Per-season constants no source ships. The floors a season opens live here because they are a
+ * game rule, not a derivation: Mirror Dungeon 8 is expected to open 1~5 before the rest. A season
+ * with no file is a full 1~15 one built entirely from its own raw data.
+ */
+interface CuratedSeason {
+  floors?: Rules['floors'];
+  provisional?: boolean;
+  [key: string]: unknown;
+}
+const curatedSeason =
+  readJsonIfExists<CuratedSeason>(repoPath(`data/curated/seasons/md${dungeonId}/rules.json`)) ?? {};
+
+/** What a Mirror Dungeon has opened since MD5, used when a season records nothing of its own. */
+const DEFAULT_FLOORS: Rules['floors'] = {
+  normal: [1, 2, 3, 4, 5],
+  hard: [1, 2, 3, 4, 5],
+  parallel: [6, 7, 8, 9, 10],
+  extreme: [11, 12, 13, 14, 15],
+};
+
 const combineTable = common?.data.egoGiftCombineFixedTable ?? {};
 const hardOnlyIds = new Set(combineTable.nonAcquireableInEasyIds ?? []);
 const dropPool = readDropPool(dungeonId);
@@ -786,12 +833,7 @@ for (const pool of common?.data.startEgoGiftPools ?? []) {
 
 const rules: Rules = {
   dungeonId,
-  floors: {
-    normal: [1, 2, 3, 4, 5],
-    hard: [1, 2, 3, 4, 5],
-    parallel: [6, 7, 8, 9, 10],
-    extreme: [11, 12, 13, 14, 15],
-  },
+  floors: curatedSeason.floors ?? DEFAULT_FLOORS,
   difficulty: { hardIsSticky: true, parallelRequiresAllHard: true, extremeAllowsObservation: false },
   deployment: curated.rules.deployment ?? { max: 6, default: 6, verified: false },
   themePacksOfferedPerFloor: common?.data.themePoolNum ?? 3,
@@ -896,6 +938,15 @@ function readJsonStableBytes(path: string): string {
   return JSON.stringify(readJson(path));
 }
 
+/**
+ * A season is provisional while a selectable pack has no general gift pool: the fallback knows the
+ * pack exists but not what it can drop, and a plan built on that would be quietly wrong. The app
+ * shows the flag rather than presenting half a season as a whole one.
+ */
+const backfilledPackIds = new Set(backfilledPacks.map((pack) => pack.id));
+const packsWithoutGeneralPool = selectablePacks.filter((pack) => backfilledPackIds.has(pack.id));
+const provisional = curatedSeason.provisional === true || packsWithoutGeneralPool.length > 0;
+
 const meta: Meta = {
   dataVersion: `${dungeonId}.${inputsFingerprint()}`,
   schemaVersion: 1,
@@ -924,6 +975,7 @@ const meta: Meta = {
     }),
   ),
   staticDataPresent: hasStatic,
+  provisional,
   counts: {
     gifts: gifts.length,
     packs: packs.length,
@@ -944,12 +996,47 @@ function findDungeonName(lang: 'KR' | 'EN'): string {
 // Write
 // ---------------------------------------------------------------------------
 
-writeJsonStable(join(OUT, 'meta.json'), meta);
+const SEASON_OUT = seasonDir(dungeonId);
+
+// What the season owns.
+writeJsonStable(join(SEASON_OUT, 'meta.json'), meta);
+writeJsonStable(join(SEASON_OUT, 'rules.json'), rules);
+writeJsonStable(join(SEASON_OUT, 'gifts.json'), gifts);
+writeJsonStable(join(SEASON_OUT, 'packs.json'), packs);
+// What every season shares. Neither looks at the dungeon, so a frozen season keeps getting new
+// identities instead of going stale with the build that made it.
 writeJsonStable(join(OUT, 'enums.json'), enums);
-writeJsonStable(join(OUT, 'rules.json'), rules);
-writeJsonStable(join(OUT, 'gifts.json'), gifts);
-writeJsonStable(join(OUT, 'packs.json'), packs);
 writeJsonStable(join(OUT, 'identities.json'), identities);
+writeSeasonIndex();
+
+/**
+ * Rebuild `index.json` from the season directories on disk — the one just written and the frozen
+ * ones alike — so the app can ask what exists instead of probing for directory names.
+ */
+function writeSeasonIndex(): void {
+  const seasons: SeasonEntry[] = readdirSync(OUT)
+    .filter((entry) => /^md\d+$/.test(entry) && statSync(join(OUT, entry)).isDirectory())
+    .map((entry) => {
+      const seasonMeta = metaSchema.parse(readJson(join(OUT, entry, 'meta.json')));
+      const seasonRules = rulesSchema.parse(readJson(join(OUT, entry, 'rules.json')));
+      return {
+        id: seasonMeta.dungeon.id,
+        name: seasonMeta.dungeon.name,
+        dataVersion: seasonMeta.dataVersion,
+        lastFloor: Math.max(...Object.values(seasonRules.floors).flat()),
+        provisional: seasonMeta.provisional,
+      };
+    })
+    .sort((a, b) => a.id - b.id);
+  const newest = seasons[seasons.length - 1];
+  if (!newest) fail('no season directories were written.');
+  // The app opens the newest season whose data is whole. A new season arrives knowing only half
+  // of itself — no general gift pool — and a half-known season is something to step into on
+  // purpose, not the page everyone lands on. It becomes the default the moment it is complete.
+  const complete = seasons.filter((entry) => !entry.provisional);
+  const opens = complete[complete.length - 1] ?? newest;
+  writeJsonStable(join(OUT, 'index.json'), { default: opens.id, seasons });
+}
 
 const conditionCounts = gifts.reduce(
   (acc, g) => {

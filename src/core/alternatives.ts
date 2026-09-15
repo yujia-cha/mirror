@@ -50,7 +50,7 @@ export function planAlternatives(
   for (const giftId of conflicts) {
     const packs = (indexes.packsByGift.get(giftId) ?? []).filter((id) => !banned.has(id));
     for (const floor of base.floors) {
-      const offered = indexes.packsByFloor[modeForFloor(floor.floor, options)].get(floor.floor) ?? [];
+      const offered = indexes.packsByFloor[modeForFloor(floor.floor, options, indexes)].get(floor.floor) ?? [];
       const pinned = options.pinnedPacks[floor.floor];
       if (packs.some((id) => offered.includes(id) && (pinned === undefined || pinned === id))) contested.add(floor.floor);
     }

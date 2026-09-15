@@ -403,6 +403,12 @@ export const metaSchema = z.object({
     }),
   ),
   staticDataPresent: z.boolean(),
+  /**
+   * True while this season is built from sources that do not know all of it yet — a new Mirror
+   * Dungeon whose per-pack general gift pool, prices or constants have not been extracted. The app
+   * says so instead of presenting a half-right plan as if it were whole.
+   */
+  provisional: z.boolean().default(false),
   counts: z.object({
     gifts: z.number().int(),
     packs: z.number().int(),
@@ -412,6 +418,29 @@ export const metaSchema = z.object({
 });
 
 export type Meta = z.infer<typeof metaSchema>;
+
+/**
+ * `public/data/index.json`: which seasons are on disk and which one to open by default.
+ *
+ * The app asks this instead of guessing at directory names. A season whose static data has been
+ * replaced upstream stays here as a frozen build — the pipeline rebuilds only the season its raw
+ * data describes and leaves the others exactly as committed.
+ */
+export const seasonIndexSchema = z.object({
+  default: z.number().int(),
+  seasons: z.array(
+    z.object({
+      id: z.number().int(),
+      name: localizedSchema,
+      dataVersion: z.string(),
+      lastFloor: floorSchema,
+      provisional: z.boolean(),
+    }),
+  ),
+});
+
+export type SeasonIndex = z.infer<typeof seasonIndexSchema>;
+export type SeasonEntry = SeasonIndex['seasons'][number];
 
 export const giftsFileSchema = z.array(giftSchema);
 export const packsFileSchema = z.array(themePackSchema);

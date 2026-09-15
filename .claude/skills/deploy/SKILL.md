@@ -21,7 +21,7 @@ description: Deploy this app (Cloudflare Pages by default, GitHub Pages as a man
 저장소에는 게임 이미지가 없다(Project Moon 에셋 재배포 회피). 앱은 `VITE_ASSET_BASE`가 있으면 `{base}/gifts/{icon}.png`, `{base}/packs/{sprite}.png`를 시도하고 실패하면 회색 플레이스홀더로 돌아간다.
 
 1. R2 버킷(예: `mirror-assets`) 생성 → 공개 접근(r2.dev 또는 커스텀 도메인) 활성화.
-2. `gifts/{icon}.png` — `icon`은 `public/data/gifts.json`의 `icon`(대부분 id와 같다). `packs/{sprite}.png` — `sprite`는 `packs.json`의 `sprite`(`Burn_hard` 등).
+2. `gifts/{icon}.png` — `icon`은 `public/data/md{n}/gifts.json`의 `icon`(대부분 id와 같다). `packs/{sprite}.png` — `sprite`는 `packs.json`의 `sprite`(`Burn_hard` 등).
 3. Pages 프로젝트 환경 변수에 `VITE_ASSET_BASE=https://<버킷 공개 주소>`를 넣고 재배포. `<img>`만 쓰므로 CORS 설정은 필요 없다.
 
 ## GitHub Pages 예비 경로

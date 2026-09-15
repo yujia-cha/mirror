@@ -28,9 +28,12 @@ import {
   readDerivedPacks,
   readDerivedStartPools,
 } from '../scripts/lib/derived-md.ts';
+import { defaultSeason, outPath } from '../scripts/lib/out.ts';
 
+/** Whatever season `index.json` opens: the one the vendored raw data describes. */
+const season = defaultSeason() ?? 7;
 const read = (name: string): unknown =>
-  JSON.parse(readFileSync(resolve(process.cwd(), 'public/data', name), 'utf8'));
+  JSON.parse(readFileSync(outPath(name.replace(/\.json$/, '') as Parameters<typeof outPath>[0], season), 'utf8'));
 const packs = packsFileSchema.parse(read('packs.json'));
 const gifts = giftsFileSchema.parse(read('gifts.json'));
 const rules = rulesSchema.parse(read('rules.json'));

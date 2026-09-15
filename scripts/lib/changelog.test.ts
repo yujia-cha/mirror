@@ -16,6 +16,7 @@ function meta(overrides: Partial<Meta> = {}): Meta {
       },
     },
     staticDataPresent: true,
+    provisional: false,
     counts: { gifts: 446, packs: 116, identities: 183, fusionRecipes: 68 },
     ...overrides,
   };

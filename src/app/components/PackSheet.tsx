@@ -206,7 +206,7 @@ function EnterActions({ packId, ctx }: { packId: number; ctx: PackContext }) {
   // A floor holds one pack. The stage hides every way in once a floor is entered; the sheet used
   // to keep offering one, and taking it silently replaced the record already there.
   const offeredHere =
-    ctx.run.enteredHere === null && (ctx.indexes.packsByFloor[bandMode(ctx.run.stageFloor)].get(ctx.run.stageFloor) ?? []).includes(packId);
+    ctx.run.enteredHere === null && (ctx.indexes.packsByFloor[bandMode(ctx.indexes, ctx.run.stageFloor)].get(ctx.run.stageFloor) ?? []).includes(packId);
   return (
     <span className="flex flex-wrap items-center gap-1.5" data-testid="enter-actions">
       {visited !== null ? (

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshCw, TriangleAlert, Hourglass } from 'lucide-react';
-import type { GameData } from '../core/schema.ts';
+import type { GameData, SeasonIndex } from '../core/schema.ts';
 import { analyseDeck, buildIndexes } from '../core/index.ts';
-import { loadGameData } from '../core/data/load.ts';
+import { loadGameData, loadSeasonIndex } from '../core/data/load.ts';
 import { t } from './i18n.ts';
 import { decodeShared, encodeShared, useApp } from './store.ts';
 import { defaultDeck } from './lib/default-deck.ts';
+import { lastFloorOf } from './lib/stage.ts';
 import { Button, Card, Skeleton, Toast } from './components/ui.tsx';
 import { AppShell } from './shell/AppShell.tsx';
 
@@ -20,15 +21,19 @@ export function App() {
   const setLang = useApp((s) => s.setLang);
   const toggleDark = useApp((s) => s.toggleDark);
   const applyShared = useApp((s) => s.applyShared);
-  const reconcile = useApp((s) => s.reconcile);
   const setDeck = useApp((s) => s.setDeck);
+  const season = useApp((s) => s.season);
+  const setSeason = useApp((s) => s.setSeason);
+  const adoptSeason = useApp((s) => s.adoptSeason);
 
+  const [index, setIndex] = useState<SeasonIndex | null>(null);
   const [data, setData] = useState<GameData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [sharedCopied, setSharedCopied] = useState(false);
   const [linkBroken, setLinkBroken] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
+  const [dropped, setDropped] = useState<{ gifts: number; packs: number } | null>(null);
 
   // A share link must win over whatever localStorage remembers, or the link would not work. The
   // hash is consumed once and dropped from the URL, or a later reload would undo the user's edits.
@@ -53,12 +58,13 @@ export function App() {
     document.documentElement.lang = lang;
   }, [lang]);
 
+  // Which seasons are published is data, not a build-time constant, so the index comes first.
   useEffect(() => {
     let cancelled = false;
     setError(null);
-    loadGameData(import.meta.env.BASE_URL, { validate: import.meta.env.DEV })
+    loadSeasonIndex(import.meta.env.BASE_URL)
       .then((loaded) => {
-        if (!cancelled) setData(loaded);
+        if (!cancelled) setIndex(loaded);
       })
       .catch((cause: unknown) => {
         if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
@@ -68,6 +74,47 @@ export function App() {
     };
   }, [attempt]);
 
+  // A season the saved state or a share link names, while it is still published; otherwise the one
+  // the index opens. A season that has been withdrawn must not leave the app with nothing to read.
+  const openSeason = useMemo(() => {
+    if (!index) return null;
+    return season !== undefined && index.seasons.some((entry) => entry.id === season) ? season : index.default;
+  }, [index, season]);
+
+  useEffect(() => {
+    if (openSeason === null) return undefined;
+    let cancelled = false;
+    setError(null);
+    setData(null);
+    loadGameData(import.meta.env.BASE_URL, { validate: import.meta.env.DEV, season: openSeason })
+      .then((loaded) => {
+        if (cancelled) return;
+        // Goals this season never heard of cannot be drawn or planned, so they go — counted, not
+        // quietly (the same rule the formation code follows for identities it does not know).
+        const counts = adoptSeason({
+          season: openSeason,
+          lastFloor: lastFloorOf(loaded),
+          giftIds: new Set(loaded.gifts.map((gift) => gift.id)),
+          packIds: new Set(loaded.packs.map((pack) => pack.id)),
+        });
+        setData(loaded);
+        setDropped(counts.gifts + counts.packs > 0 ? counts : null);
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [openSeason, attempt, adoptSeason]);
+
+  // The dropped-goals notice is a report, not a dialog: it says its piece and goes.
+  useEffect(() => {
+    if (!dropped) return undefined;
+    const timer = window.setTimeout(() => setDropped(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [dropped]);
+
   // A first visit starts from the deck everyone owns; a share link or a saved deck arrives first
   // and wins. Seeding happens once, so emptying the deck by hand is not undone on the next render.
   const seeded = useRef(false);
@@ -75,11 +122,10 @@ export function App() {
   useEffect(() => {
     if (!data || !indexes || seeded.current) return;
     seeded.current = true;
-    // A link or a saved state can outlive a data refresh; anything this season cannot resolve goes
-    // before it reaches the screen.
-    reconcile({ gift: (id) => indexes.giftById.has(id), pack: (id) => indexes.packById.has(id) });
+    // Ids this season cannot resolve are already gone: `adoptSeason` runs on every load, counts
+    // what it dropped and reports it above.
     if (useApp.getState().deck.length === 0) setDeck(defaultDeck(data), data.rules.deployment.default);
-  }, [data, indexes, reconcile, setDeck]);
+  }, [data, indexes, setDeck]);
 
   const stats = useMemo(
     () => (data && indexes ? analyseDeck(deck, indexes, data.rules.deployment, deployed) : null),
@@ -87,7 +133,7 @@ export function App() {
   );
 
   const share = async (): Promise<void> => {
-    const url = `${window.location.origin}${window.location.pathname}${encodeShared({ deck, deployed, wanted, priority, fusionGoal, options: useApp.getState().options })}`;
+    const url = `${window.location.origin}${window.location.pathname}${encodeShared({ season: useApp.getState().season, deck, deployed, wanted, priority, fusionGoal, options: useApp.getState().options })}`;
     // Plain http and an unfocused document both leave `navigator.clipboard` unusable. Saying so
     // beats an unhandled rejection nobody sees.
     try {
@@ -147,8 +193,19 @@ export function App() {
 
   return (
     <>
-      <AppShell data={data} indexes={indexes} stats={stats} lang={lang} dark={dark} onShare={share} onToggleLang={() => setLang(lang === 'ko' ? 'en' : 'ko')} onToggleDark={toggleDark} />
-      {sharedCopied ? <Toast>{t('shared', lang)}</Toast> : null}
+      <AppShell data={data} indexes={indexes} stats={stats} lang={lang} dark={dark} seasons={index?.seasons ?? []} onSeason={setSeason} onShare={share} onToggleLang={() => setLang(lang === 'ko' ? 'en' : 'ko')} onToggleDark={toggleDark} />
+      {sharedCopied ? (
+        <Toast>{t('shared', lang)}</Toast>
+      ) : dropped ? (
+        <Toast>
+          {[
+            dropped.gifts > 0 ? t('seasonDroppedGifts', lang, { n: dropped.gifts }) : null,
+            dropped.packs > 0 ? t('seasonDroppedPacks', lang, { n: dropped.packs }) : null,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </Toast>
+      ) : null}
       {copyFailed ? <Toast tone="alert">{t('copyFailed', lang)}</Toast> : null}
       {linkBroken ? <Toast tone="alert">{t('linkBroken', lang)}</Toast> : null}
     </>

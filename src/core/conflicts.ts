@@ -51,7 +51,7 @@ export function conflictGroups(plan: RoutePlan, input: PlanInput, data: GameData
   const banned = new Set(options.bannedPacks);
   const preferred = new Set(options.preferredPacks);
   const roots = wantedRoots(input, data, indexes);
-  const offeredOn = (floor: number): number[] => indexes.packsByFloor[modeForFloor(floor, options)].get(floor) ?? [];
+  const offeredOn = (floor: number): number[] => indexes.packsByFloor[modeForFloor(floor, options, indexes)].get(floor) ?? [];
   const wantedIds = new Set(input.wanted.map((w) => w.giftId));
 
   // Requirements the wanted set actually routes for, so a pack's gift list stays to the point.

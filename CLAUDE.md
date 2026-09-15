@@ -27,7 +27,7 @@ npm run route -- --deck 10101,... --want 9088,... --floors 1-5 --difficulty hard
 | `data/raw/**` | vendoring된 게임 원본 | 손으로 고치지 않는다. `data:fetch`가 덮어쓴다 |
 | `data/raw/derived/**` | 커뮤니티가 가공한 보조 원본 | 같다. 정적 데이터가 없는 인격을 채우는 데만 쓴다 |
 | `data/curated/**` | 사람이 적는 보정·상수 | 모든 항목에 `_source` 근거를 남긴다 |
-| `public/data/**` | 생성물 (커밋 대상) | 손으로 고치지 않는다. `data:build`로만 만든다 |
+| `public/data/**` | 생성물 (커밋 대상) | 손으로 고치지 않는다. `data:build`로만 만든다. 시즌별 `md{n}/`과 공용 파일로 갈린다 |
 | `src/core/**` | 순수 TS 로직 | React·DOM·fetch 금지(ESLint가 막는다). 결정적이어야 한다 |
 | `src/app/**` | React UI | 계획 로직을 재구현하지 않고 `planRoute()`를 호출한다 |
 | `scripts/**` | tsx로 실행하는 파이프라인 | 출력은 항상 결정적(정렬·고정 키 순서) |
@@ -48,12 +48,14 @@ npm run route -- --deck 10101,... --want 9088,... --floors 1-5 --difficulty hard
 ## 코드 규칙
 
 - **인격 데이터는 세 층으로 만든다**: 정적 데이터(OpenLethe) > 자동 백필(eldritchtools 파생 미러 + KR 스킬 원문) > 수기(`data/curated/identities.json`). 각 층은 위층에 없는 것만 채우고, **아래층이 위층을 가리면 `data:build`가 멈춘다**. 키워드만은 항상 KR 스킬 원문에서 도출한다 — 파생 미러는 179명 중 10명에서 덜 알기 때문에 교차검증용이다. 자세한 것은 `docs/research/data-sources.md`.
+- **생성물은 시즌으로 갈린다**: 시즌은 기프트 풀을 더하지 않고 **교체**하므로 `meta`·`rules`·`gifts`·`packs`는 `public/data/md{n}/`에, 거던을 보지 않는 `enums`·`identities`는 루트에 공유로 둔다. `index.json`이 시즌 목록과 기본 시즌을 말하고 앱은 그것만 본다. **한 번에 한 시즌만 굽는다** — `data/raw/static`은 한 시즌의 스냅숏이라, 새 스냅숏이 오면 이전 시즌은 다시 구울 수 없고 **커밋된 채로 얼어 있다**. **층 범위는 `rules.floors` 한 곳에서** 오고(`data/curated/seasons/md{n}/rules.json`), 코드에 6·11을 박지 않는다 — core는 `indexes.fixedModeByFloor`, 앱은 `store.lastFloor`를 본다. `MAX_FLOOR_EVER`는 저장·공유 상태의 상한일 뿐이다. 반쯤 아는 시즌은 `meta.provisional`이고, **기본 시즌이 되지 않으며** 검증이 범용 풀 없음을 에러 대신 경고로 낮춘다.
 - **거울 던전 데이터도 세 층이다**: 정적(OpenLethe) > 폴백(eldritchtools를 원본 모양으로 합성, `scripts/lib/derived-md.ts`) > 직접 추출(`npm run data:import`). OpenLethe의 MD 캡처는 얼어 있어 새 시즌이 오지 않으므로, 폴백이 팩·층·전용 기프트·조합·시작 풀을 메운다. **팩별 범용 기프트 풀만은 어디서도 못 얻는다** — 추측하지 않고 `data:validate`가 에러로 막는다. 시즌 선택은 `currentDungeonId`가 가장 큰 파일을 고르는 데이터 주도라, md8 파일이 어떤 경로로든 들어오면 자동으로 집힌다.
 - **출처가 조용히 멈추는 것이 이 프로젝트의 주된 고장이다.** 검증은 「어느 출처든 아는데 우리가 안 내보내는 인격」을 에러로 잡는다(한 출처만 보면 둘 다 늦을 때 침묵한다). 파생 미러의 `meta.json` 시각으로 vendoring 복사본이 낡았는지도 경고한다.
 - 게임 상수는 코드에 박지 않고 `data/curated/rules.json`에 둔다.
 - 스키마는 `src/core/schema.ts`(Zod) 한 곳에서 정의하고 파이프라인·앱·테스트가 공유한다.
 - UI 문자열은 `src/app/i18n/`에 두고 **한국어 우선**, 영어는 보조로 병기한다.
 - 정적 파일 참조는 항상 `import.meta.env.BASE_URL`을 붙인다(GitHub Pages 예비 경로가 하위 경로라서).
+- **시즌 전환은 푸터에서 한다**(`AppShell`의 데이터 버전 줄). 시즌이 하나뿐이면 지금처럼 이름만 적고 선택 컨트롤을 그리지 않는다. 시즌을 바꾸면 런을 버리고, 새 시즌이 **모르는 id의** 기프트·팩 설정만 빼며 **몇 개를 뺐는지 말한다**(`adoptSeason`). 시즌이 아는데 못 주는 기프트는 그대로 두고 플래너가 미해결로 설명한다. 공유 링크는 시즌을 `s`로 싣고, 없는 링크(`v` < 5)는 MD7이다.
 - 게임 이미지는 저장소에 두지 않는다. 아이콘·팩 이미지는 플레이스홀더이고 `VITE_ASSET_BASE`가 있을 때만 외부에서 불러온다.
 - 계획이 불가능한 요구는 조용히 버리지 않고 `unresolved`에 이유와 함께 남긴다.
 - 팩 단위 선택(`preferredPacks`·`bannedPacks`·`pinnedPacks`)은 core 옵션이다. UI는 팩 충돌 그룹(`conflictGroups`)에서 팩째로 포함·포기를 고르고, 루트는 노선도(세그먼트 = 같은 창의 팩 묶음)로 그린다.

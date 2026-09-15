@@ -47,15 +47,19 @@ export function plannedGifts(wanted: number[], priority: PriorityMap, fusionGoal
   }));
 }
 
-export function planInputFor(state: {
-  deck: number[];
-  deployed: number[];
-  wanted: number[];
-  priority: PriorityMap;
-  options: PlanOptions;
-  fusionGoal?: FusionGoalMap;
-  run?: RunState;
-}): PlanInput {
+export function planInputFor(
+  state: {
+    deck: number[];
+    deployed: number[];
+    wanted: number[];
+    priority: PriorityMap;
+    options: PlanOptions;
+    fusionGoal?: FusionGoalMap;
+    run?: RunState;
+  },
+  /** How far this season's run goes. Without it the saved bound stands, which is the longest run. */
+  season: { lastFloor?: number } = {},
+): PlanInput {
   const run = state.run;
   // The run pins the packs already entered, moves the plan to the frontier floor, and settles
   // the gifts the player has recorded as collected or missed.
@@ -70,6 +74,11 @@ export function planInputFor(state: {
   return {
     deck: state.deck,
     wanted: plannedGifts(state.wanted, state.priority, state.fusionGoal ?? {}),
-    options: { ...state.options, ...progress, deployed: state.deployed },
+    options: {
+      ...state.options,
+      ...progress,
+      ...(season.lastFloor === undefined ? {} : { lastFloor: season.lastFloor }),
+      deployed: state.deployed,
+    },
   };
 }

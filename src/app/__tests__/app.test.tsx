@@ -32,8 +32,12 @@ import { keywordName } from '../format.ts';
 import { observable as observableGift, planRoute } from '../../core/index.ts';
 
 vi.mock('../../core/data/load.ts', async () => {
-  const { loadGameDataFromDisk } = await import('../../core/data/node.ts');
-  return { loadGameData: async () => loadGameDataFromDisk() };
+  const { loadGameDataFromDisk, readSeasonIndex } = await import('../../core/data/node.ts');
+  return {
+    loadGameData: async (_base?: string, options?: { season?: number }) =>
+      loadGameDataFromDisk(undefined, options?.season),
+    loadSeasonIndex: async () => readSeasonIndex(),
+  };
 });
 
 const data = loadGameDataFromDisk();
@@ -96,13 +100,25 @@ describe('share links', () => {
     useApp.getState().visitPack(1402, 4, { got: [9283] });
     const hash = encodeShared({ deck: [10101], deployed: [10101], wanted: [9088], priority: {}, fusionGoal: { 9088: 'resultOnly' }, options: { ...appDefaultOptions(), currentFloor: 4, ownedGifts: [9283] } });
     const raw = JSON.parse(lzString.decompressFromEncodedURIComponent(hash.slice(3))!) as Record<string, unknown>;
-    expect(raw.v).toBe(4);
+    expect(raw.v).toBe(5);
     expect('run' in raw).toBe(false);
     expect(raw.fusionGoal).toEqual({ 9088: 'resultOnly' });
     const decoded = decodeShared(hash)!;
     expect(decoded.fusionGoal).toEqual({ 9088: 'resultOnly' });
     expect(decoded.options).toMatchObject({ currentFloor: 1, ownedGifts: [], unobtainableGifts: [] });
     expect(sanitizeOptions({ currentFloor: 9, unobtainableGifts: [1] })).toMatchObject({ currentFloor: 1, unobtainableGifts: [] });
+  });
+
+  it('carries the season, and reads a link made before seasons as Mirror Dungeon 7', () => {
+    const hash = encodeShared({ season: 8, deck: [10101], deployed: [10101], wanted: [9088], priority: {}, fusionGoal: {}, options: appDefaultOptions() });
+    const raw = JSON.parse(lzString.decompressFromEncodedURIComponent(hash.slice(3))!) as Record<string, unknown>;
+    expect(raw.s).toBe(8);
+    expect(decodeShared(hash)!.season).toBe(8);
+    // A v4 link could only have been MD7; the version field, written since v1, is what says so.
+    const old = lzString.compressToEncodedURIComponent(
+      JSON.stringify({ v: 4, deck: [10101], deployed: [10101], wanted: [9283], priority: {}, options: appDefaultOptions() }),
+    );
+    expect(decodeShared(`#s=${old}`)!.season).toBe(7);
   });
 
   it('plans every link for floors 1-15 on Hard and keeps priorities only for wanted gifts', () => {
@@ -164,7 +180,14 @@ describe('share links', () => {
 });
 
 describe('state that outlived the game data', () => {
-  const known = { gift: (id: number) => indexes.giftById.has(id), pack: (id: number) => indexes.packById.has(id) };
+  // `adoptSeason` runs on every load, so this is the one gate everything stale passes through.
+  const adopt = () =>
+    useApp.getState().adoptSeason({
+      season: data.meta.dungeon.id,
+      lastFloor: 15,
+      giftIds: new Set(data.gifts.map((gift) => gift.id)),
+      packIds: new Set(data.packs.map((pack) => pack.id)),
+    });
 
   it('drops ids this season cannot resolve, from the goals, the options and the run alike', () => {
     useApp.setState({
@@ -174,13 +197,15 @@ describe('state that outlived the game data', () => {
       options: { ...appDefaultOptions(), observedGifts: [9267, 999999], bannedPacks: [1402, 888888], preferredPacks: [888888], pinnedPacks: { 3: 888888, 4: 1402 } },
       run: { currentFloor: 3, stageFloor: 2, visits: { 1: 888888, 2: 1402 }, giftStatus: { 9267: 'got', 999999: 'got' }, startGifts: [999999] },
     });
-    useApp.getState().reconcile(known);
+    const counts = adopt();
     const state = useApp.getState();
     expect(state.wanted).toEqual([9267]);
     expect(state.priority).toEqual({});
     expect(state.fusionGoal).toEqual({});
     expect(state.options).toMatchObject({ observedGifts: [9267], bannedPacks: [1402], preferredPacks: [], pinnedPacks: { 4: 1402 } });
+    // The run is kept — it still fits the season — but nothing unresolvable rides along in it.
     expect(state.run).toMatchObject({ visits: { 2: 1402 }, giftStatus: { 9267: 'got' }, startGifts: [] });
+    expect(counts.gifts).toBe(1);
   });
 
   it('keeps a pin only for a gift that is still a goal, from a link and from a saved state', () => {
@@ -188,7 +213,8 @@ describe('state that outlived the game data', () => {
     // used to spend observation budget on it and then lose it without a word.
     useApp.getState().applyShared({ deck: LCB_DECK, deployed: LCB_DECK.slice(0, 6), wanted: [9267], priority: {}, options: { ...appDefaultOptions(), observedGifts: [9267, 9283] } });
     expect(useApp.getState().options.observedGifts).toEqual([9267]);
-    useApp.getState().reconcile(known);
+    useApp.setState({ options: { ...useApp.getState().options, observedGifts: [9267, 9283] } });
+    adopt();
     expect(useApp.getState().options.observedGifts).toEqual([9267]);
   });
 });
@@ -653,7 +679,20 @@ describe('text the screen gets wrong', () => {
   it('names the dungeon in the chosen language, not always in Korean', () => {
     stubMatchMedia(true);
     useApp.setState({ lang: 'en' });
-    render(<AppShell data={data} indexes={indexes} stats={statsFor(LCB_DECK)} lang="en" dark onShare={() => undefined} onToggleLang={() => undefined} onToggleDark={() => undefined} />);
+    render(
+      <AppShell
+        data={data}
+        indexes={indexes}
+        stats={statsFor(LCB_DECK)}
+        lang="en"
+        dark
+        seasons={[]}
+        onSeason={() => undefined}
+        onShare={() => undefined}
+        onToggleLang={() => undefined}
+        onToggleDark={() => undefined}
+      />,
+    );
     expect(screen.getByRole('contentinfo')).toHaveTextContent(data.meta.dungeon.name.en);
     expect(screen.getByRole('contentinfo')).not.toHaveTextContent(data.meta.dungeon.name.ko);
   });
@@ -1280,9 +1319,16 @@ describe('RoutePlanPanel', () => {
 });
 
 describe('AppShell', () => {
-  const renderShell = () => {
+  const seasonEntry = (id: number, name: string) => ({
+    id,
+    name: { ko: name, en: name },
+    dataVersion: `${id}.0`,
+    lastFloor: 15,
+    provisional: false,
+  });
+  const renderShell = (seasons = [seasonEntry(data.meta.dungeon.id, data.meta.dungeon.name.ko)], onSeason = () => undefined) => {
     const { deck, deployed } = useApp.getState();
-    return render(<AppShell data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" dark onShare={() => undefined} onToggleLang={() => undefined} onToggleDark={() => undefined} />);
+    return render(<AppShell data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" dark seasons={seasons} onSeason={onSeason} onShare={() => undefined} onToggleLang={() => undefined} onToggleDark={() => undefined} />);
   };
 
   it('opens each panel as its own full-screen page on a phone, one at a time, and remembers the tab', async () => {
