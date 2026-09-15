@@ -174,13 +174,18 @@ export function Notice({ children, icon, strong = false }: { children: ReactNode
   );
 }
 
-export function Toast({ children }: { children: ReactNode }) {
+export function Toast({ children, tone = 'done' }: { children: ReactNode; tone?: 'done' | 'alert' }) {
+  const alert = tone === 'alert';
   return (
     <div
       role="status"
-      className="fixed bottom-[68px] left-4 right-4 z-30 flex items-center gap-2 rounded-md bg-ink px-3.5 py-2.5 text-sm font-medium text-ink-fg shadow-pop lg:bottom-6 lg:left-1/2 lg:right-auto lg:-translate-x-1/2"
+      data-testid="toast"
+      data-tone={tone}
+      className={`fixed bottom-[68px] left-4 right-4 z-30 flex items-center gap-2 rounded-md px-3.5 py-2.5 text-sm font-medium shadow-pop lg:bottom-6 lg:left-1/2 lg:right-auto lg:-translate-x-1/2 ${
+        alert ? 'border-[1.5px] border-fg bg-surface text-fg' : 'bg-ink text-ink-fg'
+      }`}
     >
-      <Check size={14} aria-hidden />
+      {alert ? <TriangleAlert size={14} aria-hidden /> : <Check size={14} aria-hidden />}
       {children}
     </div>
   );

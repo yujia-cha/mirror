@@ -10,7 +10,7 @@ import { conditionText, reachedTierText } from '../condition-text.ts';
 import { renderEffect } from '../format.ts';
 import { pick, t, type Lang } from '../i18n.ts';
 import { conditionShort } from '../lib/gift-condition.ts';
-import type { Entanglement } from '../lib/entangle.ts';
+import type { Block, Entanglement } from '../lib/entangle.ts';
 import { judgementOf } from '../lib/judgement.ts';
 import { badgeFor } from '../lib/labels.ts';
 import { priorityOf, type Priority } from '../lib/plan-input.ts';
@@ -72,6 +72,7 @@ export function GiftDetailSheet({
   indexes,
   lang,
   onToggleWanted,
+  blocked,
   onClose,
 }: {
   gift: Gift;
@@ -80,8 +81,10 @@ export function GiftDetailSheet({
   data: GameData;
   indexes: GameIndexes;
   lang: Lang;
-  /** Selecting from here follows the same rule as the grid: an upgrade child comes along. */
+  /** Selecting from here follows the same rule as the grid: what the goal carries comes along. */
   onToggleWanted: (gift: Gift) => void;
+  /** Why this gift cannot be made a goal right now, if the current goals already carry it. */
+  blocked?: Block;
   onClose: () => void;
 }) {
   const wanted = useApp((s) => s.wanted);
@@ -101,6 +104,7 @@ export function GiftDetailSheet({
   const canObserve = observable(gift, data.rules);
   const observeFull = !pinned && observedGifts.length >= observeMax;
   const hasRecipe = Boolean(gift.fusion && (gift.fusion.recipes.length > 0 || gift.fusion.mixed));
+  const blockedBy = blocked && !selected ? t('giftBlockedIncluded', lang, { name: pick(indexes.giftById.get(blocked.by)?.name, lang) }) : undefined;
 
   return (
     <DetailSurface mode="sheet" label={name} closeLabel={t('routeClose', lang)} onClose={onClose}>
@@ -114,10 +118,18 @@ export function GiftDetailSheet({
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
-          <Button variant={selected ? 'secondary' : 'primary'} onClick={() => onToggleWanted(gift)}>
+          {/* The grid disables a blocked tile; the name beside it was never disabled, so the sheet
+              behind it used to be a way around the lock. */}
+          <Button
+            variant={selected ? 'secondary' : 'primary'}
+            onClick={() => onToggleWanted(gift)}
+            disabled={blockedBy !== undefined}
+            title={blockedBy}
+          >
             {selected ? <Check size={13} aria-hidden /> : null}
             {t(selected ? 'giftUnselect' : 'giftSelect', lang)}
           </Button>
+          {blockedBy ? <span className="text-xs text-fg-2">{blockedBy}</span> : null}
           {selected ? (
             <>
               <Button

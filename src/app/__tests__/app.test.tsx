@@ -54,6 +54,9 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  // `stubMatchMedia` defines a property rather than a mock, so it would otherwise leak into the
+  // next test and turn a phone-layout case into a desktop one.
+  Reflect.deleteProperty(window, 'matchMedia');
 });
 
 /** Render a piece of the shell with the plan computed from the store, as the shell does. */
@@ -149,6 +152,36 @@ describe('share links', () => {
     render(<App />);
     await waitFor(() => expect(useApp.getState().wanted).toEqual([9283]));
     expect(window.location.hash).toBe('');
+  });
+});
+
+describe('state that outlived the game data', () => {
+  const known = { gift: (id: number) => indexes.giftById.has(id), pack: (id: number) => indexes.packById.has(id) };
+
+  it('drops ids this season cannot resolve, from the goals, the options and the run alike', () => {
+    useApp.setState({
+      wanted: [9267, 999999],
+      priority: { 999999: 'must' },
+      fusionGoal: { 999999: 'resultOnly' },
+      options: { ...appDefaultOptions(), observedGifts: [9267, 999999], bannedPacks: [1402, 888888], preferredPacks: [888888], pinnedPacks: { 3: 888888, 4: 1402 } },
+      run: { currentFloor: 3, stageFloor: 2, visits: { 1: 888888, 2: 1402 }, giftStatus: { 9267: 'got', 999999: 'got' }, startGifts: [999999] },
+    });
+    useApp.getState().reconcile(known);
+    const state = useApp.getState();
+    expect(state.wanted).toEqual([9267]);
+    expect(state.priority).toEqual({});
+    expect(state.fusionGoal).toEqual({});
+    expect(state.options).toMatchObject({ observedGifts: [9267], bannedPacks: [1402], preferredPacks: [], pinnedPacks: { 4: 1402 } });
+    expect(state.run).toMatchObject({ visits: { 2: 1402 }, giftStatus: { 9267: 'got' }, startGifts: [] });
+  });
+
+  it('keeps a pin only for a gift that is still a goal, from a link and from a saved state', () => {
+    // A pin is a decision about a goal, like a priority — a link carrying one for anything else
+    // used to spend observation budget on it and then lose it without a word.
+    useApp.getState().applyShared({ deck: LCB_DECK, deployed: LCB_DECK.slice(0, 6), wanted: [9267], priority: {}, options: { ...appDefaultOptions(), observedGifts: [9267, 9283] } });
+    expect(useApp.getState().options.observedGifts).toEqual([9267]);
+    useApp.getState().reconcile(known);
+    expect(useApp.getState().options.observedGifts).toEqual([9267]);
   });
 });
 
@@ -590,6 +623,34 @@ describe('GiftIcon', () => {
   });
 });
 
+describe('text the screen gets wrong', () => {
+  it('writes the EX tier as EX, in the icon and in the tier filter', () => {
+    // 9799 어떤 철학 and 9800 부 are the season's two obtainable EX gifts; `T{tier}` read 「TEX」.
+    const ex = indexes.giftById.get(9799)!;
+    expect(ex.tier).toBe('EX');
+    render(<GiftIcon gift={ex} size={32} lang="ko" />);
+    expect(screen.getByTestId('gift-icon')).toHaveTextContent('EX');
+    expect(screen.getByTestId('gift-icon').textContent).not.toContain('TEX');
+    useApp.getState().setDeck(BURN_DECK, 7);
+    const { deck, deployed } = useApp.getState();
+    render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
+    const tiers = within(screen.getByLabelText('등급')).getAllByRole('option').map((o) => o.textContent);
+    expect(tiers).toContain('EX');
+    expect(tiers).not.toContain('TEX');
+    // The price bands do not overlap, so each label names the band it keeps.
+    const prices = within(screen.getByLabelText('가격')).getAllByRole('option').map((o) => o.textContent);
+    expect(prices).toContain('151~250');
+  });
+
+  it('names the dungeon in the chosen language, not always in Korean', () => {
+    stubMatchMedia(true);
+    useApp.setState({ lang: 'en' });
+    render(<AppShell data={data} indexes={indexes} stats={statsFor(LCB_DECK)} lang="en" dark onShare={() => undefined} onToggleLang={() => undefined} onToggleDark={() => undefined} />);
+    expect(screen.getByRole('contentinfo')).toHaveTextContent(data.meta.dungeon.name.en);
+    expect(screen.getByRole('contentinfo')).not.toHaveTextContent(data.meta.dungeon.name.ko);
+  });
+});
+
 describe('GiftsStep', () => {
   const renderGifts = () => {
     const { deck, deployed } = useApp.getState();
@@ -664,6 +725,24 @@ describe('GiftsStep', () => {
     expect(tile(9233)).toHaveAttribute('data-block', 'included');
     expect(within(tile(9233)).getByRole('button', { name: '노이즈 섞인 무전기' })).toBeDisabled();
     expect(tile(9233).title).toContain('데스페라도');
+    // The name beside the icon is never disabled, so the sheet behind it has to hold the same lock
+    // — it used to be the way around it.
+    await user.click(within(tile(9233)).getByRole('button', { name: '노이즈 섞인 무전기 자세히' }));
+    const sheet = screen.getByRole('dialog', { name: '노이즈 섞인 무전기' });
+    expect(within(sheet).getByRole('button', { name: '목표로 삼기' })).toBeDisabled();
+    expect(sheet).toHaveTextContent('데스페라도');
+  });
+
+  it('takes the same goal out of the selection from every sheet, not only from the grid', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9233); // an ingredient of 데스페라도, chosen on its own first
+    // This sheet is the shell's, not the item tab's: it used to drop only 조합 계승 children, so
+    // the ingredient stayed selected *and* locked, with no way back but the chip's ✕.
+    renderPlanned(<GoalsPanel />);
+    await user.click(within(screen.getByTestId('route-goal')).getByTestId('gift-tile-info'));
+    await user.click(await screen.findByRole('button', { name: '목표에서 빼기' }));
+    expect(useApp.getState().wanted).toEqual([]);
   });
 
   it('absorbs an ingredient that was already a goal, and still lets a goal that shares one be chosen', async () => {
@@ -1151,10 +1230,12 @@ describe('RoutePlanPanel', () => {
     expect(text).not.toContain('Combustion');
     expect(text).toContain('시작: 화상');
     expect(text).toContain('관측: 깨진 안경 (지정)');
-    expect(text).toContain('2~3F: 마주하지 않는 · 낙화');
+    // The floor unit follows the language, like everywhere else in the app.
+    expect(text).toContain('2~3층: 마주하지 않는 · 낙화');
+    expect(text).not.toMatch(/\d+F/);
     expect(text).not.toMatch(/어느 층|추천|Hard/);
     expect(text).toContain('  - 불결함 (마주하지 않는)');
-    expect(text).toContain('4~15F: 자유');
+    expect(text).toContain('4~15층: 자유');
     for (const word of ['별빛', '조합', '범용']) expect(text).not.toContain(word);
     const without = planToText(plan, (id) => indexes.giftById.get(id)?.name.ko ?? '', () => '', () => '', 'ko', [9283]);
     expect(without.split('\n')[0]).toBe('상납된 시가 제외');

@@ -18,14 +18,18 @@ export function planToText(
   marks: { must?: number[]; bannedPacks?: number[]; run?: { currentFloor: number; visits: Record<number, number> } } = {},
 ): string {
   const lines: string[] = [];
+  // The app says 「4층」 everywhere else; the copied plan used to be the one place writing `4F` at a
+  // Korean reader. `routeFreeRange` already held the range form and was going unused.
+  const at = (floor: number): string => t('stageFloor', lang, { floor });
+  const range = (from: number, to: number): string => (from === to ? at(from) : t('routeFloorRange', lang, { from, to }));
   const must = new Set(marks.must ?? []);
   const name = (id: number): string => (must.has(id) ? `${giftName(id)} (${t('priorityMust', lang)})` : giftName(id));
   if (dropped.length > 0) lines.push(t('routeVariantWithout', lang, { name: dropped.map(giftName).join(', ') }));
   if (marks.run) {
     const visits = Object.entries(marks.run.visits)
       .sort(([a], [b]) => Number(a) - Number(b))
-      .map(([floor, packId]) => `${floor}F ${packName(packId)}`);
-    lines.push(`${t('runActive', lang)} · ${t('runCurrentFloor', lang)} ${marks.run.currentFloor}F${visits.length > 0 ? ` · ${visits.join(', ')}` : ''}`);
+      .map(([floor, packId]) => `${at(Number(floor))} ${packName(packId)}`);
+    lines.push(`${t('runActive', lang)} · ${t('runCurrentFloor', lang)} ${at(marks.run.currentFloor)}${visits.length > 0 ? ` · ${visits.join(', ')}` : ''}`);
   }
   lines.push(`${t('routeStart', lang)}: ${plan.start.keyword ? keywordLabel(plan.start.keyword) : '—'}`);
   if (plan.start.startGift) lines.push(`  ${t('routeStartGift', lang)}: ${giftName(plan.start.startGift)}`);
@@ -40,14 +44,14 @@ export function planToText(
   const rows: { at: number; text: string[] }[] = [];
   for (const run of metro.freeRuns) {
     const word = run.passed ? t('runPassed', lang) : t('routeFree', lang);
-    rows.push({ at: run.from, text: [run.from === run.to ? `${run.from}F: ${word}` : `${run.from}~${run.to}F: ${word}`] });
+    rows.push({ at: run.from, text: [`${range(run.from, run.to)}: ${word}`] });
   }
   for (const segment of metro.segments) {
     const head = segment.passed
-      ? `${segment.from}F (${t('runVisited', lang, { floor: segment.from })})`
+      ? `${at(segment.from)} (${t('runVisited', lang, { floor: segment.from })})`
       : segment.fixed
-        ? `${segment.from}F`
-        : `${segment.from}~${segment.to}F`;
+        ? at(segment.from)
+        : range(segment.from, segment.to);
     const text = [`${head}: ${segment.packs.map((p) => packName(p.packId)).join(' · ')}`];
     for (const pack of segment.packs) {
       for (const giftId of pack.gifts) {

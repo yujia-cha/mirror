@@ -1,4 +1,4 @@
-import type { AcquisitionKind, Sin } from '../../core/schema.ts';
+import type { AcquisitionKind, Gift, Sin } from '../../core/schema.ts';
 import type { UnresolvedReason } from '../../core/types.ts';
 import type { StringKey } from '../i18n.ts';
 
@@ -50,3 +50,8 @@ export const UNRESOLVED_LABEL: Record<UnresolvedReason, StringKey> = {
   'ingredient-shared': 'unresolvedShared',
   failed: 'unresolvedFailed',
 };
+
+/** How a tier is written: `T4` for the numbered ones, `EX` on its own (never `TEX`). */
+export function tierLabel(tier: Gift['tier']): string {
+  return tier === null ? '' : tier === 'EX' ? 'EX' : `T${tier}`;
+}

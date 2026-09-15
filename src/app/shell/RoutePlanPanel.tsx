@@ -28,6 +28,7 @@ export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
   const setPriority = useApp((s) => s.setPriority);
   const removeWanted = useApp((s) => s.removeWanted);
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
   const tabsRef = useRef<HTMLDivElement | null>(null);
 
   if (!plan || !shown) {
@@ -51,13 +52,21 @@ export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
   const failedCount = shown.unresolved.filter((u) => u.reason === 'failed').length;
 
   const copy = async (): Promise<void> => {
-    await navigator.clipboard.writeText(
-      planToText(shown, giftName, packName, keywordLabel, lang, variant?.dropped ?? [], {
+    const text = planToText(shown, giftName, packName, keywordLabel, lang, variant?.dropped ?? [], {
         must: wanted.filter((id) => priorityOf(priority, id) === 'must'),
         bannedPacks: options.bannedPacks,
         ...(run.currentFloor > 1 || Object.keys(run.visits).length > 0 ? { run: { currentFloor: run.currentFloor, visits: run.visits } } : {}),
-      }),
+      },
     );
+    // Plain http and an unfocused document leave `navigator.clipboard` unusable; say so instead of
+    // rejecting into nowhere.
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      setCopyFailed(true);
+      window.setTimeout(() => setCopyFailed(false), 3000);
+      return;
+    }
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
   };
@@ -134,7 +143,12 @@ export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
       .map((a) => a.label)
       .filter((label, _, all) => all.filter((l) => l === label).length > 1),
   );
-  const headerActions = [...new Map(unresolvedActions.flat().filter((a) => sharedLabels.has(a.label)).map((a) => [a.label, a])).values()];
+  // 「관측 지정 해제」 releases every pin at once, so it is the card's business however many rows
+  // asked for it — with a single unresolved gift it used to belong to neither the header (not
+  // shared) nor the row (not an `observeGift`) and was drawn nowhere.
+  const headerActions = [
+    ...new Map(unresolvedActions.flat().filter((a) => a.kind === 'releaseObservations' || sharedLabels.has(a.label)).map((a) => [a.label, a])).values(),
+  ];
   const shownInput = variant ? { ...input, wanted: input.wanted.filter((w) => !variant.dropped.includes(w.giftId)) } : input;
   const groups = conflictGroups(shown, shownInput, data, indexes);
   const others = shown.unresolved.filter((u) => u.reason !== 'pack-conflict');
@@ -206,6 +220,7 @@ export function RoutePlanPanel({ onOpenGifts }: { onOpenGifts?: () => void }) {
         </Card>
       ) : null}
       {copied ? <Toast>{t('routeCopied', lang)}</Toast> : null}
+      {copyFailed ? <Toast tone="alert">{t('copyFailed', lang)}</Toast> : null}
     </div>
   );
 }

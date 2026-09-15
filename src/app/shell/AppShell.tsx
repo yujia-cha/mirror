@@ -8,7 +8,7 @@ import { useState } from 'react';
 import { Globe, Moon, PanelLeft, PanelRight, RotateCcw, Share2, Sun } from 'lucide-react';
 import type { GameData } from '../../core/schema.ts';
 import type { DeckStats, GameIndexes } from '../../core/types.ts';
-import { t, type Lang } from '../i18n.ts';
+import { pick, t, type Lang } from '../i18n.ts';
 import { useApp, type LeftTab, type RightTab } from '../store.ts';
 import { defaultDeck } from '../lib/default-deck.ts';
 import { useDesktop } from '../lib/useMediaQuery.ts';
@@ -135,7 +135,7 @@ export function AppShell({
             <RunStage onOpenGifts={openGifts} />
             <footer className="mt-auto border-t border-line pt-3 text-xs text-fg-3">
               <p>
-                {t('dataVersion', lang)} {data.meta.dataVersion} · {data.meta.dungeon.name.ko}
+                {t('dataVersion', lang)} {data.meta.dataVersion} · {pick(data.meta.dungeon.name, lang)}
               </p>
               <p className="mt-1">{t('aboutData', lang)}</p>
             </footer>

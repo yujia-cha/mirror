@@ -13,9 +13,10 @@ import { evaluateConditions, observable } from '../../core/index.ts';
 import type { ConditionReport, DeckStats, GameIndexes } from '../../core/types.ts';
 import { pick, t, type Lang } from '../i18n.ts';
 import { useApp } from '../store.ts';
-import { SIN_LABEL, badgeFor } from '../lib/labels.ts';
+import { SIN_LABEL, badgeFor, tierLabel } from '../lib/labels.ts';
 import { prioritiseGifts, type GiftEntry, type GiftGroup } from '../lib/gift-priority.ts';
-import { blockedGifts, entanglements, ingredientsOf } from '../lib/entangle.ts';
+import { blockedGifts, entanglements } from '../lib/entangle.ts';
+import { carriedBy } from '../lib/goal-toggle.ts';
 import { upgradeChildren } from '../lib/upgrade-children.ts';
 import { judgementOf } from '../lib/judgement.ts';
 import { useChipDrag } from '../lib/useChipDrag.ts';
@@ -128,14 +129,8 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
     return gift ? observable(gift, data.rules) : false;
   };
 
-  // Choosing a gift absorbs what it already carries: its upgrade children and its whole recipe tree.
-  const toggle = (gift: Gift): void => {
-    const carried = [
-      ...(childrenOf.get(gift.id) ?? []).map((g) => g.id),
-      ...(gift.fusion ? ingredientsOf(gift, indexes, data.rules.fusion.maxShopSlots) : []),
-    ];
-    toggleWanted(gift.id, carried);
-  };
+  const carryIndex = { indexes, childrenOf, maxShopSlots: data.rules.fusion.maxShopSlots };
+  const toggle = (gift: Gift): void => toggleWanted(gift.id, carriedBy(gift, carryIndex));
 
   // Observation: the slots take a selected gift from the 「+」 list or from a dragged chip. A drop
   // on a filled slot replaces its gift; a drop elsewhere, or of a gift that cannot be observed,
@@ -165,6 +160,8 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
   const section = (group: GiftGroup, titleKey: 'giftsActive' | 'giftsOther') => {
     const entries = groups[group];
     const tiles = tilesFor(entries);
+    // 조합 계승 children come into the grid under their parent, so the parent count read low.
+    const shownCount = tiles.length;
     const chosen = tiles.filter((tile) => wanted.includes(tile.entry.gift.id)).length;
     const shut = collapsed[group];
     return (
@@ -176,7 +173,7 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
           className="flex h-9 w-full items-center justify-between border-b border-line bg-surface-2 px-3 text-left"
         >
           <span className="flex items-center gap-2 text-sm font-semibold">
-            {t(titleKey, lang)} <span className="font-num text-xs text-fg-3">{entries.length}</span>
+            {t(titleKey, lang)} <span className="font-num text-xs text-fg-3">{shownCount}</span>
             {shut && chosen > 0 ? <Badge tone="neutral">{t('giftsSelected', lang, { n: chosen })}</Badge> : null}
           </span>
           <span className="text-fg-3">{shut ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</span>
@@ -237,10 +234,12 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
     value: k,
     label: t(badgeFor(k).label, lang),
   }));
+  // The bands do not overlap, so 「~250」 read as a promise the filter broke: a 100-cost gift is not
+  // in `p2`. Each label now names the band it actually keeps.
   const priceOptions: { value: PriceFilter; label: string }[] = [
     { value: 'p1', label: t('priceUpTo', lang, { n: 150 }) },
-    { value: 'p2', label: t('priceUpTo', lang, { n: 250 }) },
-    { value: 'p3', label: t('priceUpTo', lang, { n: 400 }) },
+    { value: 'p2', label: t('priceBand', lang, { from: 151, to: 250 }) },
+    { value: 'p3', label: t('priceBand', lang, { from: 251, to: 400 }) },
     { value: 'p4', label: t('priceOver', lang, { n: 400 }) },
   ];
 
@@ -260,7 +259,13 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
       </label>
       <div className="flex flex-wrap gap-1.5">
         <FilterSelect label={t('filterKeyword', lang)} value={keyword} options={keywordOptions} onChange={setKeyword} allLabel={t('filterAll', lang)} />
-        <FilterSelect label={t('filterTier', lang)} value={tier} options={(['1', '2', '3', '4', '5', 'EX'] as TierFilter[]).map((v) => ({ value: v, label: `T${v}` }))} onChange={setTier} allLabel={t('filterAll', lang)} />
+        <FilterSelect
+          label={t('filterTier', lang)}
+          value={tier}
+          options={(['1', '2', '3', '4', '5', 'EX'] as TierFilter[]).map((v) => ({ value: v, label: tierLabel(v === 'EX' ? 'EX' : (Number(v) as 1 | 2 | 3 | 4 | 5)) }))}
+          onChange={setTier}
+          allLabel={t('filterAll', lang)}
+        />
         <FilterSelect label={t('filterAcquisition', lang)} value={acquisition} options={acqOptions} onChange={setAcquisition} allLabel={t('filterAll', lang)} />
         <FilterSelect label={t('filterSin', lang)} value={sin} options={sinOptions} onChange={setSin} allLabel={t('filterAll', lang)} />
         <FilterSelect label={t('filterPrice', lang)} value={price} options={priceOptions} onChange={setPrice} allLabel={t('filterAll', lang)} />
@@ -343,6 +348,7 @@ export function GiftsStep({ data, indexes, stats, lang, onGoDeck }: Props) {
           gift={detailGift}
           reports={conditionByGift.get(detailGift.id) ?? []}
           entangled={entangled.get(detailGift.id) ?? []}
+          blocked={wanted.includes(detailGift.id) ? undefined : blocked.get(detailGift.id)}
           data={data}
           indexes={indexes}
           lang={lang}

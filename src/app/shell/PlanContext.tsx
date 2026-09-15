@@ -3,9 +3,9 @@
  * and the run record) and handed to the stage and both side panels, together with the pack
  * context every pack surface takes and the run actions that settle gifts as floors are left.
  */
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { evaluateConditions } from '../../core/index.ts';
-import type { GameData, Keyword } from '../../core/schema.ts';
+import type { GameData, Gift, Keyword } from '../../core/schema.ts';
 import { observable, planAlternatives, planRoute } from '../../core/index.ts';
 import type { DeckStats, GameIndexes, PlanInput, RoutePlan } from '../../core/types.ts';
 import type { RouteVariant } from '../../core/index.ts';
@@ -16,7 +16,8 @@ import { conditionText } from '../condition-text.ts';
 import { judgementsByGift, type Judgement } from '../lib/judgement.ts';
 import { planInputFor, priorityOf } from '../lib/plan-input.ts';
 import { autoFailedFor, exclusivesIndex, stageModeFor, type StageMode } from '../lib/stage.ts';
-import { entanglements } from '../lib/entangle.ts';
+import { blockedGifts, entanglements } from '../lib/entangle.ts';
+import { carriedBy } from '../lib/goal-toggle.ts';
 import { upgradeChildren } from '../lib/upgrade-children.ts';
 import { GiftDetailSheet } from '../components/GiftDetailSheet.tsx';
 import type { PackContext } from '../components/PackSheet.tsx';
@@ -109,6 +110,13 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
   const exclusivesOf = useMemo(() => exclusivesIndex(data, indexes), [data, indexes]);
   const childrenOf = useMemo(() => upgradeChildren(data), [data]);
   const entangled = useMemo(() => entanglements(wanted, indexes, data.rules.fusion.maxShopSlots), [wanted, indexes, data]);
+  const blocked = useMemo(() => blockedGifts(wanted, indexes, data.rules.fusion.maxShopSlots), [wanted, indexes, data]);
+  // One selection rule for every surface: see `lib/goal-toggle.ts`.
+  const carryIndex = useMemo(
+    () => ({ indexes, childrenOf, maxShopSlots: data.rules.fusion.maxShopSlots }),
+    [indexes, childrenOf, data],
+  );
+  const toggleGoal = useCallback((gift: Gift): void => toggleWanted(gift.id, carriedBy(gift, carryIndex)), [toggleWanted, carryIndex]);
 
   const value = useMemo<PlanState>(() => {
     const giftName = (id: number): string => pick(indexes.giftById.get(id)?.name, lang);
@@ -167,7 +175,12 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
       onBan: variant ? undefined : banPack,
       onRestore: variant ? undefined : restorePack,
       onToggleObserved: variant ? undefined : (giftId) => toggleObserved(giftId, { max: data.rules.giftObservation.max, observable: canObserve }),
-      onToggleWanted: variant ? undefined : (giftId) => toggleWanted(giftId),
+      onToggleWanted: variant
+        ? undefined
+        : (giftId) => {
+            const gift = indexes.giftById.get(giftId);
+            if (gift) toggleGoal(gift);
+          },
       run: {
         currentFloor: run.currentFloor,
         stageFloor: run.stageFloor,
@@ -231,7 +244,7 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
     banPack,
     restorePack,
     toggleObserved,
-    toggleWanted,
+    toggleGoal,
     visitPack,
     unvisitPack,
     setGiftStatus,
@@ -253,7 +266,8 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
           data={data}
           indexes={indexes}
           lang={lang}
-          onToggleWanted={(gift) => toggleWanted(gift.id, (childrenOf.get(gift.id) ?? []).map((g) => g.id))}
+          onToggleWanted={toggleGoal}
+          blocked={wanted.includes(sheetGift.id) ? undefined : blocked.get(sheetGift.id)}
           onClose={() => setDetailGift(null)}
         />
       ) : null}

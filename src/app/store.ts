@@ -87,6 +87,18 @@ interface AppState extends SharedState {
   setLang: (lang: Lang) => void;
   toggleDark: () => void;
   applyShared: (shared: SharedState) => void;
+  /**
+   * Drop ids the loaded game data does not know. A link or a saved state can outlive a data
+   * refresh, and an id nobody can resolve renders as a nameless chip with a dead button, a
+   * 「포기한 팩」 row with no name, and a goal counter whose denominator is larger than the list.
+   */
+  reconcile: (known: KnownIds) => void;
+}
+
+/** Whether the loaded game data knows an id. */
+export interface KnownIds {
+  gift: (id: number) => boolean;
+  pack: (id: number) => boolean;
 }
 
 const SINNER_COUNT = 12;
@@ -534,6 +546,30 @@ export const useApp = create<AppState>()(
       setUi: (patch) => set((state) => ({ ui: sanitizeUi({ ...state.ui, ...patch }) })),
       setLang: (lang) => set({ lang }),
       toggleDark: () => set((state) => ({ dark: !state.dark })),
+      reconcile: (known) =>
+        set((state) => {
+          const wanted = state.wanted.filter(known.gift);
+          const pins: Record<number, number> = {};
+          for (const [floor, packId] of Object.entries(state.options.pinnedPacks)) if (known.pack(packId)) pins[Number(floor)] = packId;
+          const visits: Record<number, number> = {};
+          for (const [floor, packId] of Object.entries(state.run.visits)) if (known.pack(packId)) visits[Number(floor)] = packId;
+          const giftStatus: RunState['giftStatus'] = {};
+          for (const [id, status] of Object.entries(state.run.giftStatus)) if (known.gift(Number(id))) giftStatus[Number(id)] = status;
+          const options: PlanOptions = {
+            ...state.options,
+            observedGifts: state.options.observedGifts.filter((id) => known.gift(id) && wanted.includes(id)),
+            bannedPacks: state.options.bannedPacks.filter(known.pack),
+            preferredPacks: state.options.preferredPacks.filter(known.pack),
+            pinnedPacks: pins,
+          };
+          return {
+            wanted,
+            priority: sanitizePriority(state.priority, wanted),
+            fusionGoal: sanitizeFusionGoal(state.fusionGoal, wanted),
+            options,
+            run: { ...state.run, visits, giftStatus, startGifts: state.run.startGifts.filter(known.gift) },
+          };
+        }),
       // A link is someone's plan, not this device's run: the run record starts over with it.
       applyShared: (shared) =>
         set({
@@ -542,7 +578,10 @@ export const useApp = create<AppState>()(
           wanted: shared.wanted,
           priority: sanitizePriority(shared.priority, shared.wanted),
           fusionGoal: sanitizeFusionGoal(shared.fusionGoal, shared.wanted),
-          options: sanitizeOptions(shared.options),
+          // Pins follow the same rule priorities and fusion goals do: only a goal can be observed.
+          // A link that carried a pin for something else used to spend observation budget on it and
+          // then drop it without a word the next time any gift was toggled.
+          options: withObservedIn(sanitizeOptions(shared.options), shared.wanted),
           run: emptyRun(),
         }),
     }),
@@ -572,7 +611,7 @@ export const useApp = create<AppState>()(
           fusionGoal: sanitizeFusionGoal(state.fusionGoal, wanted),
           run,
           ui: sanitizeUi(state.ui),
-          options: sanitizeOptions(state.options),
+          options: withObservedIn(sanitizeOptions(state.options), wanted),
         } as AppState;
       },
       partialize: (state) => ({
