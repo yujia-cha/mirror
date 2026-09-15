@@ -19,6 +19,8 @@ import { autoFailedFor, exclusivesIndex, stageModeFor, type StageMode } from '..
 import { blockedGifts, entanglements } from '../lib/entangle.ts';
 import { carriedBy } from '../lib/goal-toggle.ts';
 import { upgradeChildren } from '../lib/upgrade-children.ts';
+import { useDesktop } from '../lib/useMediaQuery.ts';
+import { usePageHistory } from '../lib/usePageHistory.ts';
 import { GiftDetailSheet } from '../components/GiftDetailSheet.tsx';
 import type { PackContext } from '../components/PackSheet.tsx';
 
@@ -94,6 +96,11 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
   const setStageFloor = useApp((s) => s.setStageFloor);
   const [variantIndex, setVariantIndex] = useState(0);
   const [detailGift, setDetailGift] = useState<number | null>(null);
+  const desktop = useDesktop();
+  const closeSheet = useCallback(() => setDetailGift(null), []);
+  // On a phone the sheet owns a history entry of its own, above the panel page's, so one back
+  // gesture closes the sheet and the next one the page.
+  usePageHistory(detailGift !== null, closeSheet, !desktop);
 
   const input = useMemo(
     () => planInputFor({ deck, deployed, wanted, priority, options, fusionGoal, run }),
@@ -252,8 +259,10 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
     setStageFloor,
   ]);
 
-  // The sheet is hosted once here so a tile on the stage, in the tracker or in the route panel
-  // opens the same details the items tab shows; it portals to the body like every sheet.
+  // The sheet is hosted here and nowhere else, so a tile on the stage, in the tracker, in the
+  // route panel or in the items tab opens the same details — and the sheet outlives the surface
+  // that opened it. A sheet hosted inside a panel would die with the panel on a phone, where the
+  // panel is a full-screen page that unmounts when it closes.
   const sheetGift = detailGift !== null ? indexes.giftById.get(detailGift) : undefined;
   return (
     <PlanCtx.Provider value={value}>
@@ -268,7 +277,7 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
           lang={lang}
           onToggleWanted={toggleGoal}
           blocked={wanted.includes(sheetGift.id) ? undefined : blocked.get(sheetGift.id)}
-          onClose={() => setDetailGift(null)}
+          onClose={closeSheet}
         />
       ) : null}
     </PlanCtx.Provider>

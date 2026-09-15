@@ -30,13 +30,26 @@ export function countsSummary(before: Meta | null, after: Meta): string {
   return moved.length > 0 ? moved.join(', ') : '수치 변동 없음 (내용만 변경)';
 }
 
+/**
+ * The revision of one source, short. A source whose languages sit on their own branches has no
+ * single sha, so its branches are joined: `KR ac56ea82+EN c0679827`.
+ */
+export function sourceRevision(source: Meta['sources'][string] | undefined): string | undefined {
+  if (!source) return undefined;
+  if (source.sha) return source.sha.slice(0, 8);
+  if (!source.languages) return undefined;
+  return Object.entries(source.languages)
+    .map(([lang, sha]) => `${lang} ${sha.slice(0, 8)}`)
+    .join('+');
+}
+
 /** `localize 231a8bcf / openLethe 823129ad→1a2b3c4d` — only sources that moved show an arrow. */
 export function sourcesSummary(before: Meta | null, after: Meta): string {
   return Object.keys(after.sources)
     .sort()
     .map((name) => {
-      const to = after.sources[name]?.sha.slice(0, 8) ?? '(none)';
-      const from = before?.sources[name]?.sha.slice(0, 8);
+      const to = sourceRevision(after.sources[name]) ?? '(none)';
+      const from = sourceRevision(before?.sources[name]);
       return from && from !== to ? `${name} ${from}→${to}` : `${name} ${to}`;
     })
     .join(' / ');

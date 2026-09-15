@@ -74,6 +74,8 @@ Everything here was read out of the game's own static data; `docs/research/mecha
 
 **키워드 조건은 인격의 태그가 아니라 "해당 키워드를 부여하는 공격 스킬 보유 여부"로 센다.** 그래서 인격 키워드는 `skill/personality-skill-*.json`에서 도출한다. 소속 조건은 `personality-*.json`의 `associationList`로 센다(`unitKeywordList`가 아니다).
 
+**정적 데이터에 없는 인격**: 현지화는 이름을 주는데 상류 OpenLethe에 레코드가 없는 인격이 있다(10116 「LCE E.G.O:: 차원찢개」, 이상). `data/curated/identities.json`이 백필하고 키워드는 공식 스킬 원문에서 도출한다(`scripts/lib/derive-text.ts`). 이것은 override가 아니라 **backfill**이라 정적 데이터를 덮지 못한다 — 상류가 같은 id를 내보내면 `data:build`가 멈춘다. 현지화에만 있는 인격이 백필 없이 남으면 `data:validate`가 **에러**다.
+
 **탄환**(`Bullet`, EN Ammo)은 7키워드와 달리 **기프트·팩·시작 풀이 없는 인격 전용 키워드**다. 적에게 부여하는 상태가 아니라 스킬이 소모하는 자원이라 `buffKeyword`가 아니라 스킬 스크립트의 요구 토큰(`UseBullet[necessary:Bullet:1]`, `[optional:AccelBullet:1]`)으로 도출한다. 탄환 계열 버프 id에는 모두 `Bullet`이 들어 있다. 현재 13명이 해당한다.
 
 **특수 변형**(특수 충전 = 생체 재료, 특수 출혈 = 못, 특수 탄환 = 호표탄·포자탄 …)은 별도 버프다. `BattleKeywords.json` 설명에 「- 특수 충전」 한 줄이 선 버프가 변형이고, 인격의 `keywords[K].specialSkills`로 따로 센다. 조건 문장에 「또는 특수 X」가 있으면(`includesSpecial`) 변형도 포함하고, 없으면 기본 키워드(`skills > 0`)만 센다.
@@ -101,4 +103,6 @@ Everything here was read out of the game's own static data; `docs/research/mecha
 | 인격 소속 · 등급 · 스킬 id | `data/raw/static/personality/*.json` |
 | 인격 스킬이 부여하는 키워드 | `data/raw/static/skill/personality-skill-*.json` |
 | 이름 · 효과 텍스트 | `data/raw/localize/{KR,EN}/*.json` |
+| 인격 스킬 텍스트 (한국어) | `data/raw/localize/KR/Skills_personality-*.json` — 12파일, 183명 중 121명만 덮는다 |
+| 정적 데이터에 없는 인격 | `data/curated/identities.json` — 지금은 10116 「LCE E.G.O:: 차원찢개」 하나 |
 | 정적 데이터에 없는 규칙 | `data/curated/rules.json` |

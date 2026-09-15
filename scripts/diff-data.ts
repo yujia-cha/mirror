@@ -8,6 +8,7 @@
 import { execFileSync } from 'node:child_process';
 import { flagValue, readJson, repoPath } from './lib/io.ts';
 import type { Gift, Identity, Meta, ThemePack } from '../src/core/schema.ts';
+import { sourceRevision } from './lib/changelog.ts';
 
 const ref = flagValue('--ref') ?? 'HEAD';
 
@@ -71,10 +72,9 @@ const prevMeta = fromGit<Meta>('public/data/meta.json');
 console.log(`dataVersion: ${prevMeta?.dataVersion ?? '(none)'} -> ${meta.dataVersion}`);
 if (prevMeta) {
   for (const [name, source] of Object.entries(meta.sources)) {
-    const before = prevMeta.sources[name];
-    if (before && before.sha !== source.sha) {
-      console.log(`source ${name}: ${before.sha.slice(0, 8)} -> ${source.sha.slice(0, 8)}`);
-    }
+    const from = sourceRevision(prevMeta.sources[name]);
+    const to = sourceRevision(source);
+    if (from && to && from !== to) console.log(`source ${name}: ${from} -> ${to}`);
   }
 }
 

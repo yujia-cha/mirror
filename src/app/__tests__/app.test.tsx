@@ -641,7 +641,7 @@ describe('text the screen gets wrong', () => {
     expect(screen.getByTestId('gift-icon').textContent).not.toContain('TEX');
     useApp.getState().setDeck(BURN_DECK, 7);
     const { deck, deployed } = useApp.getState();
-    render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
+    renderPlanned(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
     const tiers = within(screen.getByLabelText('등급')).getAllByRole('option').map((o) => o.textContent);
     expect(tiers).toContain('EX');
     expect(tiers).not.toContain('TEX');
@@ -660,9 +660,10 @@ describe('text the screen gets wrong', () => {
 });
 
 describe('GiftsStep', () => {
+  // The detail sheet is hosted by the provider, not by the tab, so the tab needs the shell context.
   const renderGifts = () => {
     const { deck, deployed } = useApp.getState();
-    return render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
+    return renderPlanned(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
   };
   const tile = (id: number) => screen.getAllByTestId('gift-tile').find((el) => el.getAttribute('data-gift') === String(id))!;
 
@@ -811,7 +812,7 @@ describe('GiftsStep', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
     for (const id of [9283, 9222, 9217, 9435, 9751]) useApp.getState().toggleWanted(id);
     const { deck, deployed } = useApp.getState();
-    render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
+    renderPlanned(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
     const slots = () => within(screen.getByTestId('observe-slots')).getAllByTestId('observe-slot');
     // Pins fill from the cheapest cell outward, so the 「+」 no longer claims a numbered slot.
     const plus = () => screen.queryAllByRole('button', { name: '관측 지정 추가' });
@@ -848,7 +849,7 @@ describe('GiftsStep', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
     useApp.getState().toggleWanted(9283);
     const { deck, deployed } = useApp.getState();
-    render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
+    renderPlanned(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
     const chip = screen.getByTestId('gift-chip');
     expect(chip).toHaveAttribute('data-gift', '9283');
     await user.click(within(chip).getByRole('button', { name: '상납된 시가 자세히' }));
@@ -860,7 +861,7 @@ describe('GiftsStep', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
     for (const id of [9283, 9222, 9217]) useApp.getState().toggleWanted(id);
     const { deck, deployed } = useApp.getState();
-    render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
+    renderPlanned(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
     const chip = (id: number) => screen.getAllByTestId('gift-chip').find((c) => c.getAttribute('data-gift') === String(id))!;
     const slot = (i: number) => screen.getAllByTestId('observe-slot')[i]!;
     const drag = (id: number, i: number) => {
@@ -891,11 +892,11 @@ describe('GiftsStep', () => {
   it('points an empty deck at the deck tab only when it is given somewhere to go', async () => {
     const user = userEvent.setup();
     const onGoDeck = vi.fn();
-    const { unmount } = render(<GiftsStep data={data} indexes={indexes} stats={statsFor([])} lang="ko" />);
+    const { unmount } = renderPlanned(<GiftsStep data={data} indexes={indexes} stats={statsFor([])} lang="ko" />);
     expect(screen.getByText('덱이 비어 있습니다')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '덱 탭으로' })).toBeNull();
     unmount();
-    render(<GiftsStep data={data} indexes={indexes} stats={statsFor([])} lang="ko" onGoDeck={onGoDeck} />);
+    renderPlanned(<GiftsStep data={data} indexes={indexes} stats={statsFor([])} lang="ko" onGoDeck={onGoDeck} />);
     await user.click(screen.getByRole('button', { name: '덱 탭으로' }));
     expect(onGoDeck).toHaveBeenCalledTimes(1);
   });
@@ -905,7 +906,7 @@ describe('GiftsStep', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
     useApp.getState().toggleWanted(9249);
     const { deck, deployed } = useApp.getState();
-    render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
+    renderPlanned(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
     await user.type(screen.getByRole('textbox', { name: '기프트 검색' }), '조그맣고');
     await user.click(screen.getByRole('button', { name: /기타/, expanded: false }));
     // The chip above the grid opens the same sheet; here it is opened from the tile.
@@ -1208,7 +1209,7 @@ describe('RoutePlanPanel', () => {
     useApp.getState().setDeck(BURN_DECK, 7);
     useApp.getState().toggleWanted(9283);
     const { deck, deployed } = useApp.getState();
-    render(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
+    renderPlanned(<GiftsStep data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" />);
     await user.click(within(screen.getByTestId('gift-chip')).getByRole('button', { name: '상납된 시가 자세히' }));
     const sheet = screen.getByRole('dialog', { name: '상납된 시가' });
     await user.click(within(sheet).getByRole('button', { name: '상납된 시가 우선순위: 보통' }));
@@ -1284,38 +1285,45 @@ describe('AppShell', () => {
     return render(<AppShell data={data} indexes={indexes} stats={statsFor(deck, deployed)} lang="ko" dark onShare={() => undefined} onToggleLang={() => undefined} onToggleDark={() => undefined} />);
   };
 
-  it('opens the panels as drawers on a phone, one at a time, and remembers the tab', async () => {
+  it('opens each panel as its own full-screen page on a phone, one at a time, and remembers the tab', async () => {
     const user = userEvent.setup();
     renderShell();
-    expect(screen.queryByTestId('drawer-left')).toBeNull();
+    expect(screen.queryByTestId('page-left')).toBeNull();
     expect(screen.queryByTestId('panel-left')).toBeNull();
     expect(screen.getByTestId('run-stage')).toHaveAttribute('data-mode', 'undecided');
     const left = screen.getByRole('button', { name: '설정 패널' });
     expect(left).toHaveAttribute('aria-expanded', 'false');
     await user.click(left);
-    const drawer = screen.getByRole('dialog', { name: '설정 패널' });
+    const page = screen.getByTestId('page-left');
     expect(left).toHaveAttribute('aria-expanded', 'true');
-    // The default tab is the items tab; the deck tab shows the twelve slots.
-    expect(within(drawer).getByRole('tab', { name: '아이템' })).toHaveAttribute('aria-selected', 'true');
-    // Two tabs only: the route options (start keyword, chosen packs) sit under the items tab.
-    expect(within(drawer).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['덱', '아이템']);
-    expect(within(drawer).getByRole('combobox', { name: '시작 키워드' })).toBeInTheDocument();
-    expect(within(drawer).getByTestId('settings-packs')).toBeInTheDocument();
-    await user.click(within(drawer).getByRole('tab', { name: '덱' }));
-    expect(useApp.getState().ui.leftTab).toBe('deck');
-    expect(within(drawer).getAllByText('인격 선택')).toHaveLength(12);
-    // Opening the other side closes this one.
-    await user.click(screen.getByRole('button', { name: '루트 패널' }));
-    expect(screen.queryByRole('dialog', { name: '설정 패널' })).toBeNull();
-    const right = screen.getByRole('dialog', { name: '루트 패널' });
-    expect(within(right).getByTestId('route-empty')).toBeInTheDocument();
-    // The empty state sends the player to the items tab of the left drawer.
-    await user.click(within(right).getByRole('button', { name: '아이템' }));
-    expect(screen.queryByRole('dialog', { name: '루트 패널' })).toBeNull();
-    expect(within(screen.getByRole('dialog', { name: '설정 패널' })).getByRole('tab', { name: '아이템' })).toHaveAttribute('aria-selected', 'true');
-    await user.click(screen.getByRole('button', { name: '패널 닫기' }));
+    // A page, not a dialog: no backdrop, no modal semantics, and the shell behind it goes inert.
     expect(screen.queryByRole('dialog')).toBeNull();
-    // The tracker tab lives in the right drawer.
+    expect(within(page).getByRole('heading', { level: 1 })).toHaveTextContent('설정 패널');
+    expect(screen.getByTestId('app-shell')).toHaveAttribute('inert');
+    // The default tab is the items tab; the deck tab shows the twelve slots.
+    expect(within(page).getByRole('tab', { name: '아이템' })).toHaveAttribute('aria-selected', 'true');
+    // Two tabs only: the route options (start keyword, chosen packs) sit under the items tab.
+    expect(within(page).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['덱', '아이템']);
+    expect(within(page).getByRole('combobox', { name: '시작 키워드' })).toBeInTheDocument();
+    expect(within(page).getByTestId('settings-packs')).toBeInTheDocument();
+    await user.click(within(page).getByRole('tab', { name: '덱' }));
+    expect(useApp.getState().ui.leftTab).toBe('deck');
+    expect(within(page).getAllByText('인격 선택')).toHaveLength(12);
+    // The header is behind the page, so the way out is the page's own back button.
+    await user.click(within(page).getByRole('button', { name: '뒤로' }));
+    expect(screen.queryByTestId('page-left')).toBeNull();
+    expect(screen.getByTestId('app-shell')).not.toHaveAttribute('inert');
+
+    await user.click(screen.getByRole('button', { name: '루트 패널' }));
+    const right = screen.getByTestId('page-right');
+    expect(within(right).getByTestId('route-empty')).toBeInTheDocument();
+    // One page hands over to the other from inside: the empty state opens the items tab.
+    await user.click(within(right).getByRole('button', { name: '아이템' }));
+    expect(screen.queryByTestId('page-right')).toBeNull();
+    expect(within(screen.getByTestId('page-left')).getByRole('tab', { name: '아이템' })).toHaveAttribute('aria-selected', 'true');
+    await user.click(screen.getByRole('button', { name: '뒤로' }));
+    expect(screen.queryByTestId('page-left')).toBeNull();
+    // The tracker tab lives in the right page.
     await user.click(screen.getByRole('button', { name: '루트 패널' }));
     await user.click(screen.getByRole('tab', { name: '목표' }));
     expect(screen.getByTestId('goals-empty')).toBeInTheDocument();
@@ -1323,6 +1331,52 @@ describe('AppShell', () => {
     await user.click(screen.getByRole('tab', { name: '추적기' }));
     expect(screen.getByTestId('tracker')).toBeInTheDocument();
     expect(useApp.getState().ui.rightTab).toBe('tracker');
+  });
+
+  // The phone bug this guards: every dismiss listener sits on `document`, and a sheet portals to
+  // the body, so a press inside the sheet used to read as "outside" to the panel page under it and
+  // one tap closed both.
+  it('closes only the sheet on a phone, leaving the page it was opened from', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    renderShell();
+    await user.click(screen.getByRole('button', { name: '설정 패널' }));
+    const page = screen.getByTestId('page-left');
+    const tile = within(page).getAllByTestId('gift-tile').find((el) => el.getAttribute('data-gift') === '9088')!;
+    await user.click(within(tile).getByRole('button', { name: '진혼 자세히' }));
+    expect(screen.getByTestId('gift-detail')).toBeInTheDocument();
+
+    await user.click(within(screen.getByTestId('block-sheet')).getByRole('button', { name: '닫기' }));
+    expect(screen.queryByTestId('gift-detail')).toBeNull();
+    expect(screen.getByTestId('page-left')).toBeInTheDocument();
+  });
+
+  it('closes only the sheet on Escape and on a press outside it, never the page beneath', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    renderShell();
+    await user.click(screen.getByRole('button', { name: '설정 패널' }));
+    const openSheet = async () => {
+      const page = screen.getByTestId('page-left');
+      const tile = within(page).getAllByTestId('gift-tile').find((el) => el.getAttribute('data-gift') === '9088')!;
+      await user.click(within(tile).getByRole('button', { name: '진혼 자세히' }));
+      expect(screen.getByTestId('gift-detail')).toBeInTheDocument();
+    };
+
+    await openSheet();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByTestId('gift-detail')).toBeNull();
+    expect(screen.getByTestId('page-left')).toBeInTheDocument();
+
+    // A press on the backdrop is 「outside」 for the sheet and for the page alike; only the top layer answers.
+    await openSheet();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByTestId('gift-detail')).toBeNull();
+    expect(screen.getByTestId('page-left')).toBeInTheDocument();
+
+    // With the sheet gone the page is topmost again — and a page ignores outside presses entirely.
+    fireEvent.pointerDown(document.body);
+    expect(screen.getByTestId('page-left')).toBeInTheDocument();
   });
 
   it('resets the deck, items, route options and run from the header after a confirmation, keeping the panel state', async () => {
@@ -1462,54 +1516,38 @@ describe('gestures that used to run into each other', () => {
 });
 
 describe('overlays that used to fight each other', () => {
-  const renderShell = () =>
-    render(<AppShell data={data} indexes={indexes} stats={statsFor(useApp.getState().deck, useApp.getState().deployed)} lang="ko" dark onShare={() => undefined} onToggleLang={() => undefined} onToggleDark={() => undefined} />);
-
-  it('closes a drawer with the same header button that opened it', async () => {
+  it('lets the 「+」 close the popover it opened', async () => {
     const user = userEvent.setup();
-    useApp.getState().setDeck(LCB_DECK, 6);
-    renderShell();
-    const toggle = screen.getByRole('button', { name: '설정 패널' });
-    await user.click(toggle);
-    expect(screen.getByTestId('drawer-left')).toBeInTheDocument();
-    // The button's `pointerdown` used to dismiss the drawer and its `click` to re-open it, so the
-    // drawer only ever flickered. `aria-controls` tells the dismiss which press is its own opener.
-    await user.click(toggle);
-    expect(screen.queryByTestId('drawer-left')).toBeNull();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9222);
+    renderPlanned(<GiftsStep data={data} indexes={indexes} stats={statsFor(useApp.getState().deck, useApp.getState().deployed)} lang="ko" />);
+    const plus = () => screen.getAllByRole('button', { name: '관측 지정 추가' })[0]!;
+    await user.click(plus());
+    expect(screen.getByTestId('observe-candidates')).toBeInTheDocument();
+    expect(plus()).toHaveAttribute('aria-expanded', 'true');
+    // The button's own `pointerdown` used to dismiss the popover and its `click` to re-open it, so
+    // it could never close what it had opened and `aria-expanded` lied. `aria-controls` tells the
+    // dismiss which press is its own opener.
+    await user.click(plus());
+    expect(screen.queryByTestId('observe-candidates')).toBeNull();
+    expect(plus()).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it('keeps the drawer standing while a sheet over it is used, and gives Escape to the sheet alone', async () => {
+  it('holds the background still while a sheet is open and hands focus back when it closes', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);
     useApp.getState().toggleWanted(9283);
-    renderShell();
-    await user.click(screen.getByRole('button', { name: '설정 패널' }));
-    await user.click(within(screen.getByTestId('gift-chip')).getByRole('button', { name: '상납된 시가 자세히' }));
-    const sheet = screen.getByRole('dialog', { name: '상납된 시가' });
-    // The sheet is portaled to the body, so containment alone called every press inside it
-    // "outside the drawer" — and the drawer took `GiftsStep`, and the sheet with it, down.
-    await user.click(within(sheet).getByRole('button', { name: '상납된 시가 우선순위: 보통' }));
-    expect(useApp.getState().priority).toEqual({ 9283: 'must' });
-    expect(screen.getByTestId('drawer-left')).toBeInTheDocument();
-    // Escape belongs to the topmost overlay only.
-    await user.keyboard('{Escape}');
-    expect(screen.queryByRole('dialog', { name: '상납된 시가' })).toBeNull();
-    expect(screen.getByTestId('drawer-left')).toBeInTheDocument();
-    await user.keyboard('{Escape}');
-    expect(screen.queryByTestId('drawer-left')).toBeNull();
-  });
-
-  it('holds the background still while a drawer is open and hands focus back when it closes', async () => {
-    const user = userEvent.setup();
-    useApp.getState().setDeck(LCB_DECK, 6);
-    renderShell();
-    const toggle = screen.getByRole('button', { name: '설정 패널' });
-    toggle.focus();
-    await user.click(toggle);
+    renderPlanned(<GiftsStep data={data} indexes={indexes} stats={statsFor(useApp.getState().deck, useApp.getState().deployed)} lang="ko" />);
+    const name = within(screen.getByTestId('gift-chip')).getByRole('button', { name: '상납된 시가 자세히' });
+    name.focus();
+    await user.click(name);
+    expect(screen.getByTestId('gift-detail')).toBeInTheDocument();
     expect(document.body.style.overflow).toBe('hidden');
-    await user.click(toggle);
+    await user.keyboard('{Escape}');
+    expect(screen.queryByTestId('gift-detail')).toBeNull();
     expect(document.body.style.overflow).toBe('');
-    expect(document.activeElement).toBe(toggle);
+    // Focus used to fall to `<body>`, so the next Tab restarted at the top of the document.
+    expect(document.activeElement).toBe(name);
   });
 });
 

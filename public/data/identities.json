@@ -596,6 +596,44 @@
   },
   {
     "attackTypes": [
+      "Slash"
+    ],
+    "factions": [
+      "LIMBUS_COMPANY",
+      "LIMBUS_COMPANY_LCE"
+    ],
+    "id": 10116,
+    "keywordSource": "backfilled",
+    "keywords": {
+      "Burst": {
+        "skills": 4,
+        "specialSkills": 0
+      },
+      "Charge": {
+        "skills": 4,
+        "specialSkills": 0
+      }
+    },
+    "rank": 3,
+    "season": 7,
+    "sinner": {
+      "en": "Yi Sang",
+      "ko": "이상"
+    },
+    "sinnerId": 1,
+    "sins": [
+      "GLUTTONY",
+      "PRIDE",
+      "ENVY"
+    ],
+    "title": {
+      "en": "LCE E.G.O:: Dimension Shredder",
+      "ko": "LCE E.G.O:: 차원찢개"
+    },
+    "traits": []
+  },
+  {
+    "attackTypes": [
       "Hit",
       "Penetrate"
     ],
@@ -3517,6 +3555,43 @@
       "FIXER",
       "SMALL"
     ]
+  },
+  {
+    "attackTypes": [
+      "Penetrate"
+    ],
+    "factions": [
+      "CINQ"
+    ],
+    "id": 10616,
+    "keywordSource": "backfilled",
+    "keywords": {
+      "Breath": {
+        "skills": 3,
+        "specialSkills": 0
+      },
+      "Combustion": {
+        "skills": 3,
+        "specialSkills": 0
+      }
+    },
+    "rank": 3,
+    "season": 0,
+    "sinner": {
+      "en": "Hong Lu",
+      "ko": "홍루"
+    },
+    "sinnerId": 6,
+    "sins": [
+      "WRATH",
+      "GLOOM",
+      "PRIDE"
+    ],
+    "title": {
+      "en": "Cinq Assoc. East Section 3",
+      "ko": "동부 섕크 협회 3과"
+    },
+    "traits": []
   },
   {
     "attackTypes": [
