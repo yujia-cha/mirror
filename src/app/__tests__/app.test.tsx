@@ -1885,6 +1885,48 @@ describe('RunStage', () => {
     expect(screen.getByTestId('stage-done')).not.toHaveTextContent('새 런');
   });
 
+  it('gives the suggested pack the card and puts every other way off the floor in a row', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    useApp.getState().toggleWanted(9267); // 화왕지절 (1402), Hard 4-5
+    renderStage();
+    for (let i = 0; i < 3; i += 1) await skipFloor(user);
+    const packs = () => within(screen.getByTestId('stage-packs')).getAllByTestId('stage-pack');
+    const suggested = packs().find((el) => el.hasAttribute('data-recommended'))!;
+    expect(suggested).toHaveAttribute('data-pack', '1402');
+    // The suggestion is the only card; the difference used to be one border's colour between
+    // cards of equal size.
+    expect(suggested).not.toHaveAttribute('data-row');
+    expect(within(suggested).getByTestId('stage-recommended')).toHaveTextContent('추천');
+    // One route pack is planned on this floor and no other window reaches it, so the card stands
+    // alone; the row form is exercised by the next case.
+    expect(packs()).toHaveLength(1);
+    // Passing the floor by is a row too, and still commits on a pull as it did as a card.
+    const skip = screen.getByTestId('other-entry-card');
+    expect(skip).toHaveTextContent('넘기기');
+    pull(skip, 90);
+    expect(useApp.getState().run).toMatchObject({ currentFloor: 5, stageFloor: 5 });
+  });
+
+  it('enters a route pack from the row it was given when another pack holds the card', async () => {
+    const user = userEvent.setup();
+    useApp.getState().setDeck(BURN_DECK, 7);
+    // Six goals outrun the three observation slots, so two packs still have to be walked into and
+    // both windows cover 6~10층 — the one the planner put here takes the card, the other a row.
+    for (const id of [9274, 9420, 9706, 9715, 9744]) useApp.getState().toggleWanted(id);
+    renderStage();
+    for (let i = 0; i < 5; i += 1) await skipFloor(user);
+    expect(screen.getByTestId('stage-floor')).toHaveTextContent('6');
+    const packs = within(screen.getByTestId('stage-packs')).getAllByTestId('stage-pack');
+    expect(packs.filter((el) => el.hasAttribute('data-recommended'))).toHaveLength(1);
+    const row = packs.find((el) => el.hasAttribute('data-row'))!;
+    expect(row).not.toHaveAttribute('data-recommended');
+    expect(within(row).queryByTestId('stage-recommended')).toBeNull();
+    // A row is a way off the floor like the card is: the same pull, the same 「입장」.
+    pull(row, 90);
+    expect(useApp.getState().run.visits).toEqual({ 6: Number(row.getAttribute('data-pack')) });
+  });
+
   it('settles the floor it walks off, whether that is 「다음 층」 or a forward step on the strip', async () => {
     const user = userEvent.setup();
     useApp.getState().setDeck(BURN_DECK, 7);

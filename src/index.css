@@ -20,9 +20,13 @@
 }
 
 /*
- * Grey-only palette (docs/design/ui-redesign.md). Acquisition certainty and state are told apart
- * by fill, dash and weight — never by hue. Hue is reserved for gift icons: the keyword badge and
- * the judgement ring. Dark mode swaps the same tokens on `.dark`.
+ * Grey palette (docs/design/ui-redesign.md). Acquisition certainty and past state are told apart
+ * by fill, dash and weight — never by hue. Hue appears in exactly three places: the gift icon's
+ * keyword badge, the judgement ring, and `accent`.
+ *
+ * `accent` says 「지금 할 일」 and nothing else — the suggested pack, and the floor the stage stands
+ * on. It never colours what already happened (an entered floor stays ink, a skipped one stays
+ * grey), so the eye can find the one thing to act on. Dark mode swaps the same tokens on `.dark`.
  */
 @theme {
   --color-*: initial;
@@ -41,6 +45,12 @@
   /* Condition judgement, drawn as a ring around a gift icon (met / not met). */
   --color-ok: #2f8f5b;
   --color-bad: #c9403a;
+  /*
+   * 「지금 할 일」. Violet is the one band the keyword badges leave open, and it is far from the
+   * judgement ring's green and red. Measured: 6.19:1 on `bg`, and `accent-fg` on it is 6.69:1.
+   */
+  --color-accent: #5647c9;
+  --color-accent-fg: #ffffff;
   /*
    * Gift keyword, drawn as the badge in the icon's bottom-right corner. The three attack types
    * share `kw-attack` and are told apart by the badge's shape. `kw-outline` is the hairline that
@@ -94,6 +104,9 @@
   --color-ink-fg: #1c1917;
   --color-ok: #4cc38a;
   --color-bad: #f0665e;
+  /* 7.97:1 on the dark `bg`; the ink-coloured text on it is 7.45:1. */
+  --color-accent: #a89ff5;
+  --color-accent-fg: #1c1917;
   --color-kw-combustion: #f9913f;
   --color-kw-laceration: #f26a8d;
   --color-kw-vibration: #e8c04a;

@@ -12,7 +12,7 @@ import { DetailSurface } from '../components/BlockDetail.tsx';
 import { PackSheetBody } from '../components/PackSheet.tsx';
 import { Button, Card, Notice } from '../components/ui.tsx';
 import { usePlan } from '../shell/PlanContext.tsx';
-import { OtherEntryCard, OtherPacks, StagePackCard } from './EnterablePacks.tsx';
+import { OtherPacks, SkipRow, StagePackCard, StagePackRow } from './EnterablePacks.tsx';
 import { PackArea } from './EnteredPack.tsx';
 import { FloorHeader } from './FloorHeader.tsx';
 
@@ -25,6 +25,13 @@ export function RunStage({ onOpenGifts }: { onOpenGifts: () => void }) {
   const lastFloor = useApp((s) => s.lastFloor);
   const floor = run.stageFloor;
   const routePacks = enterablePacks(shown, floor);
+  // `enterablePacks` already puts the planned pack first when there is one.
+  const withPack = routePacks.flatMap(({ packId, recommended }) => {
+    const pack = indexes.packById.get(packId);
+    return pack ? [{ pack, recommended }] : [];
+  });
+  const suggested = withPack.find((entry) => entry.recommended);
+  const rest = withPack.filter((entry) => entry !== suggested);
   const offered = packsOfferedOn(indexes, floor);
   const entered = run.visits[floor];
 
@@ -72,12 +79,18 @@ export function RunStage({ onOpenGifts }: { onOpenGifts: () => void }) {
           <span className="text-sm font-semibold">{t('stageEnterable', lang)}</span>
         </div>
         {shown && routePacks.length === 0 && stageMode === 'undecided' ? <p className="text-xs text-fg-3">{t('stageNoRoutePack', lang)}</p> : null}
-        <div className="flex flex-wrap items-start gap-2.5 pb-3" data-testid="stage-packs">
-          {routePacks.map(({ packId, recommended }) => {
-            const pack = indexes.packById.get(packId);
-            return pack ? <StagePackCard key={packId} pack={pack} recommended={recommended} ctx={ctx} exclusivesOf={exclusivesOf} onEnter={enter} onOpen={setDetail} /> : null;
-          })}
-          {stageMode === 'undecided' ? <OtherEntryCard onSkip={next} lang={lang} /> : null}
+        {/*
+          The suggestion is a card; everything else on this floor is a row beside it. With no
+          suggestion (no pack planned here) there is no card and the rows stand alone.
+        */}
+        <div className="flex items-start gap-4 pb-3" data-testid="stage-packs">
+          {suggested ? <StagePackCard pack={suggested.pack} recommended ctx={ctx} exclusivesOf={exclusivesOf} onEnter={enter} onOpen={setDetail} /> : null}
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            {rest.map(({ pack }) => (
+              <StagePackRow key={pack.id} pack={pack} ctx={ctx} exclusivesOf={exclusivesOf} onEnter={enter} onOpen={setDetail} />
+            ))}
+            {stageMode === 'undecided' ? <SkipRow onSkip={next} lang={lang} /> : null}
+          </div>
         </div>
         <OtherPacks offered={offered} exclude={new Set(routePacks.map((p) => p.packId))} ctx={ctx} exclusivesOf={exclusivesOf} onEnter={enter} />
         {detail !== null ? (
