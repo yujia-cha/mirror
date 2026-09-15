@@ -12,9 +12,20 @@ fi
 
 echo "[session-start] node $(node -v 2>/dev/null || echo '?')"
 
-if [ -f public/data/meta.json ]; then
-  version=$(node -e "try{process.stdout.write(require('./public/data/meta.json').dataVersion??'?')}catch{process.stdout.write('?')}" 2>/dev/null)
-  echo "[session-start] generated data: dataVersion=${version}"
+# The generated data is split by season: index.json says which seasons exist and which one the
+# app opens, and that season's meta.json carries the dataVersion.
+if [ -f public/data/index.json ]; then
+  summary=$(node -e "
+    try {
+      const index = require('./public/data/index.json');
+      const list = index.seasons.map((s) => s.id + (s.provisional ? '(provisional)' : '')).join(', ');
+      const meta = require('./public/data/md' + index.default + '/meta.json');
+      process.stdout.write('seasons ' + list + ', open md' + index.default + ' dataVersion=' + (meta.dataVersion ?? '?'));
+    } catch (error) {
+      process.stdout.write('unreadable — run: npm run data:build');
+    }
+  " 2>/dev/null)
+  echo "[session-start] generated data: ${summary:-unreadable}"
 else
   echo "[session-start] public/data is empty — run: npm run data:build"
 fi

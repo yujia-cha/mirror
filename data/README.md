@@ -9,14 +9,15 @@
 | `curated/` | 정적 데이터가 표현하지 못하는 사실 (커밋 대상) | 사람이 편집. 모든 항목에 `_source` 근거 |
 | `fixtures/` | 테스트용 축소 데이터 | `npm run data:fixtures`로 생성 |
 
-생성물인 `public/data/`는 저장소 루트에 있다(앱이 fetch하는 경로라서).
+생성물인 `public/data/`는 저장소 루트에 있다(앱이 fetch하는 경로라서). 시즌이 기프트 풀을 교체하므로 `meta`·`rules`·`gifts`·`packs`는 `public/data/md{n}/`에 시즌별로 들어가고, 거던을 보지 않는 `enums`·`identities`는 루트에서 공유한다. `index.json`이 어떤 시즌이 있고 어느 것을 여는지 말한다. 자세한 것은 `docs/research/data-sources.md`.
 
 ## 흐름
 
 ```
-data/raw  ─┐
-           ├─ scripts/build-data.ts ─→ public/data/*.json ─→ 앱 · 플래너
-data/curated ┘                              │
+data/raw  ─┐                     ┌─ public/data/md{n}/{meta,rules,gifts,packs}.json ─┐
+           ├─ scripts/build-data.ts ─┤                                               ├─→ 앱 · 플래너
+data/curated ┘                     └─ public/data/{enums,identities,index}.json ─────┘
+                                          │
                                   scripts/validate-data.ts
 ```
 

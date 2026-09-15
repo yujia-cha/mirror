@@ -280,6 +280,11 @@ export interface GameIndexes {
   packs: ThemePack[];
   /** packId list per (mode, floor). */
   packsByFloor: Record<Difficulty, Map<number, number[]>>;
+  /**
+   * Floors a season fixes to one run mode, from `rules.floors`. The Normal/Hard band is not here:
+   * which of the two a floor is played on depends on the run's Hard switch, not on the floor.
+   */
+  fixedModeByFloor: Map<number, 'parallel' | 'extreme'>;
   /** Packs whose pool contains the gift. */
   packsByGift: Map<number, number[]>;
   /** Gifts present in at least `rules.generalGiftPackShare` of packs: not worth routing for. */

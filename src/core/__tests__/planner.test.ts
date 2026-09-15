@@ -48,17 +48,17 @@ function want(...giftIds: number[]): PlanInput['wanted'] {
 describe('floor modes', () => {
   it('maps floors onto the four run modes around the Hard switch point', () => {
     const normalRun = options({ hardFromFloor: null });
-    expect(modeForFloor(1, normalRun)).toBe('normal');
-    expect(modeForFloor(5, normalRun)).toBe('normal');
+    expect(modeForFloor(1, normalRun, indexes)).toBe('normal');
+    expect(modeForFloor(5, normalRun, indexes)).toBe('normal');
 
     const switchAtThree = options({ hardFromFloor: 3 });
-    expect(modeForFloor(2, switchAtThree)).toBe('normal');
-    expect(modeForFloor(3, switchAtThree)).toBe('hard');
+    expect(modeForFloor(2, switchAtThree, indexes)).toBe('normal');
+    expect(modeForFloor(3, switchAtThree, indexes)).toBe('hard');
 
-    expect(modeForFloor(6, normalRun)).toBe('parallel');
-    expect(modeForFloor(10, normalRun)).toBe('parallel');
-    expect(modeForFloor(11, normalRun)).toBe('extreme');
-    expect(modeForFloor(15, normalRun)).toBe('extreme');
+    expect(modeForFloor(6, normalRun, indexes)).toBe('parallel');
+    expect(modeForFloor(10, normalRun, indexes)).toBe('parallel');
+    expect(modeForFloor(11, normalRun, indexes)).toBe('extreme');
+    expect(modeForFloor(15, normalRun, indexes)).toBe('extreme');
   });
 });
 

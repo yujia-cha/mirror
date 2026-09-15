@@ -178,21 +178,41 @@ export function readPersonalitySkills(): Map<number, RawSkill> {
   return out;
 }
 
-/** The newest `mirror-dungeon-common-data-*.json`, which is the live season's rule table. */
-export function readCommonData(): { data: RawCommonData; file: string } | null {
+function eachCommonData(): { data: RawCommonData; file: string }[] {
   const files = listFiles(join(STATIC_DIR, 'mirror-dungeon-common-data'), /\.json$/);
-  if (files.length === 0) return null;
-  let best: { data: RawCommonData; file: string } | null = null;
-  for (const file of files) {
+  return files.map((file) => {
     const raw = readJson<RawCommonData | { list?: RawCommonData[] }>(file);
     const data = (
       Array.isArray((raw as { list?: RawCommonData[] }).list)
         ? (raw as { list: RawCommonData[] }).list[0]
         : raw
     ) as RawCommonData;
-    if (!best || (data.currentDungeonId ?? 0) > (best.data.currentDungeonId ?? 0)) best = { data, file };
+    return { data, file };
+  });
+}
+
+/**
+ * The season's rule table from `mirror-dungeon-common-data-*.json`.
+ *
+ * Without `dungeonId` this is the newest one, which is what the vendored snapshot describes.
+ * With one it is that exact season, so a build can be asked for a season the snapshot still holds.
+ */
+export function readCommonData(dungeonId?: number): { data: RawCommonData; file: string } | null {
+  const all = eachCommonData();
+  if (all.length === 0) return null;
+  if (dungeonId !== undefined) return all.find((c) => c.data.currentDungeonId === dungeonId) ?? null;
+  let best: { data: RawCommonData; file: string } | null = null;
+  for (const entry of all) {
+    if (!best || (entry.data.currentDungeonId ?? 0) > (best.data.currentDungeonId ?? 0)) best = entry;
   }
   return best;
+}
+
+/** Every season the vendored static data can build, ascending. */
+export function listSeasons(): number[] {
+  return [...new Set(eachCommonData().map((c) => c.data.currentDungeonId ?? 0))]
+    .filter((id) => id > 0)
+    .sort((a, b) => a - b);
 }
 
 /** Mirror Dungeon battle stages (`battle-mirrordungeon/*.json`), keyed by stage id. */

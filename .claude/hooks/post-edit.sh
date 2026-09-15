@@ -33,7 +33,8 @@ case "$rel" in
     exit 2
     ;;
   data/curated/*.json|scripts/*.ts)
-    [ -f public/data/meta.json ] || exit 0
+    # Nothing to validate until a season has been built. meta.json lives under public/data/md{n}/.
+    ls public/data/md*/meta.json >/dev/null 2>&1 || exit 0
     run "data validation" npm run -s data:validate
     ;;
   src/core/*)

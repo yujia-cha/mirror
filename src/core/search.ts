@@ -2,10 +2,16 @@ import { requirementKey } from './requirements.ts';
 import type { Difficulty, Rules } from './schema.ts';
 import type { GameIndexes, PlanOptions, Requirement } from './types.ts';
 
-/** Which run mode a floor is played in, given the single Hard switch point. */
-export function modeForFloor(floor: number, options: PlanOptions): Difficulty {
-  if (floor >= 11) return 'extreme';
-  if (floor >= 6) return 'parallel';
+/**
+ * Which run mode a floor is played in, given the single Hard switch point.
+ *
+ * Which floors are 평행중첩 or EXTREME is a property of the season, so it comes from the data
+ * (`rules.floors`, via `indexes.fixedModeByFloor`) and not from the numbers 6 and 11: a season that
+ * opens 1~5 only has neither band.
+ */
+export function modeForFloor(floor: number, options: PlanOptions, indexes: GameIndexes): Difficulty {
+  const fixed = indexes.fixedModeByFloor.get(floor);
+  if (fixed) return fixed;
   if (options.hardFromFloor !== null && floor >= options.hardFromFloor) return 'hard';
   return 'normal';
 }
@@ -105,7 +111,7 @@ export function assignPacks(input: SearchInput): SearchResult {
     const known = floorsOf.get(packId);
     if (known) return known;
     const out = openFloors.filter((floor) =>
-      (indexes.packsByFloor[modeForFloor(floor, options)].get(floor) ?? []).includes(packId),
+      (indexes.packsByFloor[modeForFloor(floor, options, indexes)].get(floor) ?? []).includes(packId),
     );
     floorsOf.set(packId, out);
     return out;

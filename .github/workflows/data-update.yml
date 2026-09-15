@@ -57,7 +57,7 @@ jobs:
             echo '원본과 생성 데이터 모두 그대로입니다. 열 PR이 없습니다.' >> "$GITHUB_STEP_SUMMARY"
           else
             echo 'changed=true' >> "$GITHUB_OUTPUT"
-            echo "version=$(node -p "require('./public/data/meta.json').dataVersion")" >> "$GITHUB_OUTPUT"
+            echo "version=$(node -p "const i=require('./public/data/index.json');require(\`./public/data/md\${i.default}/meta.json\`).dataVersion")" >> "$GITHUB_OUTPUT"
           fi
 
       # data:diff는 커밋 전에 돌려야 한다 — 비교 대상이 git에 남아 있는 이전 산출물이다.
