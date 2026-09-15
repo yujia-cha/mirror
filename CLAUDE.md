@@ -12,6 +12,7 @@ npm run build          # 타입 검사 + 프로덕션 빌드
 npm test               # 단위 테스트
 npm run check          # lint + typecheck + test + data:validate  ← 커밋 전 필수
 npm run data:fetch     # 원본 게임 데이터 내려받기 (sources.lock.json 기준)
+npm run data:import -- <폴더>   # 클라이언트에서 추출한 static-data를 data/raw에 넣기 (--write로 적용)
 npm run data:build     # data/raw + data/curated → public/data
 npm run data:validate  # 스키마 · 참조 무결성 · 도메인 불변식 검사
 npm run data:diff      # 이전 커밋 대비 데이터 변경 요약
@@ -47,6 +48,7 @@ npm run route -- --deck 10101,... --want 9088,... --floors 1-5 --difficulty hard
 ## 코드 규칙
 
 - **인격 데이터는 세 층으로 만든다**: 정적 데이터(OpenLethe) > 자동 백필(eldritchtools 파생 미러 + KR 스킬 원문) > 수기(`data/curated/identities.json`). 각 층은 위층에 없는 것만 채우고, **아래층이 위층을 가리면 `data:build`가 멈춘다**. 키워드만은 항상 KR 스킬 원문에서 도출한다 — 파생 미러는 179명 중 10명에서 덜 알기 때문에 교차검증용이다. 자세한 것은 `docs/research/data-sources.md`.
+- **거울 던전 데이터도 세 층이다**: 정적(OpenLethe) > 폴백(eldritchtools를 원본 모양으로 합성, `scripts/lib/derived-md.ts`) > 직접 추출(`npm run data:import`). OpenLethe의 MD 캡처는 얼어 있어 새 시즌이 오지 않으므로, 폴백이 팩·층·전용 기프트·조합·시작 풀을 메운다. **팩별 범용 기프트 풀만은 어디서도 못 얻는다** — 추측하지 않고 `data:validate`가 에러로 막는다. 시즌 선택은 `currentDungeonId`가 가장 큰 파일을 고르는 데이터 주도라, md8 파일이 어떤 경로로든 들어오면 자동으로 집힌다.
 - **출처가 조용히 멈추는 것이 이 프로젝트의 주된 고장이다.** 검증은 「어느 출처든 아는데 우리가 안 내보내는 인격」을 에러로 잡는다(한 출처만 보면 둘 다 늦을 때 침묵한다). 파생 미러의 `meta.json` 시각으로 vendoring 복사본이 낡았는지도 경고한다.
 - 게임 상수는 코드에 박지 않고 `data/curated/rules.json`에 둔다.
 - 스키마는 `src/core/schema.ts`(Zod) 한 곳에서 정의하고 파이프라인·앱·테스트가 공유한다.

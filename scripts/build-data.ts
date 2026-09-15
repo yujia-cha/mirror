@@ -46,6 +46,15 @@ import {
 } from './lib/derive.ts';
 import { parseConditions } from './lib/parse-conditions.ts';
 import { deriveIdentityKeywordsFromText, skillsOfIdentity } from './lib/derive-text.ts';
+import { DERIVED_DIR } from './lib/derived-source.ts';
+import {
+  derivedGiftAsRaw,
+  derivedMdPresent,
+  derivedPackAsRaw,
+  readDerivedAvailability,
+  readDerivedGifts,
+  readDerivedPacks,
+} from './lib/derived-md.ts';
 import {
   derivedAttackTypes,
   derivedFactions,
@@ -171,8 +180,54 @@ const dropPool = readDropPool(dungeonId);
 const stages = readStages();
 const observation = readObservationData(dungeonId);
 
-const rawPacks = readThemePacks();
-const rawGifts = readGiftStatics();
+const staticPacks = readThemePacks();
+const staticGifts = readGiftStatics();
+
+/**
+ * Packs and gifts the static data has not shipped, synthesised from the derived mirror.
+ *
+ * OpenLethe's Mirror Dungeon capture is frozen, so a new season will never reach it. Rather than
+ * plan a season the game no longer runs, the build takes what the living source knows and shapes it
+ * like the static records, so every step below is unchanged. The hidden pack is skipped: it cannot
+ * be chosen or observed, so putting it in the roster would invent a route nobody can take.
+ *
+ * What this cannot supply is each pack's *general* gift pool. Nothing is guessed — the pack simply
+ * has no pool, and `validate-data` refuses to let that pass quietly.
+ */
+const backfilledPacks = (() => {
+  if (!derivedMdPresent()) return [] as ReturnType<typeof derivedPackAsRaw>[];
+  const known = new Set(staticPacks.map((pack) => pack.id));
+  const hiddenPackId = (curated.rules.hiddenPack as { id?: number } | undefined)?.id;
+  const derived = readDerivedPacks();
+  return [...readDerivedAvailability()]
+    .filter(([id]) => !known.has(id) && id !== hiddenPackId)
+    .map(([id, floors]) => derivedPackAsRaw(id, derived.get(id) ?? {}, floors));
+})();
+
+const rawPacks = [...staticPacks, ...backfilledPacks];
+
+/** English names for backfilled content, used only where the localization has nothing yet. */
+const derivedPackNames = derivedMdPresent() ? readDerivedPacks() : new Map();
+const derivedGiftNames = derivedMdPresent() ? readDerivedGifts() : new Map();
+const derivedPackName = (id: number): string | undefined => derivedPackNames.get(id)?.name;
+const derivedGiftName = (id: number): string | undefined => derivedGiftNames.get(id)?.names?.[0];
+
+const backfilledGiftIds = new Set(backfilledPacks.flatMap((pack) => pack.specificEgoGiftPool ?? []));
+const backfilledGifts = (() => {
+  if (backfilledGiftIds.size === 0) return [] as ReturnType<typeof derivedGiftAsRaw>[];
+  const known = new Set(staticGifts.map((gift) => gift.id));
+  const derived = readDerivedGifts();
+  return [...backfilledGiftIds]
+    .filter((id) => !known.has(id) && derived.has(id))
+    .map((id) => derivedGiftAsRaw(id, derived.get(id)!));
+})();
+
+const rawGifts = [...staticGifts, ...backfilledGifts];
+if (backfilledPacks.length > 0) {
+  console.log(
+    `  backfilled from the derived mirror: ${backfilledPacks.length} pack(s), ${backfilledGifts.length} gift(s)`,
+  );
+}
 const rawPersonalities = readPersonalities();
 const skills = readPersonalitySkills();
 
@@ -236,8 +291,13 @@ const packs: ThemePack[] = rawPacks
     const notes = curated.notes.packs?.[String(raw.id)];
     return {
       id: raw.id,
+      // A pack the static data has not shipped may also be missing from the localization for a few
+      // days after a patch; the derived source's English name keeps it from being nameless.
       name: applyNameOverride(
-        loc(themeNameKo.get(raw.id) ?? devName, themeNameEn.get(raw.id) ?? devName),
+        loc(
+          themeNameKo.get(raw.id) ?? derivedPackName(raw.id) ?? devName,
+          themeNameEn.get(raw.id) ?? derivedPackName(raw.id) ?? devName,
+        ),
         curated.names.packs?.[String(raw.id)],
       ),
       devName,
@@ -441,7 +501,10 @@ const gifts: Gift[] = [...giftIds]
 
     return {
       id,
-      name: applyNameOverride(loc(ko?.name, en?.name ?? ko?.name), curated.names.gifts?.[String(id)]),
+      name: applyNameOverride(
+        loc(ko?.name ?? derivedGiftName(id), en?.name ?? ko?.name ?? derivedGiftName(id)),
+        curated.names.gifts?.[String(id)],
+      ),
       desc,
       keyword,
       tier: stat ? tierFromTags(tags) : null,
@@ -822,6 +885,9 @@ function inputsFingerprint(): string {
   };
   walk(STATIC_DIR);
   walk(LOCALIZE_DIR);
+  // The derived mirror backfills identities, packs and gifts, so it is an input like any other:
+  // leaving it out would let the data change while `dataVersion` swore it had not.
+  walk(DERIVED_DIR);
   walk(repoPath('data/curated'));
   return hash.digest('hex').slice(0, 8);
 }

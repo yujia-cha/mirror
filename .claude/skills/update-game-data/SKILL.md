@@ -27,12 +27,21 @@ npm test
 
 ## 3. 시즌이 바뀐 경우 (거울 던전 8 등)
 
-정적 파일 이름에 시즌 번호가 들어간다. 확인할 것:
+OpenLethe의 거울 던전 캡처는 **얼어 있어 새 시즌이 오지 않는다**. 순서대로 한다.
 
-1. `mirror-dungeon-common-data-md8.json`, `mirrordungeon-08*.json`, `mirrordungeon-egogift-droppool-8.json`이 `data/sources.lock.json`의 파일 목록에 있는지. 없으면 추가한다.
-2. `build-data`는 `mirror-dungeon-common-data-*.json`의 `currentDungeonId`를 읽어 시즌을 정하므로, 새 파일만 들어오면 대개 자동으로 따라간다.
-3. 새 테마팩 대역이 생겼으면 `src/core/data/packs.ts`의 `groupForPackId()`에 대역을 추가하고 `md-domain` 스킬의 표를 갱신한다.
-4. `mirrordungeon-theme-floor-t7.json`처럼 tier 파일이 늘면 glob이 잡아주지만, lock 파일 목록에는 명시해야 한다.
+1. `npm run data:fetch -- --update && npm run data:build` — 파생 미러(eldritchtools)가 먼저 움직인다. 새 팩·기프트가 있으면 **폴백이 자동으로 합성**하고 빌드가 몇 개를 백필했는지 찍는다.
+2. `npm run data:validate`를 읽는다.
+   - 「packs the derived source knows and we do not ship」 **경고** → 새 시즌이 시작됐다는 첫 신호
+   - 「backfilled from the derived source and have no general gift pool」 **에러** → 폴백은 팩별 **범용 기프트 풀**을 못 준다. 여기서 멈춘다
+3. 그 에러를 풀려면 원본이 필요하다. 게임이 설치된 PC에서 추출해(`docs/research/data-sources.md`의 「클라이언트에서 직접 추출」) 넣는다:
+   ```bash
+   npm run data:import -- <추출한 static-data 폴더>          # 미리보기
+   npm run data:import -- <추출한 static-data 폴더> --write   # 적용
+   ```
+   새 시즌 파일명(`mirror-dungeon-common-data-md8.json` 등)은 스크립트가 찾아 알려 준다. **`sources.lock.json`에 손으로 더한다** — 스크립트는 lock을 고치지 않는다.
+4. 추출이 불가능하면 그 시즌은 **팩 한정·조합·시작 기프트까지만** 계획할 수 있다. 범용 기프트 경로가 꺼진 상태를 사용자에게 알리는 것이 검증 에러의 목적이다.
+
+새 시즌은 `data/curated/rules.json`의 상수(별빛·조합 확률·관측 비용·강화 비용)도 바뀔 수 있다. 파생 미러에는 없으므로 인게임 확인 후 `_source`와 함께 적는다.
 
 ## 4. 검증이 실패할 때
 

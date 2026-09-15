@@ -36,7 +36,7 @@ export interface DerivedIdentity {
 }
 
 /** English keyword names as this source writes them, mapped to the ids the app uses. */
-const KEYWORD_BY_EN: Record<string, IdentityKeywordId> = {
+export const KEYWORD_BY_EN: Record<string, IdentityKeywordId> = {
   Burn: 'Combustion',
   Bleed: 'Laceration',
   Tremor: 'Vibration',
