@@ -3,7 +3,7 @@
  * and the run record) and handed to the stage and both side panels, together with the pack
  * context every pack surface takes and the run actions that settle gifts as floors are left.
  */
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { evaluateConditions } from '../../core/index.ts';
 import type { GameData, Keyword } from '../../core/schema.ts';
 import { observable, planAlternatives, planRoute } from '../../core/index.ts';
@@ -16,8 +16,10 @@ import { conditionText } from '../condition-text.ts';
 import { judgementsByGift, type Judgement } from '../lib/judgement.ts';
 import { planInputFor, priorityOf } from '../lib/plan-input.ts';
 import { autoFailedFor, exclusivesIndex, stageModeFor, type StageMode } from '../lib/stage.ts';
-import { entanglements } from '../lib/entangle.ts';
+import { entanglements, ingredientsOf } from '../lib/entangle.ts';
 import { upgradeChildren } from '../lib/upgrade-children.ts';
+import { useDesktop } from '../lib/useMediaQuery.ts';
+import { usePageHistory } from '../lib/usePageHistory.ts';
 import { GiftDetailSheet } from '../components/GiftDetailSheet.tsx';
 import type { PackContext } from '../components/PackSheet.tsx';
 
@@ -87,6 +89,11 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
   const nextFloor = useApp((s) => s.nextFloor);
   const [variantIndex, setVariantIndex] = useState(0);
   const [detailGift, setDetailGift] = useState<number | null>(null);
+  const desktop = useDesktop();
+  const closeSheet = useCallback(() => setDetailGift(null), []);
+  // On a phone the sheet owns a history entry of its own, above the panel page's, so one back
+  // gesture closes the sheet and the next one the page.
+  usePageHistory(detailGift !== null, closeSheet, !desktop);
 
   const input = useMemo(
     () => planInputFor({ deck, deployed, wanted, priority, options, fusionGoal, run }),
@@ -213,8 +220,10 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
     nextFloor,
   ]);
 
-  // The sheet is hosted once here so a tile on the stage, in the tracker or in the route panel
-  // opens the same details the items tab shows; it portals to the body like every sheet.
+  // The sheet is hosted here and nowhere else, so a tile on the stage, in the tracker, in the
+  // route panel or in the items tab opens the same details — and the sheet outlives the surface
+  // that opened it. A sheet hosted inside a panel would die with the panel on a phone, where the
+  // panel is a full-screen page that unmounts when it closes.
   const sheetGift = detailGift !== null ? indexes.giftById.get(detailGift) : undefined;
   return (
     <PlanCtx.Provider value={value}>
@@ -227,8 +236,13 @@ export function PlanProvider({ data, indexes, stats, lang, children }: { data: G
           data={data}
           indexes={indexes}
           lang={lang}
-          onToggleWanted={(gift) => toggleWanted(gift.id, (childrenOf.get(gift.id) ?? []).map((g) => g.id))}
-          onClose={() => setDetailGift(null)}
+          onToggleWanted={(gift) =>
+            toggleWanted(gift.id, [
+              ...(childrenOf.get(gift.id) ?? []).map((g) => g.id),
+              ...(gift.fusion ? ingredientsOf(gift, indexes, data.rules.fusion.maxShopSlots) : []),
+            ])
+          }
+          onClose={closeSheet}
         />
       ) : null}
     </PlanCtx.Provider>

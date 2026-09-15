@@ -106,8 +106,9 @@ export function DeckStep({ data, indexes, stats, lang }: Props) {
       event.preventDefault();
       pickIdentity(globalResults[activeIndex]);
     } else if (event.key === 'Escape' && open) {
-      // Only the result list closes; on a phone the panel is a drawer that Escape would close too.
-      event.stopPropagation();
+      // `useDismiss` already closes only the topmost layer, so this just keeps the caret in the
+      // field rather than letting the key travel on.
+      event.preventDefault();
       setListOpen(false);
     }
   };

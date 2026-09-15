@@ -35,8 +35,17 @@ export function DetailSurface({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useDismiss(ref, onClose, true);
-  // The surface renders inside whatever opened it, so its own presses must not reopen it.
-  const stop = { onClick: (e: React.SyntheticEvent) => e.stopPropagation(), onKeyDown: (e: React.SyntheticEvent) => e.stopPropagation() };
+  // The surface renders inside whatever opened it — a sheet portals to the body but its React
+  // events still travel the tree that opened it — so its own presses must not reopen it. Escape is
+  // handled right here rather than left to `useDismiss`: stopping the event also stops the native
+  // one, so the document listener would never see it.
+  const stop = {
+    onClick: (e: React.SyntheticEvent) => e.stopPropagation(),
+    onKeyDown: (e: React.KeyboardEvent) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') onClose();
+    },
+  };
   useEffect(() => {
     if (mode === 'sheet') ref.current?.querySelector<HTMLButtonElement>('button')?.focus();
   }, [mode]);
@@ -44,9 +53,12 @@ export function DetailSurface({
     // Rendered into the body: a side panel is a `@container`, which makes it the containing block
     // for `position: fixed`, so a sheet opened inside one would be pinned to the panel instead of
     // the viewport. React events still bubble through the tree that opened it.
+    //
+    // z ladder: phone panel page 40 < this backdrop 50 < this sheet 60 < drag ghost 70. The sheet
+    // has to cover the page it was opened from, or the page's back button stays pressable under it.
     return createPortal(
       <>
-        <div className="fixed inset-0 z-40 bg-black/40" aria-hidden />
+        <div className="fixed inset-0 z-50 bg-black/40" aria-hidden />
         <div
           ref={ref}
           role="dialog"
@@ -54,7 +66,7 @@ export function DetailSurface({
           aria-label={label}
           data-testid="block-sheet"
           {...stop}
-          className="fixed inset-x-0 bottom-0 z-50 max-h-[80vh] overflow-y-auto rounded-t-md border-t border-line-strong bg-surface px-4 pb-6 pt-2 shadow-pop lg:inset-x-auto lg:left-1/2 lg:w-[520px] lg:-translate-x-1/2 lg:rounded-md lg:border"
+          className="fixed inset-x-0 bottom-0 z-[60] max-h-[80vh] overflow-y-auto rounded-t-md border-t border-line-strong bg-surface px-4 pb-6 pt-2 shadow-pop lg:inset-x-auto lg:left-1/2 lg:w-[520px] lg:-translate-x-1/2 lg:rounded-md lg:border"
         >
           <div className="mb-2 flex items-center">
             <span className="mx-auto h-1 w-10 rounded-full bg-line-strong" aria-hidden />

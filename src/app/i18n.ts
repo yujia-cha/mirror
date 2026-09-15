@@ -203,7 +203,7 @@ export const STRINGS = {
   panelRight: { ko: '루트 패널', en: 'Route panel' },
   panelResize: { ko: '패널 너비', en: 'Panel width' },
   panelResizeHint: { ko: '끌어서 너비 조절 · 두 번 눌러 기본값 · 화살표 키로 조금씩', en: 'Drag to resize · double-click to reset · arrow keys nudge' },
-  panelClose: { ko: '패널 닫기', en: 'Close panel' },
+  panelBack: { ko: '뒤로', en: 'Back' },
   tabDeck: { ko: '덱', en: 'Deck' },
   tabGifts: { ko: '아이템', en: 'Items' },
   tabRoutePlan: { ko: '전체 루트', en: 'Full route' },

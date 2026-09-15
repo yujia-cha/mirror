@@ -1,12 +1,17 @@
 /**
- * A collapsible side panel: beside the stage on a desktop, a full-height drawer over it on a
- * phone. Both carry a tab bar at the top; the drawer also closes on Escape, on the backdrop and
- * from its own close button.
+ * A collapsible side panel: beside the stage on a desktop, its own full-screen page on a phone.
+ * Both carry a tab bar at the top.
+ *
+ * The phone page is a page, not a dialog — it covers the shell (which goes `inert` behind it),
+ * it has no backdrop, and it does not close on a stray press or on Escape. It closes from its
+ * back button or from the device's back gesture, both of which go through the one history entry
+ * `usePageHistory` owns.
  */
 import { useEffect, useRef, type ReactNode } from 'react';
-import { X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { ChevronLeft } from 'lucide-react';
 import { t, type Lang } from '../i18n.ts';
-import { useDismiss } from '../lib/useDismiss.ts';
+import { usePageHistory } from '../lib/usePageHistory.ts';
 
 export interface PanelTab<Id extends string> {
   id: Id;
@@ -65,7 +70,7 @@ export function SidePanel<Id extends string>({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  useDismiss(ref, onClose, open && !desktop);
+  usePageHistory(open, onClose, !desktop);
   useEffect(() => {
     if (open && !desktop) ref.current?.querySelector<HTMLButtonElement>('button')?.focus();
   }, [open, desktop]);
@@ -85,26 +90,34 @@ export function SidePanel<Id extends string>({
       </aside>
     );
   }
-  return (
-    <div className="fixed inset-0 z-40" data-testid={`drawer-${side}`}>
-      <div className="absolute inset-0 bg-black/40" aria-hidden />
-      <div
-        ref={ref}
-        id={id}
-        role="dialog"
-        aria-modal="true"
-        aria-label={label}
-        className={`absolute inset-y-0 flex w-[min(92vw,380px)] flex-col bg-surface shadow-pop ${side === 'left' ? 'left-0' : 'right-0'}`}
-      >
-        <div className="flex h-11 items-center justify-between border-b border-line px-3">
-          <span className="text-sm font-semibold">{label}</span>
-          <button type="button" onClick={onClose} aria-label={t('panelClose', lang)} className="inline-flex h-8 w-8 items-center justify-center rounded-full text-fg-2 hover:bg-surface-2">
-            <X size={15} aria-hidden />
-          </button>
-        </div>
-        {bar}
-        <div className="@container min-h-0 flex-1 overflow-y-auto px-3 py-3">{children}</div>
+  // Portalled to the body so the page sits outside the shell the phone marks `inert`.
+  return createPortal(
+    <div
+      ref={ref}
+      id={id}
+      data-testid={`page-${side}`}
+      className="fixed inset-0 z-40 flex flex-col bg-bg"
+      style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+    >
+      <div className="flex h-11 flex-none items-center gap-1 border-b border-line bg-surface px-1.5">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t('panelBack', lang)}
+          className="inline-flex h-8 w-8 flex-none items-center justify-center rounded-full text-fg-2 hover:bg-surface-2"
+        >
+          <ChevronLeft size={17} aria-hidden />
+        </button>
+        <h1 className="truncate text-sm font-semibold">{label}</h1>
       </div>
-    </div>
+      {bar}
+      <div
+        className="@container min-h-0 flex-1 overflow-y-auto px-3 py-3"
+        style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+      >
+        {children}
+      </div>
+    </div>,
+    document.body,
   );
 }
